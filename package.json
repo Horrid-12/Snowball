@@ -1,0 +1,17 @@
+{
+    "name": "snowball",
+    "version": "1.0.0",
+    "description": "Snowball — Full-stack application with Vite frontend and Express backend",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev:frontend": "npm --prefix frontend run dev",
+        "dev:backend": "npm --prefix backend run dev",
+        "dev": "npx -y concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+        "install:all": "npm --prefix frontend install && npm --prefix backend install",
+        "build": "npm --prefix frontend run build"
+    },
+    "devDependencies": {
+        "firebase-tools": "^15.8.0"
+    }
+}
