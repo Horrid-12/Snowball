@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Music, Video, Play, Pause, SkipForward, SkipBack, ExternalLink, Volume2, Search } from 'lucide-react';
-import { API_URL } from '../config.js';
 
 const MediaHub = () => {
     const [activeTab, setActiveTab] = useState('spotify'); // 'spotify' or 'youtube'
@@ -26,7 +25,7 @@ const MediaHub = () => {
 
     const fetchSpotify = async () => {
         try {
-            const response = await fetch(`${API_URL}/api/spotify/now-playing`);
+            const response = await fetch('http://127.0.0.1:3000/api/spotify/now-playing');
             if (response.ok) {
                 const data = await response.json();
                 setSpotifyData(data);
@@ -60,7 +59,7 @@ const MediaHub = () => {
 
     const handleSpotifyControl = async (action, method = 'PUT', params = '') => {
         try {
-            const res = await fetch(`${API_URL}/api/spotify/${action}${params}`, { method });
+            const res = await fetch(`http://127.0.0.1:3000/api/spotify/${action}${params}`, { method });
             if (res.ok) {
                 if (action === 'play') setSpotifyData(prev => ({ ...prev, is_playing: true }));
                 if (action === 'pause') setSpotifyData(prev => ({ ...prev, is_playing: false }));
@@ -77,7 +76,7 @@ const MediaHub = () => {
 
         setSpotifySearching(true);
         try {
-            const res = await fetch(`${API_URL}/api/spotify/search?q=${encodeURIComponent(spotifyQuery)}`);
+            const res = await fetch(`http://127.0.0.1:3000/api/spotify/search?q=${encodeURIComponent(spotifyQuery)}`);
             if (res.ok) {
                 const data = await res.json();
                 setSpotifyResults(data);
@@ -92,7 +91,7 @@ const MediaHub = () => {
     const playSpotifyTrack = async (uri) => {
         try {
             // Spotify play API can take a context_uri or uris array
-            await fetch(`${API_URL}/api/spotify/play`, {
+            await fetch('http://127.0.0.1:3000/api/spotify/play', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ uris: [uri] })
@@ -121,7 +120,7 @@ const MediaHub = () => {
         setYtSearching(true);
         try {
             const token = localStorage.getItem('snowball_token');
-            const res = await fetch(`${API_URL}/api/youtube/search?q=${encodeURIComponent(ytQuery)}`, {
+            const res = await fetch(`http://127.0.0.1:3000/api/youtube/search?q=${encodeURIComponent(ytQuery)}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -144,7 +143,7 @@ const MediaHub = () => {
                     <Music size={24} style={{ color: '#1DB954', marginBottom: '0.5rem' }} />
                     <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>Connect Spotify for live sync.</p>
                     <button
-                        onClick={() => fetch(`${API_URL}/api/spotify/auth`).then(r => r.json()).then(d => window.location.href = d.url)}
+                        onClick={() => fetch('http://127.0.0.1:3000/api/spotify/auth').then(r => r.json()).then(d => window.location.href = d.url)}
                         style={{ background: '#1DB954', color: 'white', padding: '0.4rem 1rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 'bold' }}
                     >
                         Connect

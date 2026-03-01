@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { API_URL } from '../config.js';
 
 const ActivityHeatmap = () => {
     const [activity, setActivity] = useState({});
@@ -8,7 +7,7 @@ const ActivityHeatmap = () => {
     const fetchActivity = async () => {
         try {
             const token = localStorage.getItem('snowball_token');
-            const response = await fetch(`${API_URL}/api/activity/heatmap`, {
+            const response = await fetch('http://127.0.0.1:3000/api/activity/heatmap', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {

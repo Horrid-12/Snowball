@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import './index.css';
-import { API_URL } from './config.js';
 
 // Components
 import TaskForm from './components/TaskForm.jsx';
@@ -43,7 +42,7 @@ function App() {
     // Check auth session on mount
     useEffect(() => {
         if (token) {
-            fetch(`${API_URL}/api/auth/me`, {
+            fetch('http://127.0.0.1:3000/api/auth/me', {
                 headers: { 'Authorization': `Bearer ${token}` }
             })
                 .then(res => res.json())
@@ -61,7 +60,7 @@ function App() {
 
         const fetchTasks = async () => {
             try {
-                const response = await fetch(`${API_URL}/api/tasks`, {
+                const response = await fetch('http://127.0.0.1:3000/api/tasks', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (!response.ok) {
