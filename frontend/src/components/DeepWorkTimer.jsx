@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, RotateCcw, Settings, CheckCircle } from 'lucide-react';
+import { API_URL } from '../config.js';
 
 const DeepWorkTimer = () => {
     const [minutes, setMinutes] = useState(25);
@@ -51,7 +52,7 @@ const DeepWorkTimer = () => {
     const logMomentum = async () => {
         try {
             const token = localStorage.getItem('snowball_token');
-            await fetch('http://127.0.0.1:3000/api/activity/log', {
+            await fetch(`${API_URL}/api/activity/log`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

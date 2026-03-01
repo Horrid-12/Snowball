@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Check, Trash2, Award } from 'lucide-react';
+import { API_URL } from '../config.js';
 
 const HabitTracker = () => {
     const [habits, setHabits] = useState([]);
@@ -9,7 +10,7 @@ const HabitTracker = () => {
     const fetchHabits = async () => {
         try {
             const token = localStorage.getItem('snowball_token');
-            const response = await fetch('http://127.0.0.1:3000/api/habits', {
+            const response = await fetch(`${API_URL}/api/habits`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
@@ -33,7 +34,7 @@ const HabitTracker = () => {
 
         try {
             const token = localStorage.getItem('snowball_token');
-            const response = await fetch('http://127.0.0.1:3000/api/habits', {
+            const response = await fetch(`${API_URL}/api/habits`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -54,7 +55,7 @@ const HabitTracker = () => {
     const handleToggleHabit = async (id) => {
         try {
             const token = localStorage.getItem('snowball_token');
-            const response = await fetch(`http://127.0.0.1:3000/api/habits/${id}/toggle`, {
+            const response = await fetch(`${API_URL}/api/habits/${id}/toggle`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -71,7 +72,7 @@ const HabitTracker = () => {
         if (!window.confirm("Delete this habit?")) return;
         try {
             const token = localStorage.getItem('snowball_token');
-            const response = await fetch(`http://127.0.0.1:3000/api/habits/${id}`, {
+            const response = await fetch(`${API_URL}/api/habits/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });

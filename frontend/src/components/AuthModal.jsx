@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_URL } from '../config.js';
 
 const AuthModal = ({ onLogin }) => {
     const [isRegister, setIsRegister] = useState(false);
@@ -11,7 +12,7 @@ const AuthModal = ({ onLogin }) => {
         const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
 
         try {
-            const response = await fetch(`http://127.0.0.1:3000${endpoint}`, {
+            const response = await fetch(`${API_URL}${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)

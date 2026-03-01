@@ -1,5 +1,6 @@
 import React from 'react';
 import { Calendar, Clock, CheckCircle2, Circle } from 'lucide-react';
+import { API_URL } from '../config.js';
 
 const TaskBoard = ({ tasks, onTaskUpdate, onTaskDelete, onClearAll }) => {
 
@@ -10,7 +11,7 @@ const TaskBoard = ({ tasks, onTaskUpdate, onTaskDelete, onClearAll }) => {
 
         try {
             const token = localStorage.getItem('snowball_token');
-            const response = await fetch(`http://127.0.0.1:3000/api/tasks/${task.id}`, {
+            const response = await fetch(`${API_URL}/api/tasks/${task.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -30,7 +31,7 @@ const TaskBoard = ({ tasks, onTaskUpdate, onTaskDelete, onClearAll }) => {
     const handleDelete = async (id) => {
         try {
             const token = localStorage.getItem('snowball_token');
-            const response = await fetch(`http://127.0.0.1:3000/api/tasks/${id}`, {
+            const response = await fetch(`${API_URL}/api/tasks/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -47,7 +48,7 @@ const TaskBoard = ({ tasks, onTaskUpdate, onTaskDelete, onClearAll }) => {
 
         try {
             const token = localStorage.getItem('snowball_token');
-            const response = await fetch(`http://127.0.0.1:3000/api/tasks`, {
+            const response = await fetch(`${API_URL}/api/tasks`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -167,7 +168,7 @@ const TaskBoard = ({ tasks, onTaskUpdate, onTaskDelete, onClearAll }) => {
                                         const val = parseInt(e.target.value) || 0;
                                         onTaskUpdate({ ...task, tasksCompleted: val });
                                         // Update backend
-                                        fetch(`http://127.0.0.1:3000/api/tasks/${task.id}`, {
+                                        fetch(`${API_URL}/api/tasks/${task.id}`, {
                                             method: 'PUT',
                                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('snowball_token')}` },
                                             body: JSON.stringify({ ...task, tasksCompleted: val })
@@ -196,7 +197,7 @@ const TaskBoard = ({ tasks, onTaskUpdate, onTaskDelete, onClearAll }) => {
                                         const val = parseFloat(e.target.value) || 0;
                                         onTaskUpdate({ ...task, hoursTaken: val });
                                         // Update backend
-                                        fetch(`http://127.0.0.1:3000/api/tasks/${task.id}`, {
+                                        fetch(`${API_URL}/api/tasks/${task.id}`, {
                                             method: 'PUT',
                                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('snowball_token')}` },
                                             body: JSON.stringify({ ...task, hoursTaken: val })

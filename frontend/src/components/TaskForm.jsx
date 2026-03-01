@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_URL } from '../config.js';
 
 const TaskForm = ({ onTaskAdded }) => {
     const [formData, setFormData] = useState({
@@ -28,7 +29,7 @@ const TaskForm = ({ onTaskAdded }) => {
         setLoading(true);
         try {
             const token = localStorage.getItem('snowball_token');
-            const response = await fetch('http://127.0.0.1:3000/api/tasks', {
+            const response = await fetch(`${API_URL}/api/tasks`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

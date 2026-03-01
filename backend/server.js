@@ -56,3 +56,5 @@ initDB().then(() => {
 });
 
 export default app;
+
+VITE_API_URL=https://snowball-unee.onrender.com
