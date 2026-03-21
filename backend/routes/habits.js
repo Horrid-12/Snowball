@@ -1,7 +1,9 @@
 import express from 'express';
-import { getDB } from '../db.js';
+import { supabase } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { logActivity } from './activity.js';
+import { getTodayWithOffset } from '../utils.js';
+import { recomputeDailyProductivity } from '../utils/productivityScore.js';
 
 const router = express.Router();
 
@@ -10,22 +12,66 @@ router.use(requireAuth);
 // GET all habits with completion status for today
 router.get('/', async (req, res, next) => {
     try {
-        const db = getDB();
-        const today = new Date().toISOString().split('T')[0];
+        const today = await getTodayWithOffset(req.user.id);
 
-        // Get all user habits
-        const habits = await db.all('habits', [['user_id', '==', req.user.id]]);
+        // Get habits for current user
+        const { data: habits, error: habitsError } = await supabase
+            .from('habits')
+            .select('*')
+            .eq('user_id', req.user.id)
+            .order('id', { ascending: false });
 
-        // Get all logs for today for these habits
-        const logs = await db.all('habit_logs', [['date', '==', today]]);
-        const loggedHabitIds = new Set(logs.map(l => l.habit_id));
+        if (habitsError) throw habitsError;
 
-        const habitsWithStatus = habits.map(h => ({
+        if (habits.length === 0) return res.json([]);
+
+        // Get logs for these habits for today
+        const habitIds = habits.map(h => h.id);
+        const { data: logs, error: logsError } = await supabase
+            .from('habit_logs')
+            .select('habit_id')
+            .in('habit_id', habitIds)
+            .eq('date', today);
+
+        if (logsError) throw logsError;
+
+        const completedHabitIds = new Set(logs.map(l => l.habit_id));
+
+        const results = habits.map(h => ({
             ...h,
-            completedToday: loggedHabitIds.has(h.id) ? 1 : 0
+            completedToday: completedHabitIds.has(h.id) ? 1 : 0
         }));
 
-        res.json(habitsWithStatus);
+        res.json(results);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// GET habit logs history (past habits)
+router.get('/history', async (req, res, next) => {
+    try {
+        const { data: habits } = await supabase.from('habits').select('id, name, icon, color').eq('user_id', req.user.id);
+        if (!habits || habits.length === 0) return res.json([]);
+        
+        const habitMap = {};
+        habits.forEach(h => habitMap[h.id] = h);
+
+        const { data: logs, error } = await supabase
+            .from('habit_logs')
+            .select('*')
+            .in('habit_id', Object.keys(habitMap))
+            .order('date', { ascending: false })
+            .limit(100);
+
+        if (error) throw error;
+
+        const results = logs.map(log => ({
+            ...log,
+            habit: habitMap[log.habit_id]
+        }));
+
+        res.json(results);
     } catch (err) {
         next(err);
     }
@@ -34,22 +80,25 @@ router.get('/', async (req, res, next) => {
 // CREATE habit
 router.post('/', async (req, res, next) => {
     try {
-        const db = getDB();
         const { name, frequency, icon, color } = req.body;
 
         if (!name) return res.status(400).json({ error: 'Name is required' });
 
-        const data = {
-            user_id: req.user.id,
-            name,
-            frequency: frequency || 'Daily',
-            icon: icon || 'Circle',
-            color: color || 'var(--accent-color)',
-            streak: 0
-        };
+        const { data: newHabit, error } = await supabase
+            .from('habits')
+            .insert([{
+                user_id: req.user.id,
+                name,
+                frequency: frequency || 'Daily',
+                icon: icon || 'Circle',
+                color: color || 'var(--accent-color)'
+            }])
+            .select()
+            .single();
 
-        const result = await db.run('habits', data);
-        res.status(201).json({ id: result.lastID, ...data });
+        if (error) throw error;
+        await recomputeDailyProductivity(req.user.id);
+        res.status(201).json(newHabit);
     } catch (err) {
         next(err);
     }
@@ -58,23 +107,36 @@ router.post('/', async (req, res, next) => {
 // TOGGLE habit for today
 router.post('/:id/toggle', async (req, res, next) => {
     try {
-        const db = getDB();
         const habitId = req.params.id;
-        const today = new Date().toISOString().split('T')[0];
+        const today = await getTodayWithOffset(req.user.id);
 
         // Verify ownership
-        const habit = await db.get('habits', [['id', '==', habitId], ['user_id', '==', req.user.id]]);
-        if (!habit) return res.status(404).json({ error: 'Habit not found' });
+        const { data: habit, error: authError } = await supabase
+            .from('habits')
+            .select('id')
+            .eq('id', habitId)
+            .eq('user_id', req.user.id)
+            .single();
 
-        const existingLog = await db.get('habit_logs', [['habit_id', '==', habitId], ['date', '==', today]]);
+        if (authError || !habit) return res.status(404).json({ error: 'Habit not found' });
+
+        // Check if already toggled today
+        const { data: existingLog, error: logError } = await supabase
+            .from('habit_logs')
+            .select('id')
+            .eq('habit_id', habitId)
+            .eq('date', today)
+            .maybeSingle();
 
         if (existingLog) {
-            await db.delete('habit_logs', existingLog.id);
+            await supabase.from('habit_logs').delete().eq('id', existingLog.id);
+            await recomputeDailyProductivity(req.user.id);
             res.json({ completed: false });
         } else {
-            await db.run('habit_logs', { habit_id: habitId, date: today });
+            await supabase.from('habit_logs').insert([{ habit_id: habitId, date: today }]);
             // Log for heatmap
             await logActivity(req.user.id, 'HABIT', habitId, 1.0);
+            await recomputeDailyProductivity(req.user.id);
             res.json({ completed: true });
         }
     } catch (err) {
@@ -85,8 +147,14 @@ router.post('/:id/toggle', async (req, res, next) => {
 // DELETE habit
 router.delete('/:id', async (req, res, next) => {
     try {
-        const db = getDB();
-        await db.delete('habits', req.params.id);
+        const { error, count } = await supabase
+            .from('habits')
+            .delete({ count: 'exactly' })
+            .eq('id', req.params.id)
+            .eq('user_id', req.user.id);
+
+        if (error || count === 0) return res.status(404).json({ error: 'Habit not found' });
+        await recomputeDailyProductivity(req.user.id);
         res.status(204).send();
     } catch (err) {
         next(err);

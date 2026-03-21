@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
+import { API_URL } from '../config.js';
 
 const AuthModal = ({ onLogin }) => {
     const [isRegister, setIsRegister] = useState(false);
     const [formData, setFormData] = useState({ username: '', email: '', password: '' });
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
+        setLoading(true);
         const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
 
         try {
-            const response = await fetch(`http://127.0.0.1:3000${endpoint}`, {
+            const response = await fetch(`${API_URL}${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)
@@ -26,6 +29,8 @@ const AuthModal = ({ onLogin }) => {
             }
         } catch (err) {
             setError('Could not connect to server');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -43,29 +48,33 @@ const AuthModal = ({ onLogin }) => {
                     {isRegister ? 'Create Account' : 'Welcome to Snowball'}
                 </h2>
 
-                {error && <p style={{ color: 'var(--danger-color)', marginBottom: '1rem', fontSize: '0.875rem' }}>{error}</p>}
+                {error && <p style={{ color: 'var(--danger-color)', marginBottom: '1rem', fontSize: '0.875rem', textAlign: 'center' }}>{error}</p>}
 
                 <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <input
-                        type="text" placeholder="Username" required
+                        type="text" placeholder="Username or Email" required
                         value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value })}
+                        style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
                     />
                     {isRegister && (
                         <input
                             type="email" placeholder="Email" required
                             value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })}
+                            style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
                         />
                     )}
                     <input
                         type="password" placeholder="Password" required
                         value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })}
+                        style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
                     />
 
-                    <button type="submit" style={{
+                    <button type="submit" disabled={loading} style={{
                         backgroundColor: 'var(--accent-color)', color: 'white',
-                        padding: '0.75rem', borderRadius: '0.5rem', fontWeight: '600', marginTop: '0.5rem'
+                        padding: '0.75rem', borderRadius: '0.5rem', fontWeight: '600', marginTop: '0.5rem',
+                        opacity: loading ? 0.7 : 1, cursor: loading ? 'not-allowed' : 'pointer'
                     }}>
-                        {isRegister ? 'Register' : 'Login'}
+                        {loading ? 'Processing...' : (isRegister ? 'Register' : 'Login')}
                     </button>
                 </form>
 
@@ -73,7 +82,7 @@ const AuthModal = ({ onLogin }) => {
                     {isRegister ? 'Already have an account?' : "Don't have an account?"}
                     <button
                         onClick={() => setIsRegister(!isRegister)}
-                        style={{ marginLeft: '0.5rem', color: 'var(--accent-color)', fontWeight: '600' }}
+                        style={{ marginLeft: '0.5rem', color: 'var(--accent-color)', fontWeight: '600', background: 'none', border: 'none', cursor: 'pointer' }}
                     >
                         {isRegister ? 'Login' : 'Register'}
                     </button>

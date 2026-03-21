@@ -1,62 +1,29 @@
-import React from 'react';
-import { Calendar, Clock, CheckCircle2, Circle } from 'lucide-react';
+import React, { useState } from 'react';
+import { API_URL } from '../config.js';
+import { Calendar, Clock, CheckCircle2, Circle, GripVertical, Pin, Lock, Repeat } from 'lucide-react';
+import { Reorder, useDragControls } from 'framer-motion';
 
-const TaskBoard = ({ tasks, onTaskUpdate, onTaskDelete, onClearAll }) => {
+const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, onReorder }) => {
+    const [selectedTag, setSelectedTag] = useState('');
 
-    const handleToggleComplete = async (task) => {
-        // If tasks are discrete steps vs one big task, we update tasksCompleted.
-        // For simplicity, if they click complete, we set completed = allocated.
+    const handleReorder = (newOrder) => {
+        // Optimistic update
+        const reordered = newOrder.map((task, index) => ({ ...task, position: index }));
+        onReorder(reordered);
+    };
+
+    const handleToggleComplete = (task) => {
         const newCompleted = task.tasksCompleted < task.tasksAllocated ? task.tasksAllocated : 0;
-
-        try {
-            const token = localStorage.getItem('snowball_token');
-            const response = await fetch(`http://127.0.0.1:3000/api/tasks/${task.id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ ...task, tasksCompleted: newCompleted })
-            });
-            if (response.ok) {
-                const updated = await response.json();
-                onTaskUpdate(updated);
-            }
-        } catch (err) {
-            console.error("Failed to update task", err);
-        }
+        onTaskUpdate({ ...task, tasksCompleted: newCompleted });
     };
 
-    const handleDelete = async (id) => {
-        try {
-            const token = localStorage.getItem('snowball_token');
-            const response = await fetch(`http://127.0.0.1:3000/api/tasks/${id}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (response.ok) {
-                onTaskDelete(id);
-            }
-        } catch (err) {
-            console.error("Failed to delete task", err);
-        }
+    const handleDelete = (id) => {
+        onTaskDelete(id);
     };
 
-    const handleClearAllInternal = async () => {
+    const handleClearAllInternal = () => {
         if (!window.confirm("Are you sure you want to clear ALL tasks? This cannot be undone!")) return;
-
-        try {
-            const token = localStorage.getItem('snowball_token');
-            const response = await fetch(`http://127.0.0.1:3000/api/tasks`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (response.ok) {
-                onClearAll();
-            }
-        } catch (err) {
-            console.error("Failed to clear tasks", err);
-        }
+        onClearAll();
     };
 
     if (!tasks || tasks.length === 0) {
@@ -67,160 +34,365 @@ const TaskBoard = ({ tasks, onTaskUpdate, onTaskDelete, onClearAll }) => {
         );
     }
 
+    const allTags = Array.from(new Set(
+        tasks.flatMap(t => (t.tags || '').split(',').map(tag => tag.trim()).filter(Boolean))
+    )).sort();
+
+    const filteredTasks = selectedTag
+        ? tasks.filter(t => (t.tags || '').split(',').map(tag => tag.trim()).includes(selectedTag))
+        : tasks;
+
+    // Ensure they are sorted: Pinned first, then by priority (High > Medium > Low), then by position
+    const displayTasks = [...filteredTasks].sort((a, b) => {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+
+        // Priority weighting
+        const pMap = { 'High': 3, 'Medium': 2, 'Low': 1, 'none': 0, '': 0 };
+        const pA = pMap[a.priority] || 0;
+        const pB = pMap[b.priority] || 0;
+
+        if (pA !== pB) return pB - pA;
+
+        return (a.position || 0) - (b.position || 0);
+    });
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {allTags.length > 0 && (
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border-color)' }}>
+                    <button
+                        onClick={() => setSelectedTag('')}
+                        style={{
+                            fontSize: '0.75rem', padding: '0.2rem 0.6rem', borderRadius: '1rem',
+                            border: '1px solid var(--border-color)',
+                            background: selectedTag === '' ? 'var(--accent-color)' : 'var(--bg-secondary)',
+                            color: selectedTag === '' ? '#fff' : 'var(--text-primary)',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        All
+                    </button>
+                    {allTags.map(tag => (
+                        <button
+                            key={tag}
+                            onClick={() => setSelectedTag(tag)}
+                            style={{
+                                fontSize: '0.75rem', padding: '0.2rem 0.6rem', borderRadius: '1rem',
+                                border: '1px solid var(--border-color)',
+                                background: selectedTag === tag ? 'var(--accent-color)' : 'var(--bg-secondary)',
+                                color: selectedTag === tag ? '#fff' : 'var(--text-primary)',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            {tag}
+                        </button>
+                    ))}
+                </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button
                     onClick={handleClearAllInternal}
                     style={{
-                        fontSize: '0.75rem',
-                        color: 'var(--text-secondary)',
-                        padding: '0.2rem 0.5rem',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '0.25rem',
-                        cursor: 'pointer'
+                        fontSize: '0.75rem', color: 'var(--text-secondary)', padding: '0.2rem 0.5rem',
+                        border: '1px solid var(--border-color)', borderRadius: '0.25rem', cursor: 'pointer'
                     }}
                 >
                     Clear All Tasks
                 </button>
             </div>
-            {tasks.map(task => {
-                const isComplete = task.tasksCompleted >= task.tasksAllocated && task.tasksAllocated > 0;
 
-                let priorityColor = 'var(--text-secondary)';
-                let priorityBg = 'transparent';
-                if (task.priority === 'High') { priorityColor = '#b91c1c'; priorityBg = '#fee2e2'; }
-                else if (task.priority === 'Medium') { priorityColor = '#b45309'; priorityBg = '#fef3c7'; }
-                else if (task.priority === 'Low') { priorityColor = '#15803d'; priorityBg = '#dcfce7'; }
-
-                return (
-                    <div key={task.id} style={{
-                        background: 'var(--bg-card)',
-                        padding: '1.25rem',
-                        borderRadius: 'var(--radius)',
-                        border: `1px solid ${isComplete ? 'var(--success-color)' : 'var(--border-color)'}`,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.75rem',
-                        transition: 'border-color 0.2s',
-                        opacity: isComplete ? 0.8 : 1
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                                <button onClick={() => handleToggleComplete(task)} style={{ color: isComplete ? 'var(--success-color)' : 'var(--text-secondary)' }}>
-                                    {isComplete ? <CheckCircle2 size={24} /> : <Circle size={24} />}
-                                </button>
-                                <div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                        <h4 style={{ margin: 0, textDecoration: isComplete ? 'line-through' : 'none', color: isComplete ? 'var(--text-secondary)' : 'var(--text-primary)' }}>
-                                            {task.title}
-                                        </h4>
-                                        {task.priority && (
-                                            <span style={{
-                                                fontSize: '0.7rem',
-                                                fontWeight: '600',
-                                                padding: '0.1rem 0.4rem',
-                                                borderRadius: '1rem',
-                                                backgroundColor: priorityBg,
-                                                color: priorityColor,
-                                                textTransform: 'uppercase'
-                                            }}>
-                                                {task.priority}
-                                            </span>
-                                        )}
-                                    </div>
-                                    {task.description && (
-                                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                                            {task.description}
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => handleDelete(task.id)}
-                                style={{ color: 'var(--danger-color)', fontSize: '0.875rem', padding: '0.25rem 0.5rem', borderRadius: '0.25rem' }}
-                            >
-                                Delete
-                            </button>
-                        </div>
-
-                        <div style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '1.5rem',
-                            marginLeft: '2.5rem',
-                            fontSize: '0.875rem',
-                            color: 'var(--text-secondary)'
-                        }}>
-                            {task.date && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                                    <Calendar size={14} />
-                                    <span>{new Date(task.date).toLocaleString()}</span>
-                                </div>
-                            )}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                                <CheckCircle2 size={14} />
-                                <input
-                                    type="number"
-                                    value={task.tasksCompleted ?? 0}
-                                    onChange={(e) => {
-                                        const val = parseInt(e.target.value) || 0;
-                                        onTaskUpdate({ ...task, tasksCompleted: val });
-                                        // Update backend
-                                        fetch(`http://127.0.0.1:3000/api/tasks/${task.id}`, {
-                                            method: 'PUT',
-                                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('snowball_token')}` },
-                                            body: JSON.stringify({ ...task, tasksCompleted: val })
-                                        });
-                                    }}
-                                    style={{
-                                        width: '45px',
-                                        backgroundColor: 'var(--bg-secondary)',
-                                        border: '1px solid var(--border-color)',
-                                        borderRadius: '4px',
-                                        color: 'var(--text-primary)',
-                                        fontSize: '0.85rem',
-                                        textAlign: 'center',
-                                        padding: '2px 0'
-                                    }}
-                                />
-                                <span> / {task.tasksAllocated} steps</span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                                <Clock size={14} />
-                                <input
-                                    type="number"
-                                    step="0.1"
-                                    value={task.hoursTaken ?? 0}
-                                    onChange={(e) => {
-                                        const val = parseFloat(e.target.value) || 0;
-                                        onTaskUpdate({ ...task, hoursTaken: val });
-                                        // Update backend
-                                        fetch(`http://127.0.0.1:3000/api/tasks/${task.id}`, {
-                                            method: 'PUT',
-                                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('snowball_token')}` },
-                                            body: JSON.stringify({ ...task, hoursTaken: val })
-                                        });
-                                    }}
-                                    style={{
-                                        width: '45px',
-                                        backgroundColor: 'var(--bg-secondary)',
-                                        border: '1px solid var(--border-color)',
-                                        borderRadius: '4px',
-                                        color: 'var(--text-primary)',
-                                        fontSize: '0.85rem',
-                                        textAlign: 'center',
-                                        padding: '2px 0'
-                                    }}
-                                />
-                                <span> / {task.hoursAllocated} hrs</span>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })}
+            <Reorder.Group axis="y" values={displayTasks} onReorder={handleReorder} style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {displayTasks.map(task => (
+                    <TaskItem
+                        key={task.id}
+                        task={task}
+                        onUpdate={onTaskUpdate}
+                        onDelete={handleDelete}
+                        onToggleComplete={handleToggleComplete}
+                    />
+                ))}
+            </Reorder.Group>
         </div>
     );
-};
+});
+
+const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete }) => {
+    // Shared debounce timer for all inputs in this specific task
+    const saveTimerRef = React.useRef(null);
+    const dateRef = React.useRef(null);
+    const timeRef = React.useRef(null);
+
+    // Parse date and time from combined string
+    const parseDatePart = (dateStr) => {
+        if (!dateStr) return '';
+        return dateStr.split(' ')[0] || '';
+    };
+    const parseTimePart = (dateStr) => {
+        if (!dateStr) return '';
+        return dateStr.split(' ')[1] || '';
+    };
+
+    // Local state for immediate typing feedback
+    const [localTitle, setLocalTitle] = useState(task.title);
+    const [localDesc, setLocalDesc] = useState(task.description || '');
+    const [localDate, setLocalDate] = useState(parseDatePart(task.date));
+    const [localTime, setLocalTime] = useState(parseTimePart(task.date));
+    const [localTags, setLocalTags] = useState(task.tags || '');
+    const [localTasksCompleted, setLocalTasksCompleted] = useState(task.tasksCompleted ?? 0);
+    const [localTasksAllocated, setLocalTasksAllocated] = useState(task.tasksAllocated || 0);
+    const [localHoursTaken, setLocalHoursTaken] = useState(task.hoursTaken ?? 0);
+    const [localHoursAllocated, setLocalHoursAllocated] = useState(task.hoursAllocated || 0);
+    const [localIsPinned, setLocalIsPinned] = useState(!!task.isPinned);
+    const [localIsSticky, setLocalIsSticky] = useState(!!task.isSticky);
+    const [localRecurring, setLocalRecurring] = useState(task.recurring || 'none');
+
+    // Sync local state if task prop changes externally (e.g. from server/sync)
+    React.useEffect(() => {
+        setLocalTitle(task.title);
+        setLocalDesc(task.description || '');
+        setLocalDate(parseDatePart(task.date));
+        setLocalTime(parseTimePart(task.date));
+        setLocalTags(task.tags || '');
+        setLocalTasksCompleted(task.tasksCompleted ?? 0);
+        setLocalTasksAllocated(task.tasksAllocated || 0);
+        setLocalHoursTaken(task.hoursTaken ?? 0);
+        setLocalHoursAllocated(task.hoursAllocated || 0);
+        setLocalIsPinned(!!task.isPinned);
+        setLocalIsSticky(!!task.isSticky);
+        setLocalRecurring(task.recurring || 'none');
+    }, [task.title, task.description, task.date, task.tags, task.tasksCompleted, task.tasksAllocated, task.hoursTaken, task.hoursAllocated, task.isPinned, task.isSticky, task.recurring]);
+
+    const handleLocalUpdate = (updatedTask) => {
+        // Centralized sync (DB/Outbox)
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => {
+            onUpdate(updatedTask);
+        }, 800);
+    };
+
+    // Immediate save (no debounce) for toggle actions
+    const handleImmediateUpdate = (updatedTask) => {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        onUpdate(updatedTask);
+    };
+
+    const isComplete = task.tasksCompleted >= task.tasksAllocated && task.tasksAllocated > 0;
+    const controls = useDragControls();
+
+    let priorityColor = 'var(--text-secondary)';
+    let priorityBg = 'transparent';
+    if (task.priority === 'High') { priorityColor = '#b91c1c'; priorityBg = '#fee2e2'; }
+    else if (task.priority === 'Medium') { priorityColor = '#b45309'; priorityBg = '#fef3c7'; }
+    else if (task.priority === 'Low') { priorityColor = '#15803d'; priorityBg = '#dcfce7'; }
+
+    return (
+        <Reorder.Item value={task} dragListener={false} dragControls={controls} style={{ listStyleType: 'none', width: '100%' }}>
+            <div className="task-card card-container" style={{
+                background: 'var(--bg-card)',
+                padding: 'var(--card-padding)',
+                borderRadius: 'var(--radius)',
+                border: `1px solid ${isComplete ? 'var(--success-color)' : 'var(--border-color)'}`,
+                display: 'flex', flexDirection: 'column', gap: '0.75rem',
+                opacity: isComplete ? 0.8 : 1, userSelect: 'none',
+                width: '100%', boxSizing: 'border-box'
+            }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flex: 1 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                        <button onClick={() => onToggleComplete(task)} style={{ color: isComplete ? 'var(--success-color)' : 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                            {isComplete ? <CheckCircle2 size={24} /> : <Circle size={24} />}
+                        </button>
+                        <div style={{ cursor: 'grab', opacity: 0.4 }} className="drag-handle" onPointerDown={(e) => controls.start(e)}>
+                            <GripVertical size={20} />
+                        </div>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <input
+                                value={localTitle}
+                                onChange={(e) => {
+                                    setLocalTitle(e.target.value);
+                                    handleLocalUpdate({ ...task, title: e.target.value });
+                                }}
+                                style={{
+                                    fontSize: '1rem', fontWeight: 'bold', background: 'transparent',
+                                    border: 'none', padding: '2px 4px', margin: 0,
+                                    textDecoration: isComplete ? 'line-through' : 'none',
+                                    color: isComplete ? 'var(--text-secondary)' : 'var(--text-primary)',
+                                    width: '100%', maxWidth: '300px', borderRadius: '4px'
+                                }}
+                            />
+                            <select
+                                value={task.priority || 'Medium'}
+                                onChange={(e) => handleLocalUpdate({ ...task, priority: e.target.value })}
+                                style={{
+                                    fontSize: '0.7rem', fontWeight: '600', padding: '0.1rem 0.4rem', borderRadius: '1rem',
+                                    backgroundColor: priorityBg, color: priorityColor, border: 'none', cursor: 'pointer'
+                                }}
+                            >
+                                <option value="Low">LOW</option>
+                                <option value="Medium">MEDIUM</option>
+                                <option value="High">HIGH</option>
+                            </select>
+                            <input
+                                value={localTags}
+                                placeholder="Tags..."
+                                onChange={(e) => {
+                                    setLocalTags(e.target.value);
+                                    handleLocalUpdate({ ...task, tags: e.target.value });
+                                }}
+                                style={{
+                                    fontSize: '0.7rem', fontWeight: '600', padding: '0.1rem 0.4rem', borderRadius: '1rem',
+                                    backgroundColor: 'var(--bg-primary)', color: 'var(--text-secondary)',
+                                    border: '1px solid var(--border-color)', width: '80px'
+                                }}
+                            />
+                        </div>
+                        <textarea
+                            value={localDesc}
+                            placeholder="Add a description..."
+                            onChange={(e) => {
+                                setLocalDesc(e.target.value);
+                                handleLocalUpdate({ ...task, description: e.target.value });
+                            }}
+                            rows="1"
+                            style={{
+                                marginTop: '0.25rem', fontSize: '0.875rem', color: 'var(--text-secondary)',
+                                background: 'transparent', border: 'none', padding: '2px 4px',
+                                width: '100%', resize: 'none', borderRadius: '4px'
+                            }}
+                        />
+                    </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <button
+                        onClick={() => {
+                            const newVal = localRecurring === 'daily' ? 'none' : 'daily';
+                            setLocalRecurring(newVal);
+                            handleImmediateUpdate({ ...task, recurring: newVal });
+                        }}
+                        style={{ color: localRecurring === 'daily' ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: localRecurring === 'daily' ? 1 : 0.4, background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem' }}
+                        title="Toggle Daily Recurring"
+                    >
+                        <Repeat size={16} />
+                    </button>
+                    <button
+                        onClick={() => {
+                            const newVal = !localIsPinned;
+                            setLocalIsPinned(newVal);
+                            handleImmediateUpdate({ ...task, isPinned: newVal });
+                        }}
+                        style={{ color: localIsPinned ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: localIsPinned ? 1 : 0.4, background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem' }}
+                        title="Pin to Top"
+                    >
+                        <Pin size={16} />
+                    </button>
+                    <button
+                        onClick={() => {
+                            const newVal = !localIsSticky;
+                            setLocalIsSticky(newVal);
+                            handleImmediateUpdate({ ...task, isSticky: newVal });
+                        }}
+                        style={{ color: localIsSticky ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: localIsSticky ? 1 : 0.4, background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem' }}
+                        title="Sticky (Immune to Clear All)"
+                    >
+                        <Lock size={16} />
+                    </button>
+                    <button onClick={() => onDelete(task.id)} style={{ color: 'var(--danger-color)', fontSize: '0.8125rem', background: 'none', border: 'none', cursor: 'pointer', marginLeft: '0.5rem' }}>
+                        Delete
+                    </button>
+                </div>
+            </div>
+
+            <div className="responsive-grid" style={{ marginLeft: '3.5rem', marginTop: '0.25rem' }}>
+                <div className="metadata-item" style={{ position: 'relative', cursor: 'pointer', overflow: 'visible' }}>
+                    <Calendar size={14} />
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                        {localDate || 'Date'}
+                    </span>
+                    <input
+                        type="date" value={localDate}
+                        onClick={(e) => e.target.showPicker && e.target.showPicker()}
+                        onChange={(e) => {
+                            setLocalDate(e.target.value);
+                            const combined = e.target.value ? `${e.target.value}${localTime ? ' ' + localTime : ''}` : '';
+                            handleLocalUpdate({ ...task, date: combined });
+                        }}
+                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', zIndex: 2 }}
+                    />
+                </div>
+
+                <div className="metadata-item">
+                    <Clock size={14} />
+                    <input
+                        type="text"
+                        value={localTime}
+                        placeholder="HH:MM"
+                        onChange={(e) => {
+                            setLocalTime(e.target.value);
+                            const combined = localDate ? `${localDate}${e.target.value ? ' ' + e.target.value : ''}` : '';
+                            handleLocalUpdate({ ...task, date: combined });
+                        }}
+                        style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'transparent', border: 'none', padding: 0, width: '45px', outline: 'none' }}
+                    />
+                </div>
+
+                <div className="metadata-item">
+                    <CheckCircle2 size={14} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                        <input
+                            type="number" value={localTasksCompleted}
+                            onChange={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                setLocalTasksCompleted(val);
+                                handleLocalUpdate({ ...task, tasksCompleted: val });
+                            }}
+                            style={{ width: '30px', background: 'transparent', border: 'none', color: 'var(--text-primary)', textAlign: 'center', padding: 0, fontWeight: 'bold' }}
+                        />
+                        <span>/</span>
+                        <input
+                            type="number" value={localTasksAllocated}
+                            onChange={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                setLocalTasksAllocated(val);
+                                handleLocalUpdate({ ...task, tasksAllocated: val });
+                            }}
+                            style={{ width: '30px', background: 'transparent', border: 'none', color: 'var(--text-primary)', textAlign: 'center', padding: 0, fontWeight: 'bold' }}
+                        />
+                        <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>steps</span>
+                    </div>
+                </div>
+
+                <div className="metadata-item">
+                    <Clock size={14} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                        <input
+                            type="number" step="0.1" value={localHoursTaken}
+                            onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setLocalHoursTaken(val);
+                                handleLocalUpdate({ ...task, hoursTaken: val });
+                            }}
+                            style={{ width: '35px', background: 'transparent', border: 'none', color: 'var(--text-primary)', textAlign: 'center', padding: 0, fontWeight: 'bold' }}
+                        />
+                        <span>/</span>
+                        <input
+                            type="number" step="0.1" value={localHoursAllocated}
+                            onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setLocalHoursAllocated(val);
+                                handleLocalUpdate({ ...task, hoursAllocated: val });
+                            }}
+                            style={{ width: '35px', background: 'transparent', border: 'none', color: 'var(--text-primary)', textAlign: 'center', padding: 0, fontWeight: 'bold' }}
+                        />
+                        <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>hrs</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </Reorder.Item>
+    );
+});
 
 export default TaskBoard;

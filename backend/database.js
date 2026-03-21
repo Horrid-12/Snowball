@@ -1,4 +1,5 @@
 import sqlite3 from 'sqlite3';
+import bcrypt from 'bcryptjs';
 import { open } from 'sqlite';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -36,6 +37,7 @@ export const initDB = async () => {
             hoursAllocated REAL DEFAULT 0.0,
             hoursTaken REAL DEFAULT 0.0,
             priority TEXT DEFAULT 'Medium',
+            tags TEXT,
             FOREIGN KEY (user_id) REFERENCES users (id)
         );
 
@@ -85,15 +87,31 @@ export const initDB = async () => {
         // Column probably exists
     }
 
-    // Create default guest user if no users exist
-    let guestUser = await db.get('SELECT id FROM users WHERE username = ?', 'guest');
+    // Ensure tags column exists in tasks if migrating
+    try {
+        await db.exec("ALTER TABLE tasks ADD COLUMN tags TEXT");
+    } catch (e) {
+        // Column probably exists
+    }
+
+    // Create default guest user if no users exist, or ensure its password is hashed
+    let guestUser = await db.get('SELECT id, password FROM users WHERE username = ?', 'guest');
     if (!guestUser) {
         console.log('Creating default guest user...');
+        const hashed = await bcrypt.hash('none', 10);
         const result = await db.run(
             'INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
-            'guest', 'guest@example.com', 'none'
+            'guest', 'guest@example.com', hashed
         );
         guestUser = { id: result.lastID };
+    } else {
+        // If existing guest user has a non-bcrypt password (e.g., plain 'none'), hash and update it
+        const pw = guestUser.password;
+        if (!pw || !pw.startsWith('$2')) {
+            console.log('Updating guest user password to hashed value...');
+            const hashed = await bcrypt.hash('none', 10);
+            await db.run('UPDATE users SET password = ? WHERE id = ?', hashed, guestUser.id);
+        }
     }
 
     // Assign orphaned tasks to guest user

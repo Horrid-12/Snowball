@@ -9,9 +9,10 @@
         "dev:backend": "npm --prefix backend run dev",
         "dev": "npx -y concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
         "install:all": "npm --prefix frontend install && npm --prefix backend install",
-        "build": "npm --prefix frontend run build"
+        "build": "npm --prefix frontend run build",
+        "postinstall": "npm run install:all"
     },
-    "devDependencies": {
-        "firebase-tools": "^15.8.0"
+    "dependencies": {
+        "@vercel/analytics": "^1.6.1"
     }
 }

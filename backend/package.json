@@ -7,14 +7,13 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "serve": "firebase serve --only functions",
-    "shell": "firebase functions:shell",
-    "deploy": "firebase deploy --only functions"
+    "backfill:productivity": "node backfill_daily_productivity.js"
   },
   "engines": {
     "node": "20"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.98.0",
     "axios": "^1.13.6",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",

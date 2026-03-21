@@ -1,20 +1,35 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "5.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tauri": "tauri"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.2.0",
+    "@tauri-apps/cli": "^2.10.1",
     "@vitejs/plugin-react": "^5.1.4",
+    "typescript": "^5.9.3",
     "vite": "^7.3.1"
   },
   "dependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/app": "^8.0.1",
+    "@capacitor/app-launcher": "^8.0.1",
+    "@capacitor/core": "^8.2.0",
+    "@capacitor/device": "^8.0.1",
+    "@capacitor/network": "^8.0.1",
+    "@material/material-color-utilities": "^0.4.0",
+    "@vercel/analytics": "^1.6.1",
+    "dexie": "^4.3.0",
+    "framer-motion": "^12.35.0",
     "lucide-react": "^0.575.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "vite-plugin-pwa": "^1.2.0"
   }
 }

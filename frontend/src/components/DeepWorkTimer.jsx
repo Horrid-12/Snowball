@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, RotateCcw, Settings, CheckCircle } from 'lucide-react';
+import { Play, Pause, RotateCcw, Settings, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { API_URL } from '../config.js';
 
 const DeepWorkTimer = () => {
     const [minutes, setMinutes] = useState(25);
@@ -7,13 +8,31 @@ const DeepWorkTimer = () => {
     const [isActive, setIsActive] = useState(false);
     const [mode, setMode] = useState('work'); // 'work', 'short', 'long'
     const [showSettings, setShowSettings] = useState(false);
-    const [settings, setSettings] = useState({
-        work: 25,
-        short: 5,
-        long: 15
+    const [isExpanded, setIsExpanded] = useState(() => {
+        const saved = localStorage.getItem('snowball_deep_work_expanded');
+        return saved !== null ? JSON.parse(saved) : true;
+    });
+
+    useEffect(() => {
+        localStorage.setItem('snowball_deep_work_expanded', JSON.stringify(isExpanded));
+    }, [isExpanded]);
+
+    const [settings, setSettings] = useState(() => {
+        const saved = localStorage.getItem('snowball_timer_settings');
+        if (saved) {
+            try { return JSON.parse(saved); } catch (e) { }
+        }
+        return { work: 25, short: 5, long: 15 };
     });
 
     const timerRef = useRef(null);
+
+    // Sync active minutes when settings load or mode changes (if not active)
+    useEffect(() => {
+        if (!isActive) {
+            setMinutes(settings[mode]);
+        }
+    }, [settings, mode]);
 
     useEffect(() => {
         if (isActive) {
@@ -51,7 +70,7 @@ const DeepWorkTimer = () => {
     const logMomentum = async () => {
         try {
             const token = localStorage.getItem('snowball_token');
-            await fetch('http://127.0.0.1:3000/api/activity/log', {
+            await fetch(`${API_URL}/api/activity/log`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -78,6 +97,7 @@ const DeepWorkTimer = () => {
 
     const saveSettings = () => {
         setShowSettings(false);
+        localStorage.setItem('snowball_timer_settings', JSON.stringify(settings));
         if (!isActive) {
             setMinutes(settings[mode]);
             setSeconds(0);
@@ -85,31 +105,54 @@ const DeepWorkTimer = () => {
     };
 
     return (
-        <div style={{
+        <div className="timer-card card-container" style={{
             background: 'var(--bg-secondary)',
-            padding: '1.5rem',
             borderRadius: 'var(--radius)',
             border: '1px solid var(--border-color)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '1rem',
+            display: 'flex', flexDirection: 'column',
             position: 'relative',
-            minHeight: '220px',
-            boxSizing: 'border-box'
+            boxSizing: 'border-box',
+            width: '100%',
+            overflow: 'hidden'
         }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', position: 'absolute', top: '1rem', left: '0', padding: '0 1.5rem' }}>
-                <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    {mode === 'work' ? 'Deep Work' : 'Break'}
-                </h3>
-                <button onClick={() => setShowSettings(!showSettings)} style={{ color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.7 }}>
-                    <Settings size={16} />
-                </button>
+            <div
+                onClick={(e) => {
+                    // Prevent toggle if clicking settings
+                    if (e.target.closest('button')) return;
+                    setIsExpanded(!isExpanded);
+                }}
+                style={{
+                    padding: '0.75rem 1rem',
+                    background: 'var(--bg-secondary)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    borderBottom: isExpanded ? '1px solid var(--border-color)' : 'none'
+                }}
+            >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        {mode === 'work' ? 'Deep Work' : 'Break'}
+                    </h3>
+                    {!isExpanded && (isActive || minutes > 0) && (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--accent-color)', fontWeight: 'bold' }}>
+                            {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
+                        </span>
+                    )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <button onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); setIsExpanded(true); }} style={{ color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.7, padding: '0.2rem', display: 'flex', alignItems: 'center' }}>
+                        <Settings size={14} />
+                    </button>
+                    {isExpanded ? <ChevronUp size={16} style={{ color: 'var(--text-secondary)' }} /> : <ChevronDown size={16} style={{ color: 'var(--text-secondary)' }} />}
+                </div>
             </div>
 
+            {isExpanded && (
+                <div style={{ padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', minHeight: '180px', position: 'relative' }}>
             {showSettings ? (
-                <div style={{ padding: '1.5rem 0 0 0', width: '100%', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     {['work', 'short', 'long'].map(key => (
                         <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span style={{ fontSize: '0.8rem', textTransform: 'capitalize' }}>{key} (min)</span>
@@ -124,7 +167,7 @@ const DeepWorkTimer = () => {
                     <button onClick={saveSettings} style={{ background: 'var(--accent-color)', color: 'white', padding: '0.5rem', borderRadius: '0.5rem', fontSize: '0.8rem', marginTop: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Save Settings</button>
                 </div>
             ) : (
-                <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem' }}>
                     <div style={{ position: 'relative', width: '120px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <svg width="120" height="120" style={{ transform: 'rotate(-90deg)' }}>
                             <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
@@ -140,24 +183,42 @@ const DeepWorkTimer = () => {
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+                        <div style={{ display: 'flex', gap: '0.25rem' }}>
+                            {[-10, -5, 5, 10].map(val => (
+                                <button
+                                    key={val}
+                                    onClick={() => {
+                                        const totalSecs = (minutes * 60 + seconds) + (val * 60);
+                                        if (totalSecs > 0) {
+                                            setMinutes(Math.floor(totalSecs / 60));
+                                            setSeconds(totalSecs % 60);
+                                        }
+                                    }}
+                                    style={{
+                                        fontSize: '0.65rem',
+                                        padding: '0.2rem 0.4rem',
+                                        borderRadius: '4px',
+                                        border: '1px solid var(--border-color)',
+                                        background: 'var(--bg-card)',
+                                        color: 'var(--text-secondary)',
+                                        cursor: 'pointer',
+                                        fontWeight: 'bold'
+                                    }}
+                                >
+                                    {val > 0 ? `+${val}` : val}
+                                </button>
+                            ))}
+                        </div>
+                        <div style={{ width: '1px', height: '24px', background: 'var(--border-color)', margin: '0 0.25rem' }} />
                         <button onClick={resetTimer} style={{ color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }} title="Reset"><RotateCcw size={18} /></button>
-                        <button
-                            onClick={toggleTimer}
-                            style={{
-                                background: isActive ? 'var(--text-primary)' : 'var(--accent-color)',
-                                color: isActive ? 'var(--bg-card)' : 'white',
-                                width: '44px', height: '44px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                border: 'none',
-                                cursor: 'pointer',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
-                            }}
-                        >
-                            {isActive ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" style={{ marginLeft: '2px' }} />}
+                        <button onClick={toggleTimer} style={{ background: isActive ? 'var(--text-secondary)' : 'var(--accent-color)', color: 'white', border: 'none', borderRadius: '50%', width: '48px', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
+                            {isActive ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" style={{ marginLeft: '4px' }} />}
                         </button>
                     </div>
                 </div>
+            )}
+            </div>
             )}
         </div>
     );

@@ -255,17 +255,24 @@ img {
   left: -50%;
   width: 200%;
   height: 200%;
-  background: radial-gradient(
-    circle at 50% 50%,
-    var(--color-accent-glow) 0%,
-    transparent 50%
-  );
+  background: radial-gradient(circle at 50% 50%,
+      var(--color-accent-glow) 0%,
+      transparent 50%);
   animation: pulse 8s ease-in-out infinite;
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 0.3; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(1.1); }
+
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+  }
 }
 
 .hero-content {
@@ -397,8 +404,15 @@ img {
 }
 
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
 }
 
 .status-card h2 {
@@ -440,4 +454,25 @@ img {
   .hero-actions {
     flex-direction: column;
   }
+}
+
+/* This forces every scrollbar in the app to follow your theme */
+*::-webkit-scrollbar {
+  width: 8px !important;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--accent-color, #D2B48C) !important;
+  border-radius: 20px !important;
+  border: 2px solid rgba(0, 0, 0, 0) !important;
+  background-clip: content-box !important;
+}
+
+/* This fixes the "White Bar" issue in Windows/Tauri */
+:root {
+  color-scheme: dark !important;
 }

@@ -1,68 +1,78 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAppContext } from '../context/AppContext.jsx';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+import { calculateProductivityScore } from '../utils/productivityScore.js';
 
 const ProductivityDashboard = ({ tasks }) => {
-    // Aggregate totals
-    const totals = tasks.reduce(
-        (acc, task) => {
-            acc.tasksAllocated += task.tasksAllocated || 0;
-            acc.tasksCompleted += task.tasksCompleted || 0;
-            acc.hoursAllocated += task.hoursAllocated || 0;
-            acc.hoursTaken += task.hoursTaken || 0;
-            return acc;
-        },
-        { tasksAllocated: 0, tasksCompleted: 0, hoursAllocated: 0, hoursTaken: 0 }
-    );
+    const { globalHabits } = useAppContext();
+    const [isExpanded, setIsExpanded] = useState(() => {
+        const saved = localStorage.getItem('snowball_productivity_expanded');
+        return saved !== null ? JSON.parse(saved) : true;
+    });
 
-    // Compute Productivity Score defensively
-    const safeTasksAllocated = Math.max(1, totals.tasksAllocated);
-    const safeHoursTaken = Math.max(0.1, totals.hoursTaken); // Using 0.1 to avoid infinity, but if actual is 0 we'll cap it or handle gracefully
+    useEffect(() => {
+        localStorage.setItem('snowball_productivity_expanded', JSON.stringify(isExpanded));
+    }, [isExpanded]);
 
-    let score = 0;
-
-    if (totals.tasksAllocated === 0 && totals.hoursTaken === 0) {
-        // Edge case where there are truly no tasks or hours
-        score = 0;
-    } else {
-        // Productivity Score = (Tasks Completed / Tasks Allocated) * (Hours Allocated / Hours Taken)
-        const taskRatio = totals.tasksCompleted / safeTasksAllocated;
-
-        // If hoursTaken is strictly 0, we can assume perfect efficiency for allocated hours if > 0, else 1
-        const hoursRatio = totals.hoursTaken === 0
-            ? (totals.hoursAllocated > 0 ? totals.hoursAllocated * 10 : 1)
-            : totals.hoursAllocated / safeHoursTaken;
-
-        score = taskRatio * hoursRatio;
-    }
-
-    // Cap score to a readable metric (0 - 100 base display, but it can exceed 100 in high efficiency)
-    const displayScore = (score * 100).toFixed(1);
+    const { totals, displayScore } = calculateProductivityScore(tasks, globalHabits);
 
     return (
-        <div style={{
-            background: 'var(--bg-secondary)',
-            padding: '1.5rem',
-            borderRadius: 'var(--radius)',
-            border: '1px solid var(--border-color)',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-            gap: '1rem',
-            alignItems: 'center'
-        }}>
-            <div>
-                <h3 style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Productivity Score</h3>
-                <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: 'var(--accent-color)' }}>{displayScore}</p>
+        <div 
+            className="dashboard-card card-container grid-stack"
+            style={{
+                background: 'var(--bg-secondary)',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--border-color)',
+                width: '100%',
+                boxSizing: 'border-box',
+                overflow: 'hidden'
+            }}
+        >
+            <div
+                onClick={() => setIsExpanded(!isExpanded)}
+                style={{
+                    padding: '0.75rem 1rem',
+                    background: 'var(--bg-secondary)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    borderBottom: isExpanded ? '1px solid var(--border-color)' : 'none'
+                }}
+            >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontWeight: '600' }}>
+                        Productivity Score
+                    </h3>
+                    {!isExpanded && (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--accent-color)', fontWeight: 'bold' }}>
+                            {displayScore.toFixed(1)}
+                        </span>
+                    )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    {isExpanded ? <ChevronUp size={16} style={{ color: 'var(--text-secondary)' }} /> : <ChevronDown size={16} style={{ color: 'var(--text-secondary)' }} />}
+                </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Tasks</p>
-                    <p style={{ fontWeight: '600' }}>{totals.tasksCompleted} / {totals.tasksAllocated}</p>
+            {isExpanded && (
+                <div style={{ padding: '0.75rem 1rem 1.25rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div className="score-container" style={{ minWidth: 0 }}>
+                        <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: 'var(--accent-color)', margin: 0 }}>{displayScore.toFixed(1)}</p>
+                    </div>
+
+                    <div className="responsive-grid" style={{ minWidth: 0 }}>
+                        <div style={{ minWidth: 0 }}>
+                            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Tasks</p>
+                            <p style={{ fontWeight: '600', margin: 0 }}>{totals.tasksCompleted} / {totals.tasksAllocated}</p>
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Hours</p>
+                            <p style={{ fontWeight: '600', margin: 0 }}>{totals.hoursTaken.toFixed(1)} / {totals.hoursAllocated.toFixed(1)}</p>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Hours</p>
-                    <p style={{ fontWeight: '600' }}>{totals.hoursTaken.toFixed(1)} / {totals.hoursAllocated.toFixed(1)}</p>
-                </div>
-            </div>
+            )}
         </div>
     );
 };

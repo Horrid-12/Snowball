@@ -13,9 +13,11 @@ import cors from 'cors';
 import healthRoutes from './routes/health.js';
 import taskRoutes from './routes/tasks.js';
 import spotifyRoutes from './routes/spotify.js';
+import activityRoutes from './routes/activity.js';
 import authRoutes from './routes/auth.js';
 import habitRoutes from './routes/habits.js';
 import youtubeRoutes from './routes/youtube.js';
+import notesRoutes from './routes/notes.js';
 import { initDB } from './db.js';
 
 // Middleware imports
@@ -24,6 +26,12 @@ import { requestLogger } from './middleware/requestLogger.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// ensure JWT secret is available (throws during token operations if not)
+if (!process.env.JWT_SECRET) {
+    console.warn('⚠️  JWT_SECRET environment variable not set. Using fallback for development only.');
+    process.env.JWT_SECRET = 'dev_secret';
+}
 
 // --- Core Middleware ---
 app.use(cors());
@@ -35,24 +43,31 @@ app.use(requestLogger);
 app.use('/api/health', healthRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/spotify', spotifyRoutes);
+app.use('/api/activity', activityRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/habits', habitRoutes);
 app.use('/api/youtube', youtubeRoutes);
+app.use('/api/notes', notesRoutes);
 
 // --- Error Handling (must be last) ---
 app.use(errorHandler);
 
 const HOST = '0.0.0.0';
 
-// --- Start Server ---
-initDB().then(() => {
-    app.listen(PORT, HOST, () => {
-        console.log(`\n  ❄️  Snowball backend running at http://${HOST}:${PORT}`);
-        console.log(`  📡  Health check: http://127.0.0.1:${PORT}/api/health\n`);
+// --- Start Server (Only if not on Vercel) ---
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    initDB().then(() => {
+        app.listen(PORT, HOST, () => {
+            console.log(`\n  ❄️  Snowball backend running at http://${HOST}:${PORT}`);
+            console.log(`  📡  Health check: http://127.0.0.1:${PORT}/api/health\n`);
+        });
+    }).catch(err => {
+        console.error('Failed to initialize database:', err);
+        process.exit(1);
     });
-}).catch(err => {
-    console.error('Failed to initialize database:', err);
-    process.exit(1);
-});
+} else {
+    // On Vercel, we just need to ensure DB is initialized
+    initDB();
+}
 
 export default app;

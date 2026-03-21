@@ -1,16 +1,32 @@
 :root {
-    /* Light Theme (Default) */
-    --bg-primary: #ffffff;
-    --bg-secondary: #f8fafc;
+    --bg-primary: #f8fafc;
+    --bg-secondary: #f1f5f9;
     --bg-card: #ffffff;
     --text-primary: #0f172a;
     --text-secondary: #64748b;
     --accent-color: #3b82f6;
+    --accent-rgb: 59, 130, 246;
     --accent-hover: #2563eb;
     --border-color: #e2e8f0;
-    --danger-color: #ef4444;
-    --success-color: #22c55e;
-    --radius: 0.75rem;
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --radius: 1.5rem;
+    --radius-lg: 2rem;
+    --card-padding: 1.5rem;
+    color-scheme: dark;
+}
+
+html,
+body,
+#root {
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    width: 100%;
+    position: relative;
 }
 
 body.theme-dark {
@@ -20,43 +36,25 @@ body.theme-dark {
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
     --accent-color: #3b82f6;
+    --accent-rgb: 59, 130, 246;
     --accent-hover: #60a5fa;
     --border-color: #334155;
 }
 
-body.theme-deep-work {
-    /* Muted Slate/Navy tones for deep focus */
-    --bg-primary: #0f172a;
-    --bg-secondary: #020617;
-    --bg-card: #1e293b;
-    --text-primary: #cbd5e1;
-    --text-secondary: #64748b;
-    --accent-color: #38bdf8;
-    --accent-hover: #0ea5e9;
-    --border-color: #1e293b;
-    --danger-color: #f43f5e;
-    --success-color: #10b981;
-}
 
 body.theme-midnight {
-    --bg-primary: #020617;
-    --bg-secondary: #0f172a;
-    --bg-card: #1e293b;
+    /* True AMOLED Black */
+    --bg-primary: #000000;
+    --bg-secondary: #000000;
+    --bg-card: #0a0a0a;
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
     --accent-color: #6366f1;
-    --border-color: #334155;
+    --accent-rgb: 99, 102, 241;
+    --border-color: #1e1e1e;
 }
 
-body.theme-forest {
-    --bg-primary: #052e16;
-    --bg-secondary: #064e3b;
-    --bg-card: #065f46;
-    --text-primary: #ecfdf5;
-    --text-secondary: #a7f3d0;
-    --accent-color: #10b981;
-    --border-color: #064e3b;
-}
+
 
 body.theme-custom {
     --bg-primary: var(--custom-bg);
@@ -65,7 +63,19 @@ body.theme-custom {
     --text-primary: var(--custom-text);
     --text-secondary: var(--custom-text-sec);
     --accent-color: var(--custom-accent);
+    --accent-rgb: var(--custom-accent-rgb);
     --border-color: var(--custom-border);
+}
+
+body.theme-dynamic {
+    --bg-primary: var(--m3-background);
+    --bg-secondary: var(--m3-surfaceVariant);
+    --bg-card: var(--m3-surface);
+    --text-primary: var(--m3-onBackground);
+    --text-secondary: var(--m3-onSurfaceVariant);
+    --accent-color: var(--m3-primary);
+    --accent-rgb: var(--m3-primary-rgb);
+    --border-color: var(--m3-outline);
 }
 
 * {
@@ -119,25 +129,303 @@ textarea:focus {
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
-.theme-deep-work input:focus,
-.theme-deep-work textarea:focus {
-    box-shadow: 0 0 0 2px rgba(139, 115, 85, 0.2);
-}
 
-/* Scrollbar styling */
+/* Aesthetic Floating Scrollbars */
 ::-webkit-scrollbar {
-    width: 8px;
+    width: 6px;
+    height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-    background: var(--bg-secondary);
+    background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--border-color);
-    border-radius: 4px;
+    background: rgba(var(--accent-rgb), 0.2);
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--text-secondary);
+    background: var(--accent-color);
+    background-clip: content-box;
+}
+
+/* Firefox Support */
+* {
+    scrollbar-color: rgba(var(--accent-rgb), 0.3) transparent;
+}
+
+/* Global Viewport Fix for Mobile Zoom Issues */
+html,
+body {
+    overflow-x: hidden;
+    position: relative;
+    width: 100%;
+}
+
+.responsive-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    align-items: center;
+}
+
+.metadata-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg-secondary);
+    padding: 0.25rem 0.75rem;
+    border-radius: 2rem;
+    border: 1px solid var(--border-color);
+    transition: all 0.2s ease;
+}
+
+.metadata-item:hover {
+    border-color: var(--accent-color);
+    background: var(--bg-primary);
+}
+
+/* Mobile Responsive Adjustments */
+@media (max-width: 768px) {
+    :root {
+        --radius: 1rem;
+        --radius-lg: 1.25rem;
+        --card-padding: 0.75rem;
+    }
+
+    html,
+    body {
+        overflow-x: hidden !important;
+        width: 100% !important;
+        position: relative;
+    }
+
+    .task-card,
+    .dashboard-card,
+    .timer-card,
+    .habit-tracker-card,
+    .card-container {
+        padding: var(--card-padding) !important;
+        border-radius: var(--radius) !important;
+        gap: 0.75rem !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+
+    /* Fix Grid Overflow - strictly column on mobile */
+    main,
+    .main-content,
+    .grid-stack {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        gap: 1.25rem !important;
+        box-sizing: border-box !important;
+    }
+
+    .responsive-grid {
+        display: grid !important;
+        grid-template-columns: 1fr !important;
+        gap: 0.75rem !important;
+    }
+
+    .score-container {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 0.5rem !important;
+    }
+
+    .app-container {
+        padding: 0.5rem !important;
+        padding-bottom: 5.5rem !important;
+        max-width: 100vw !important;
+        width: 100% !important;
+        box-sizing: border-box;
+    }
+
+    /* Min-width 0 hack for flex/grid items to allow shrink */
+    * {
+        min-width: 0;
+    }
+
+    /* Center-align header on mobile */
+    header {
+        align-items: center !important;
+        text-align: center;
+        margin-bottom: 1.5rem !important;
+    }
+
+    header .hi-user {
+        margin: 0 auto;
+    }
+}
+
+/* Hide scrollbars on mobile for a cleaner look */
+@media (max-width: 480px) {
+    ::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+/* Bottom Navigation Bar */
+.bottom-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0.5rem;
+    right: 0.5rem;
+    width: auto;
+    background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-color) 82%, transparent);
+    border-radius: calc(var(--radius-lg) + 0.25rem);
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.45rem;
+    padding-bottom: calc(0.45rem + env(safe-area-inset-bottom, 0px));
+    z-index: 1000;
+    backdrop-filter: blur(18px);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2);
+    box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+    .bottom-nav {
+        display: flex;
+    }
+}
+
+.bottom-nav button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    background: none;
+    border: none;
+    border-radius: 1rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.45rem 0.2rem 0.3rem;
+    min-width: 0;
+    flex: 1;
+    transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    color: var(--text-secondary);
+}
+
+.bottom-nav button.active {
+    color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color) 14%, transparent);
+}
+
+.bottom-nav button span {
+    opacity: 0.95;
+    line-height: 1;
+}
+
+.bottom-nav button svg {
+    flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+    .bottom-nav {
+        left: 0.4rem;
+        right: 0.4rem;
+        padding: 0.35rem;
+        padding-bottom: calc(0.35rem + env(safe-area-inset-bottom, 0px));
+    }
+
+    .bottom-nav button {
+        font-size: 0.62rem;
+        padding: 0.4rem 0.1rem 0.28rem;
+    }
+
+    .bottom-nav button svg {
+        width: 18px;
+        height: 18px;
+    }
+}
+
+/* Hide Native Date/Time Picker Icons for cleaner UI */
+.task-date-input::-webkit-calendar-picker-indicator,
+.task-date-input::-webkit-inner-spin-button,
+.task-date-input::-webkit-clear-button {
+    display: none !important;
+    -webkit-appearance: none !important;
+    opacity: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Firefox: hide native spin buttons */
+.task-date-input[type="date"],
+.task-date-input[type="time"] {
+    -moz-appearance: textfield !important;
+    appearance: textfield !important;
+}
+
+/* Ensure the Lucide icon wrapper remains clickable */
+.metadata-item {
+    position: relative;
+}
+
+.task-date-input {
+    cursor: pointer;
+    position: relative;
+    z-index: 1;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+/* FORCE DARK SCHEME - Essential for Tauri/Windows Custom Scrollbars */
+/* 1. Global Reset for Scrollbars */
+html,
+body,
+#root,
+* {
+    scrollbar-width: thin;
+    /* For Firefox */
+    scrollbar-color: var(--accent-color, #6366f1) transparent;
+    /* For Firefox */
+}
+
+/* 2. Webkit (Chrome, Edge, Tauri) - The "Nuclear" Force */
+::-webkit-scrollbar {
+    width: 8px !important;
+    height: 8px !important;
+    background-color: transparent !important;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent !important;
+}
+
+::-webkit-scrollbar-thumb {
+    /* This forces the color using the variable we set in JS */
+    background-color: var(--accent-color, #6366f1) !important;
+    border-radius: 20px !important;
+    /* This creates space around the scrollbar so it looks like a floating pill */
+    border: 2px solid transparent !important;
+    background-clip: content-box !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--accent-color, #6366f1) !important;
+    filter: brightness(1.2) !important;
+}
+
+/* 3. Force the browser to allow custom styling even in light mode */
+:root {
+    accent-color: var(--accent-color, #6366f1);
 }

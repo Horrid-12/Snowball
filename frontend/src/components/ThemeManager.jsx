@@ -1,22 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { Palette, X, RotateCcw } from 'lucide-react';
 
+const normalizeHex = (value, fallback = '#000000') => {
+    const trimmed = String(value || '').trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toLowerCase();
+    if (/^[0-9a-fA-F]{6}$/.test(trimmed)) return `#${trimmed.toLowerCase()}`;
+    return fallback;
+};
+
 const ThemeManager = ({ currentTheme, onThemeChange }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [customColors, setCustomColors] = useState(() => {
-        const saved = localStorage.getItem('snowball_custom_colors');
-        return saved ? JSON.parse(saved) : {
-            bg: '#ffffff',
-            text: '#1e293b',
-            accent: '#3b82f6',
-            card: '#ffffff'
-        };
+        try {
+            const saved = localStorage.getItem('snowball_custom_colors');
+            return saved ? JSON.parse(saved) : {
+                bg: '#ffffff',
+                text: '#1e293b',
+                accent: '#3b82f6',
+                card: '#ffffff'
+            };
+        } catch (e) {
+            return { bg: '#ffffff', text: '#1e293b', accent: '#3b82f6', card: '#ffffff' };
+        }
     });
 
     const themes = [
         { id: 'light', name: 'Light', preview: '#ffffff' },
         { id: 'dark', name: 'Dark', preview: '#0f172a' },
-        { id: 'deep-work', name: 'Deep Work', preview: '#111827' },
         { id: 'midnight', name: 'Midnight', preview: '#020617' },
         { id: 'forest', name: 'Forest', preview: '#052e16' },
         { id: 'custom', name: 'Custom', preview: 'linear-gradient(45deg, #3b82f6, #8b5cf6, #ec4899)' }
@@ -96,10 +106,10 @@ const ThemeManager = ({ currentTheme, onThemeChange }) => {
                     {currentTheme === 'custom' && (
                         <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                             <h5 style={{ margin: 0, fontSize: '0.875rem' }}>Customize Colors</h5>
-                            <ColorPicker label="Background" value={customColors.bg} onChange={(v) => handleColorChange('bg', v)} />
-                            <ColorPicker label="Text" value={customColors.text} onChange={(v) => handleColorChange('text', v)} />
-                            <ColorPicker label="Accent" value={customColors.accent} onChange={(v) => handleColorChange('accent', v)} />
-                            <ColorPicker label="Card" value={customColors.card} onChange={(v) => handleColorChange('card', v)} />
+                            <HexColorInput label="Background" value={customColors.bg} onChange={(v) => handleColorChange('bg', v)} />
+                            <HexColorInput label="Text" value={customColors.text} onChange={(v) => handleColorChange('text', v)} />
+                            <HexColorInput label="Accent" value={customColors.accent} onChange={(v) => handleColorChange('accent', v)} />
+                            <HexColorInput label="Card" value={customColors.card} onChange={(v) => handleColorChange('card', v)} />
                         </div>
                     )}
                 </div>
@@ -108,16 +118,67 @@ const ThemeManager = ({ currentTheme, onThemeChange }) => {
     );
 };
 
-const ColorPicker = ({ label, value, onChange }) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{label}</span>
-        <input
-            type="color"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            style={{ width: '40px', height: '24px', border: 'none', padding: 0, cursor: 'pointer', background: 'transparent' }}
-        />
-    </div>
-);
+const HexColorInput = ({ label, value, onChange }) => {
+    const [draft, setDraft] = useState(value);
+
+    useEffect(() => {
+        setDraft(value);
+    }, [value]);
+
+    const commitIfValid = (nextValue) => {
+        if (/^#?[0-9a-fA-F]{6}$/.test(nextValue)) {
+            onChange(normalizeHex(nextValue, normalizeHex(value, '#000000')));
+        }
+    };
+
+    return (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{label}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div
+                    style={{
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '999px',
+                        background: normalizeHex(value, '#000000'),
+                        border: '1px solid var(--border-color)'
+                    }}
+                />
+                <input
+                    type="text"
+                    inputMode="text"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    maxLength={7}
+                    value={draft}
+                    onChange={(e) => {
+                        const nextValue = e.target.value.trim();
+                        if (/^#?[0-9a-fA-F]{0,6}$/.test(nextValue)) {
+                            setDraft(nextValue);
+                            commitIfValid(nextValue);
+                        }
+                    }}
+                    onBlur={(e) => {
+                        const normalized = normalizeHex(e.target.value, normalizeHex(value, '#000000'));
+                        setDraft(normalized);
+                        onChange(normalized);
+                    }}
+                    placeholder="#rrggbb"
+                    style={{
+                        width: '92px',
+                        padding: '0.35rem 0.5rem',
+                        borderRadius: '0.5rem',
+                        border: '1px solid var(--border-color)',
+                        background: 'var(--bg-primary)',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.75rem',
+                        fontFamily: 'monospace'
+                    }}
+                />
+            </div>
+        </div>
+    );
+};
 
 export default ThemeManager;
