@@ -46,6 +46,8 @@ downloads/
 frontend_backup_pre_offline/
 frontend/~/
 frontend/src/index.css.tmp
+analysis.md
+Claude.Md
 
 # Local databases and generated data
 backend/database.sqlite
@@ -68,4 +70,3 @@ frontend/src-tauri/target/
 # Misc package manager files
 .npm/
 .pnpm-store/
-
