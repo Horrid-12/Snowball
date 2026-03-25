@@ -1,18 +1,23 @@
 {
-    "name": "snowball",
-    "version": "1.0.0",
-    "description": "Snowball — Full-stack application with Vite frontend and Express backend",
-    "private": true,
-    "type": "module",
-    "scripts": {
-        "dev:frontend": "npm --prefix frontend run dev",
-        "dev:backend": "npm --prefix backend run dev",
-        "dev": "npx -y concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-        "install:all": "npm --prefix frontend install && npm --prefix backend install",
-        "build": "npm --prefix frontend run build",
-        "postinstall": "npm run install:all"
-    },
-    "dependencies": {
-        "@vercel/analytics": "^1.6.1"
-    }
+    "name":  "snowball",
+    "version":  "6.0.1",
+    "description":  "Snowball — Full-stack application with Vite frontend and Express backend",
+    "private":  true,
+    "type":  "module",
+    "scripts":  {
+                    "dev:frontend":  "npm --prefix frontend run dev",
+                    "dev:backend":  "npm --prefix backend run dev",
+                    "dev":  "npx -y concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+                    "install:all":  "npm --prefix frontend install \u0026\u0026 npm --prefix backend install",
+                    "build":  "npm --prefix frontend run build",
+                    "release":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\release.ps1",
+                    "release:all":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\release.ps1 -Version 6.0.0 -Vercel -Tauri -Android",
+                    "release:sync":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\release.ps1 -Version 6.0.0 -SkipVersionSync -DryRun",
+                    "release:commit":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\release.ps1 -Version 6.0.0 -Vercel -Tauri -Android -GitCommit",
+                    "release:publish":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\release.ps1 -Version 6.0.0 -Vercel -Tauri -Android -GitCommit -GitPush",
+                    "postinstall":  "npm run install:all"
+                },
+    "dependencies":  {
+                         "@vercel/analytics":  "^1.6.1"
+                     }
 }

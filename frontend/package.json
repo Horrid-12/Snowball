@@ -1,35 +1,53 @@
 {
-  "name": "frontend",
-  "private": true,
-  "version": "5.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
-    "preview": "vite preview",
-    "tauri": "tauri"
-  },
-  "devDependencies": {
-    "@capacitor/cli": "^8.2.0",
-    "@tauri-apps/cli": "^2.10.1",
-    "@vitejs/plugin-react": "^5.1.4",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.1"
-  },
-  "dependencies": {
-    "@capacitor/android": "^8.2.0",
-    "@capacitor/app": "^8.0.1",
-    "@capacitor/app-launcher": "^8.0.1",
-    "@capacitor/core": "^8.2.0",
-    "@capacitor/device": "^8.0.1",
-    "@capacitor/network": "^8.0.1",
-    "@material/material-color-utilities": "^0.4.0",
-    "@vercel/analytics": "^1.6.1",
-    "dexie": "^4.3.0",
-    "framer-motion": "^12.35.0",
-    "lucide-react": "^0.575.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "vite-plugin-pwa": "^1.2.0"
-  }
+    "name":  "frontend",
+    "private":  true,
+    "version":  "6.0.1",
+    "type":  "module",
+    "scripts":  {
+                    "dev":  "vite --host 127.0.0.1",
+                    "build":  "vite build",
+                    "preview":  "vite preview",
+                    "tauri":  "tauri",
+                    "tauri:build":  "tauri build"
+                },
+    "devDependencies":  {
+                            "@capacitor/cli":  "^8.2.0",
+                            "@tauri-apps/cli":  "^2.10.1",
+                            "@vitejs/plugin-react":  "^5.1.4",
+                            "typescript":  "^5.9.3",
+                            "vite":  "^7.3.1"
+                        },
+    "dependencies":  {
+                         "@capacitor/android":  "^8.2.0",
+                         "@capacitor/app":  "^8.0.1",
+                         "@capacitor/app-launcher":  "^8.0.1",
+                         "@capacitor/core":  "^8.2.0",
+                         "@capacitor/device":  "^8.0.1",
+                         "@capacitor/local-notifications":  "^8.0.2",
+                         "@capacitor/network":  "^8.0.1",
+                         "@material/material-color-utilities":  "^0.4.0",
+                         "@tauri-apps/api":  "^2.10.1",
+                         "@tauri-apps/plugin-notification":  "^2.3.3",
+                         "@tauri-apps/plugin-process":  "^2.3.1",
+                         "@tauri-apps/plugin-updater":  "^2.10.0",
+                         "@tiptap/extension-image":  "^3.20.5",
+                         "@tiptap/extension-link":  "^3.20.5",
+                         "@tiptap/extension-task-item":  "^3.20.5",
+                         "@tiptap/extension-task-list":  "^3.20.5",
+                         "@tiptap/extension-underline":  "^3.20.5",
+                         "@tiptap/react":  "^3.20.5",
+                         "@tiptap/starter-kit":  "^3.20.5",
+                         "@vercel/analytics":  "^1.6.1",
+                         "dexie":  "^4.3.0",
+                         "docx":  "^9.6.1",
+                         "file-saver":  "^2.0.5",
+                         "framer-motion":  "^12.35.0",
+                         "jspdf":  "^4.2.1",
+                         "lucide-react":  "^0.575.0",
+                         "mammoth":  "^1.12.0",
+                         "pptxgenjs":  "^4.0.1",
+                         "react":  "^19.2.4",
+                         "react-dom":  "^19.2.4",
+                         "vite-plugin-pwa":  "^1.2.0"
+                     }
 }
