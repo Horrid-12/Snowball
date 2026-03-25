@@ -9,7 +9,7 @@ It combines the parts of a daily system that usually get scattered around:
 - deep work / focus timing
 - a consistency heatmap
 - scratchpad notes
-- media tools for study or work sessions like Youtube and Spoyify (Spotify is just for experimentation purposes and I cannot Provide Access to spotify) 
+- media tools for study or work sessions like YouTube and Spotify
 
 The idea is simple: open one app and run your whole routine from there.
 
@@ -42,6 +42,14 @@ Snowball is available as:
 - Media hub for Spotify and YouTube workflows
 - Dynamic theming and cross-platform UI
 - Offline-first local behavior with sync support
+
+## 🎵 Spotify Note
+
+The shared Spotify integration is mainly for experimentation and personal use.
+
+Spotify apps that stay in Development Mode are typically limited to a very small allowlist, so the public Snowball instance may not be able to grant access to everyone.
+
+If you are running Snowball from source, you can create your own Spotify developer app and replace the Spotify client credentials with your own. That is the intended path for anyone who wants their own unrestricted setup.
 
 ## 📦 Stack Snapshot
 
