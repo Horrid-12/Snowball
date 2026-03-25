@@ -32,3 +32,4 @@ tauri-plugin-updater = { version = "2", features = ["rustls-tls"] }
 
 
 
+
