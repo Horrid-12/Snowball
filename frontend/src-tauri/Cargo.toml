@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "6.0.4"
+version = "6.1.4"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -26,6 +26,11 @@ tauri-plugin-log = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
 tauri-plugin-updater = { version = "2", features = ["rustls-tls"] }
+
+
+
+
+
 
 
 
