@@ -1,7 +1,7 @@
 {
     "$schema":  "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName":  "Snowball",
-    "version":  "6.3.0",
+    "version":  "6.4.0",
     "identifier":  "com.howwid.Snowball",
     "build":  {
                   "frontendDist":  "../dist",
@@ -38,7 +38,7 @@
                },
     "plugins":  {
                     "updater":  {
-                                    "pubkey":  "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE5REIxRTk4Q0QyRjhCOTAKUldTUWl5L05tQjdiR2VRVXVESEx3ZG1zMm1qamdNSXpPZmQ0dDFVRGExc2hQSWgya0hNYmthMUkK",
+                                    "pubkey":  "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDcwRjkxQzQ0MDJFNjM2MEIKUldRTE51WUNSQno1Y1BuY2hHSUxqNVovSHVERDcwcEtpY1poUkZwT3FqRG1Ib0JvRzM4VXd5NDUK",
                                     "endpoints":  [
                                                       "https://github.com/Horrid-12/Snowball/releases/latest/download/latest.json"
                                                   ]

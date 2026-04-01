@@ -1,6 +1,6 @@
 {
     "name":  "snowball",
-    "version":  "6.3.0",
+    "version":  "6.4.0",
     "description":  "Snowball — Full-stack application with Vite frontend and Express backend",
     "private":  true,
     "type":  "module",
