@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
-def computedVersionCode = 70000
-def computedVersionName = "7.0.0"
+def computedVersionCode = 70100
+def computedVersionName = "7.1.0"
 def keystorePropertiesFile = rootProject.file('key.properties')
 def keystoreProperties = new Properties()
 def hasReleaseKeystore = keystorePropertiesFile.exists()
@@ -75,6 +75,16 @@ try {
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }
+
+
+
+
+
+
+
+
+
+
 
 
 
