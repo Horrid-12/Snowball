@@ -8,8 +8,8 @@ We actively maintain and provide security updates for the following versions of 
 
 | Version | Supported          |
 | ------- | ------------------ |
-| > 1.0.x | :white_check_mark: |
-| < 1.0.0 | :x:                |
+| > 7.0.x | :white_check_mark: |
+| < 7.0.0 | :x:                |
 
 *Note: Since Snowball heavily relies on the system's native WebView (via Tauri) and the Rust toolchain, we strongly recommend users keep their host operating systems updated to receive the latest WebView security patches.*
 
