@@ -4,7 +4,7 @@
 
 Snowball is a local-first productivity system designed to be the single source of truth for your daily routine. Instead of juggling a task manager, a habit tracker, a focus timer, and a notes app, Snowball integrates them into one seamless experience across **Desktop, Android, and Web**.
 
-[![Vercel Deploy](https://vercel.com/api/deployments/badge?projectId=prj_UQipCzBfCBpBLK7bEJbUWCZA9rJx)](https://snowball-ruddy.vercel.app)
+![Vercel Deployment](https://img.shields.io/badge/Vercel-Deployment?style=for-the-badge&logo=Vercel&logoColor=%23FFFFFF&color=%23000000)
 
 ---
 
