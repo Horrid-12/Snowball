@@ -14,8 +14,7 @@ Snowball is a local-first productivity system designed to be the single source o
 - **Planning & Execution**: Organize your day with priorities, dates, and time blocks.
 - **Progress Tracking**: Track completion counts and effort allocation per task.
 - **Tagging System**: Custom tags with color-coding for effortless categorization.
-<img width="381" height="960" alt="image" src="https://github.com/user-attachments/assets/8df77935-54f5-41ae-8342-65074b4de6cc" />
-<img width="881" height="255" alt="image" src="https://github.com/user-attachments/assets/06d1f923-6a72-4d83-8ec1-4e801ac116fd" />
+<img width="381" height="960" alt="image" src="https://github.com/user-attachments/assets/8df77935-54f5-41ae-8342-65074b4de6cc" /> <img width="881" height="255" alt="image" src="https://github.com/user-attachments/assets/06d1f923-6a72-4d83-8ec1-4e801ac116fd" />
 <img width="692" height="608" alt="image" src="https://github.com/user-attachments/assets/008185cf-d3cc-4924-a945-4c4c384b67e3" />
 <img width="609" height="1280" alt="image" src="https://github.com/user-attachments/assets/3ede12b7-1cfc-41c9-9ba8-2e669ac99e2b" />
 
