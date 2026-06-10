@@ -1,0 +1,119 @@
+name: Publish Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  get-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: extract
+        shell: pwsh
+        run: |
+          $json = Get-Content frontend/src-tauri/tauri.conf.json | ConvertFrom-Json
+          echo "version=$($json.version)" >> $env:GITHUB_OUTPUT
+
+  vercel-deploy:
+    needs: get-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Deploy to Vercel
+        run: npx vercel deploy --prod --yes
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+  publish-tauri:
+    needs: get-version
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./frontend/src-tauri -> target
+      - name: Install root dependencies
+        run: npm ci
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Build and publish signed Tauri release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: frontend
+          tagName: v__VERSION__
+          releaseName: Snowball v__VERSION__
+          releaseBody: |
+            Automated desktop release for Snowball v__VERSION__.
+
+            Assets include the signed installer plus updater metadata for in-app updates.
+          releaseDraft: false
+          prerelease: false
+
+  build-android:
+    needs: [get-version, publish-tauri]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install dependencies
+        run: npm ci
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+        working-directory: frontend
+      - name: Build Android debug APK
+        run: ./gradlew assembleDebug
+        working-directory: frontend/android
+      - name: Upload APK to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.get-version.outputs.version }}
+          files: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
