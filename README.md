@@ -14,21 +14,35 @@ Snowball is a local-first productivity system designed to be the single source o
 - **Planning & Execution**: Organize your day with priorities, dates, and time blocks.
 - **Progress Tracking**: Track completion counts and effort allocation per task.
 - **Tagging System**: Custom tags with color-coding for effortless categorization.
+<img width="381" height="960" alt="image" src="https://github.com/user-attachments/assets/8df77935-54f5-41ae-8342-65074b4de6cc" />
+<img width="881" height="255" alt="image" src="https://github.com/user-attachments/assets/06d1f923-6a72-4d83-8ec1-4e801ac116fd" />
+<img width="692" height="608" alt="image" src="https://github.com/user-attachments/assets/008185cf-d3cc-4924-a945-4c4c384b67e3" />
+<img width="609" height="1280" alt="image" src="https://github.com/user-attachments/assets/3ede12b7-1cfc-41c9-9ba8-2e669ac99e2b" />
 
 ### 🌱 Habit Tracking
 - **Consistency First**: A dedicated tracker for daily habits.
 - **Visual Momentum**: A comprehensive activity heatmap that tracks your consistency over months.
+<img width="333" height="301" alt="image" src="https://github.com/user-attachments/assets/3e3a2285-5d07-44a0-aa04-aa371d57d18d" />
+<img width="855" height="304" alt="image" src="https://github.com/user-attachments/assets/396fdb51-75f2-4500-93f5-e8a5337863c5" />
+<img width="892" height="368" alt="image" src="https://github.com/user-attachments/assets/34ec1a09-bd4d-4ec5-8c1e-597975ad4bd5" />
+<img width="865" height="334" alt="image" src="https://github.com/user-attachments/assets/e75d2d88-ac95-466d-906d-5356200dc864" />
+
 
 ### ⏱️ Deep Work & Focus
 - **Focus Timer**: Built-in timer to eliminate distractions and enter a flow state.
 - **Session Tracking**: Log your focus hours and integrate them into your productivity score.
+<img width="880" height="385" alt="image" src="https://github.com/user-attachments/assets/1391dd3b-ec34-4123-b177-09b532c9353d" />
+
 
 ### 📝 Knowledge & Scratchpad
 - **Quick Notes**: A low-friction scratchpad for reminders, ideas, and temporary logs.
 - **Organization**: Simple, fast access to information without the overhead of a full wiki.
+<img width="1198" height="1035" alt="image" src="https://github.com/user-attachments/assets/04db5121-75f3-47bb-b742-cff94cd90174" />
 
 ### 🎵 Media Hub
 - **Spotify & YouTube**: Integrated workflows to bring your study/work soundtracks and tutorials directly into your focus environment.
+<img width="455" height="885" alt="image" src="https://github.com/user-attachments/assets/28396e34-a26a-4440-87e3-a05a2e19502b" />
+<img width="845" height="606" alt="image" src="https://github.com/user-attachments/assets/712412f6-ab18-4666-9bbd-eddcafe62473" />
 
 ---
 
@@ -50,64 +64,12 @@ Snowball is built on a **Local-First** philosophy. The application prioritizes i
 - **Mobile**: Capacitor (Android)
 - **Hosting**: Vercel
 
----
+### 🐛 Known Bugs
+- Cross-Device Syncronising Issues
+- Spotify Widget Issues
 
-## 🛠️ Getting Started
-
-### Prerequisites
-- **Node.js** (v20+)
-- **Rust** (for Desktop build)
-- **Android Studio & SDK** (for Android build)
-- **Java 21** (Required for Android Gradle plugin)
-
-### 1. Installation
-```bash
-# Clone the repository
-git clone https://github.com/Horrid-12/Snowball.git
-cd Snowball
-
-# Install all dependencies (Frontend & Backend)
-npm run install:all
-```
-
-### 2. Environment Setup
-Create a `.env` file in the `backend/` directory based on `.env.example`:
-```env
-PORT=3000
-SUPABASE_URL=your_supabase_url
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-YOUTUBE_API_KEY=your_youtube_api_key
-```
-
-### 3. Running in Development
-```bash
-# Start both backend and frontend concurrently
-npm run dev
-```
-
----
-
-## 🚀 Release Process
-
-Snowball uses a custom release pipeline to handle version synchronization across the entire stack (Web, Desktop, Android).
-
-### Local Release Script
-You can run the full release flow locally using the PowerShell script:
-```powershell
-# Interactive release
-npm run release
-
-# Automated release with specific version
-npm run release:publish -- -Version 7.1.4 -Vercel -Tauri -Android -GitCommit -GitPush
-```
-
-### CI/CD Automation
-The repository is configured with GitHub Actions (`.github/workflows/tauri-release.yml`) to automate the production of assets:
-- **Tauri**: Builds signed installers and publishes them as GitHub Release assets.
-- **Android**: Builds the APK and uploads it to the same Release.
-- **Vercel**: Deploys the latest production build to the web.
-
----
+### 🗡Installation
+Head Over to Releases and Download Suitable Platfrom
 
 ## 📈 Status
 **Current Stage: Active Development**
