@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "7.2.0"
+version = "7.2.4"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -28,9 +28,13 @@ tauri-plugin-log = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
 tauri-plugin-updater = { version = "2", features = ["rustls-tls"] }
+tauri-plugin-http = "2"
 
 [target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
 discord-rich-presence = "0.2"
+
+
+
 
 
 
