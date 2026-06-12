@@ -1,6 +1,7 @@
 import express from 'express';
 import { supabase as serviceDb } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
+import { validate, schemas } from '../middleware/validate.js';
 
 // Using service role client for all queries (app-level user filtering via .eq('user_id', ...))
 // The anon client (req.anonDb) can't carry our custom JWT — Supabase PostgREST can't decode it
@@ -176,22 +177,9 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // CREATE a task
-router.post('/', async (req, res, next) => {
+router.post('/', validate(schemas.task), async (req, res, next) => {
     try {
-        const { title, description, date, tasksAllocated, tasksCompleted, hoursAllocated, hoursTaken, priority, tags, isSticky, isPinned, recurring } = req.body;
-
-        if (!title || typeof title !== 'string') {
-            return res.status(400).json({ error: 'Title is required' });
-        }
-        if (title.length > 255) {
-            return res.status(400).json({ error: 'Title must be at most 255 characters' });
-        }
-        if (description && description.length > 10000) {
-            return res.status(400).json({ error: 'Description must be at most 10000 characters' });
-        }
-        if (tags && tags.length > 500) {
-            return res.status(400).json({ error: 'Tags must be at most 500 characters' });
-        }
+        const { title, description, date, tasksAllocated, tasksCompleted, hoursAllocated, hoursTaken, priority, tags, isSticky, isPinned, recurring } = req.validatedBody;
 
         const taskData = {
             title,
@@ -356,37 +344,23 @@ router.put('/bulk-rename-tag', async (req, res, next) => {
 });
 
 // UPDATE a task
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', validate(schemas.taskUpdate), async (req, res, next) => {
     try {
-        const { title, description, date, tasksAllocated, tasksCompleted, hoursAllocated, hoursTaken, priority, tags, isSticky, isPinned, recurring } = req.body;
+        const { title, description, date, tasksAllocated, tasksCompleted, hoursAllocated, hoursTaken, priority, tags, isSticky, isPinned, recurring } = req.validatedBody;
 
-        if (!title || typeof title !== 'string') {
-            return res.status(400).json({ error: 'Title is required' });
-        }
-        if (title.length > 255) {
-            return res.status(400).json({ error: 'Title must be at most 255 characters' });
-        }
-        if (description && description.length > 10000) {
-            return res.status(400).json({ error: 'Description must be at most 10000 characters' });
-        }
-        if (tags && tags.length > 500) {
-            return res.status(400).json({ error: 'Tags must be at most 500 characters' });
-        }
-
-        const updateData = {
-            title,
-            description: description || '',
-            date: date || null,
-            tasks_allocated: tasksAllocated || 0,
-            tasks_completed: tasksCompleted || 0,
-            hours_allocated: hoursAllocated || 0.0,
-            hours_taken: hoursTaken || 0.0,
-            priority: priority || 'Medium',
-            tags: tags || '',
-            is_sticky: isSticky !== undefined ? isSticky : false,
-            is_pinned: isPinned !== undefined ? isPinned : false,
-            recurring: recurring || 'none'
-        };
+        const updateData = {};
+        if (title !== undefined) updateData.title = title;
+        if (description !== undefined) updateData.description = description;
+        if (date !== undefined) updateData.date = date;
+        if (tasksAllocated !== undefined) updateData.tasks_allocated = tasksAllocated;
+        if (tasksCompleted !== undefined) updateData.tasks_completed = tasksCompleted;
+        if (hoursAllocated !== undefined) updateData.hours_allocated = hoursAllocated;
+        if (hoursTaken !== undefined) updateData.hours_taken = hoursTaken;
+        if (priority !== undefined) updateData.priority = priority;
+        if (tags !== undefined) updateData.tags = tags;
+        if (isSticky !== undefined) updateData.is_sticky = isSticky;
+        if (isPinned !== undefined) updateData.is_pinned = isPinned;
+        if (recurring !== undefined) updateData.recurring = recurring;
 
         if (req.body.position !== undefined) {
             updateData.position = req.body.position;

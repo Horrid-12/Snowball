@@ -6,6 +6,7 @@ import { supabase } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { createRateLimiter } from '../middleware/rateLimit.js';
 import { revokeToken } from '../middleware/sessionStore.js';
+import { validate, schemas } from '../middleware/validate.js';
 
 const getEnv = (name) => {
     const upper = name.toUpperCase();
@@ -48,7 +49,7 @@ const clearAuthCookie = (res) => {
 };
 
 const issueAuthToken = (user) => jwt.sign(
-    { id: user.id, username: user.username, email: user.email },
+    { id: user.id, username: user.username },
     getEnv('JWT_SECRET'),
     {
         expiresIn: '7d',
@@ -141,17 +142,9 @@ const mapUserSettings = (user) => ({
 });
 
 // Register
-router.post('/register', authRateLimit, async (req, res, next) => {
+router.post('/register', authRateLimit, validate(schemas.register), async (req, res, next) => {
     try {
-        const { username, email, password } = req.body;
-
-        if (!username || !email || !password) {
-            return res.status(400).json({ error: 'Missing required fields' });
-        }
-
-        if (password.length < MIN_PASSWORD_LENGTH) {
-            return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters long` });
-        }
+        const { username, email, password } = req.validatedBody;
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -181,14 +174,10 @@ router.post('/register', authRateLimit, async (req, res, next) => {
 });
 
 // Login
-router.post('/login', authRateLimit, async (req, res, next) => {
+router.post('/login', authRateLimit, validate(schemas.login), async (req, res, next) => {
     try {
-        const { username, password } = req.body;
-        const identifier = typeof username === 'string' ? username.trim() : '';
-
-        if (!identifier || !password) {
-            return res.status(400).json({ error: 'Username/email and password are required' });
-        }
+        const { username, password } = req.validatedBody;
+        const identifier = username.trim();
 
         // Use separate `.eq()` calls instead of `.or()` string interpolation
         // to prevent PostgREST filter injection (`,`, `)`, `.eq` in username)
@@ -271,9 +260,9 @@ router.get('/me', requireAuth, async (req, res, next) => {
 });
 
 // Update User Settings (Me)
-router.put('/me', requireAuth, async (req, res, next) => {
+router.put('/me', requireAuth, validate(schemas.userSettings), async (req, res, next) => {
     try {
-        const { reset_offset_hours, timezone_offset_minutes, penalty_buffer_hours, appearance_settings, profile_icon, tag_colors, study_timer_state } = req.body;
+        const { reset_offset_hours, timezone_offset_minutes, penalty_buffer_hours, appearance_settings, profile_icon, tag_colors, study_timer_state } = req.validatedBody;
         const updateFields = {};
         if (reset_offset_hours !== undefined) updateFields.reset_offset_hours = reset_offset_hours;
         if (timezone_offset_minutes !== undefined) updateFields.timezone_offset_minutes = timezone_offset_minutes;
@@ -319,12 +308,9 @@ router.post('/logout', requireAuth, (req, res) => {
 });
 
 // Forgot Password Request
-router.post('/forgot-password', authRateLimit, async (req, res, next) => {
+router.post('/forgot-password', authRateLimit, validate(schemas.forgotPassword), async (req, res, next) => {
     try {
-        const { identifier } = req.body;
-        if (!identifier) {
-            return res.status(400).json({ error: 'Username or Email is required' });
-        }
+        const { identifier } = req.validatedBody;
 
         const { error } = await supabase
             .from('support_requests')

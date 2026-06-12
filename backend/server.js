@@ -37,7 +37,7 @@ const getEnv = (name) => {
 
 const app = express();
 const PORT = getEnv('PORT') || 3000;
-app.set('trust proxy', 1);
+app.set('trust proxy', process.env.VERCEL ? 1 : false);
 
 const vercelUrl = getEnv('VERCEL_URL')
     ? `https://${getEnv('VERCEL_URL').replace(/^https?:\/\//, '')}`

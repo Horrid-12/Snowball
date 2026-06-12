@@ -1,6 +1,8 @@
 import express from 'express';
-import { supabase } from '../db.js';
+import { supabase as serviceDb } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
+
+const getDb = (req) => req.anonDb || serviceDb;
 import { getTodayWithOffset, getPastDateWithOffset } from '../utils.js';
 import { backfillDailyProductivity } from '../utils/productivityScore.js';
 
@@ -14,7 +16,7 @@ router.get('/heatmap', async (req, res, next) => {
         const startDate = await getPastDateWithOffset(req.user.id, 365);
         await backfillDailyProductivity(req.user.id);
 
-        const { data: snapshots, error } = await supabase
+        const { data: snapshots, error } = await getDb(req)
             .from('daily_productivity')
             .select('date, score')
             .eq('user_id', req.user.id)
@@ -39,7 +41,7 @@ router.get('/history', async (req, res, next) => {
     try {
         await backfillDailyProductivity(req.user.id);
 
-        const { data: snapshots, error } = await supabase
+        const { data: snapshots, error } = await getDb(req)
             .from('daily_productivity')
             .select('*')
             .eq('user_id', req.user.id)
@@ -78,7 +80,7 @@ router.post('/backfill', async (req, res, next) => {
 router.get('/stats', async (req, res, next) => {
     try {
         // Total tasks completed (fully allocated)
-        const { data: tasks, error: tasksError } = await supabase
+        const { data: tasks, error: tasksError } = await getDb(req)
             .from('tasks')
             .select('tasks_completed, tasks_allocated')
             .eq('user_id', req.user.id);
@@ -91,7 +93,7 @@ router.get('/stats', async (req, res, next) => {
         }).length;
 
         // Total habit logs
-        const { data: userHabits, error: fetchHabitsError } = await supabase
+        const { data: userHabits, error: fetchHabitsError } = await getDb(req)
             .from('habits')
             .select('id')
             .eq('user_id', req.user.id);
@@ -102,7 +104,7 @@ router.get('/stats', async (req, res, next) => {
         
         let completedHabits = 0;
         if (habitIds.length > 0) {
-            const { count, error: habitsError } = await supabase
+            const { count, error: habitsError } = await getDb(req)
                 .from('habit_logs')
                 .select('id', { count: 'exact', head: true })
                 .in('habit_id', habitIds);
@@ -112,7 +114,7 @@ router.get('/stats', async (req, res, next) => {
         }
 
         // Total activity score
-        const { data: logs, error: logsError } = await supabase
+        const { data: logs, error: logsError } = await getDb(req)
             .from('activity_logs')
             .select('score')
             .eq('user_id', req.user.id);
@@ -138,7 +140,7 @@ export const logActivity = async (userId, type, referenceId, score = 1.0) => {
     try {
         const today = await getTodayWithOffset(userId);
 
-        await supabase
+        await serviceDb
             .from('activity_logs')
             .insert([{
                 user_id: userId,

@@ -1,6 +1,9 @@
 import express from 'express';
-import { supabase } from '../db.js';
+import { supabase as serviceDb } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
+import { validate, schemas } from '../middleware/validate.js';
+
+const getDb = (req) => req.anonDb || serviceDb;
 
 const router = express.Router();
 
@@ -9,7 +12,7 @@ router.use(requireAuth);
 // GET all user notes
 router.get('/', async (req, res, next) => {
     try {
-        const { data, error } = await supabase
+        const { data, error } = await getDb(req)
             .from('notes')
             .select('note_id, title, content, updated_at')
             .eq('user_id', req.user.id)
@@ -23,15 +26,11 @@ router.get('/', async (req, res, next) => {
 });
 
 // UPDATE/INSERT a specific note
-router.put('/', async (req, res, next) => {
+router.put('/', validate(schemas.noteUpsert), async (req, res, next) => {
     try {
-        const { note_id, title, content } = req.body;
-        if (!note_id) return res.status(400).json({ error: 'note_id is required' });
-        if (note_id.length > 100) return res.status(400).json({ error: 'note_id too long' });
-        if (title && title.length > 500) return res.status(400).json({ error: 'Title too long' });
-        if (content && content.length > 100000) return res.status(400).json({ error: 'Content too long' });
+        const { note_id, title, content } = req.validatedBody;
 
-        const { data, error } = await supabase
+        const { data, error } = await getDb(req)
             .from('notes')
             .upsert({
                 user_id: req.user.id,
@@ -54,7 +53,7 @@ router.put('/', async (req, res, next) => {
 router.delete('/:note_id', async (req, res, next) => {
     try {
         const { note_id } = req.params;
-        const { error } = await supabase
+        const { error } = await getDb(req)
             .from('notes')
             .delete()
             .eq('user_id', req.user.id)

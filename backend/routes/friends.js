@@ -1,7 +1,9 @@
 import express from 'express';
-import { supabase } from '../db.js';
+import { supabase as serviceDb } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
-import { requireUUID } from '../middleware/validate.js';
+import { requireUUID, validate, schemas } from '../middleware/validate.js';
+
+const getDb = (req) => req.anonDb || serviceDb;
 
 const router = express.Router();
 
@@ -29,11 +31,11 @@ const uniqById = (users = []) => {
     });
 };
 
-const fetchUsersByIds = async (userIds = []) => {
+const fetchUsersByIds = async (userIds = [], db = serviceDb) => {
     const ids = [...new Set(userIds.filter(Boolean))];
     if (ids.length === 0) return new Map();
 
-    const { data, error } = await supabase
+    const { data, error } = await db
         .from('users')
         .select(USER_FIELDS)
         .in('id', ids);
@@ -42,11 +44,11 @@ const fetchUsersByIds = async (userIds = []) => {
     return new Map((data || []).map((user) => [user.id, publicUser(user)]));
 };
 
-const fetchPresenceByUserIds = async (userIds = []) => {
+const fetchPresenceByUserIds = async (userIds = [], db = serviceDb) => {
     const ids = [...new Set(userIds.filter(Boolean))];
     if (ids.length === 0) return new Map();
 
-    const { data, error } = await supabase
+    const { data, error } = await db
         .from('friend_presence')
         .select(PRESENCE_FIELDS)
         .in('user_id', ids);
@@ -77,8 +79,8 @@ const mapFriendship = (friendship, currentUserId, usersById, presenceByUserId = 
     };
 };
 
-const findAcceptedFriendship = async (currentUserId, friendshipId) => {
-    const { data, error } = await supabase
+const findAcceptedFriendship = async (currentUserId, friendshipId, db = serviceDb) => {
+    const { data, error } = await db
         .from('friendships')
         .select(FRIENDSHIP_FIELDS)
         .eq('id', friendshipId)
@@ -92,7 +94,8 @@ const findAcceptedFriendship = async (currentUserId, friendshipId) => {
 
 router.get('/', async (req, res, next) => {
     try {
-        const { data: relationships, error } = await supabase
+        const db = getDb(req);
+        const { data: relationships, error } = await db
             .from('friendships')
             .select(FRIENDSHIP_FIELDS)
             .or(`requester_id.eq.${req.user.id},addressee_id.eq.${req.user.id}`)
@@ -105,8 +108,8 @@ router.get('/', async (req, res, next) => {
             friendship.requester_id === req.user.id ? friendship.addressee_id : friendship.requester_id
         );
         const [usersById, presenceByUserId] = await Promise.all([
-            fetchUsersByIds(otherUserIds),
-            fetchPresenceByUserIds(otherUserIds)
+            fetchUsersByIds(otherUserIds, db),
+            fetchPresenceByUserIds(otherUserIds, db)
         ]);
 
         const mapped = (relationships || []).map((friendship) =>
@@ -123,21 +126,22 @@ router.get('/', async (req, res, next) => {
     }
 });
 
-router.put('/presence', async (req, res, next) => {
+router.put('/presence', validate(schemas.presence), async (req, res, next) => {
     try {
-        const body = req.body || {};
+        const db = getDb(req);
+        const { details, state, activityType, remainingTasks, todayRemainingTasks, score } = req.validatedBody;
         const payload = {
             user_id: req.user.id,
-            details: String(body.details || '').slice(0, 120),
-            state: String(body.state || '').slice(0, 160),
-            activity_type: String(body.activityType || 'Snowball').slice(0, 40),
-            remaining_tasks: Number.isFinite(Number(body.remainingTasks)) ? Number(body.remainingTasks) : 0,
-            today_remaining_tasks: Number.isFinite(Number(body.todayRemainingTasks)) ? Number(body.todayRemainingTasks) : 0,
-            score: Number.isFinite(Number(body.score)) ? Number(body.score) : 0,
+            details: String(details || '').slice(0, 120),
+            state: String(state || '').slice(0, 160),
+            activity_type: String(activityType || 'Snowball').slice(0, 40),
+            remaining_tasks: Number(remainingTasks || 0),
+            today_remaining_tasks: Number(todayRemainingTasks || 0),
+            score: Number(score || 0),
             updated_at: new Date().toISOString()
         };
 
-        const { data, error } = await supabase
+        const { data, error } = await db
             .from('friend_presence')
             .upsert(payload, { onConflict: 'user_id' })
             .select(PRESENCE_FIELDS)
@@ -152,10 +156,11 @@ router.put('/presence', async (req, res, next) => {
 
 router.get('/:id/messages', requireUUID('id'), async (req, res, next) => {
     try {
-        const friendship = await findAcceptedFriendship(req.user.id, req.params.id);
+        const db = getDb(req);
+        const friendship = await findAcceptedFriendship(req.user.id, req.params.id, db);
         if (!friendship) return res.status(404).json({ error: 'Friendship not found' });
 
-        const { data, error } = await supabase
+        const { data, error } = await db
             .from('friend_messages')
             .select(MESSAGE_FIELDS)
             .eq('friendship_id', friendship.id)
@@ -169,16 +174,15 @@ router.get('/:id/messages', requireUUID('id'), async (req, res, next) => {
     }
 });
 
-router.post('/:id/messages', requireUUID('id'), async (req, res, next) => {
+router.post('/:id/messages', requireUUID('id'), validate(schemas.friendMessage), async (req, res, next) => {
     try {
-        const body = String(req.body?.body || '').trim();
-        if (!body) return res.status(400).json({ error: 'Message cannot be empty' });
-        if (body.length > 1000) return res.status(400).json({ error: 'Message is too long' });
+        const db = getDb(req);
+        const { body } = req.validatedBody;
 
-        const friendship = await findAcceptedFriendship(req.user.id, req.params.id);
+        const friendship = await findAcceptedFriendship(req.user.id, req.params.id, db);
         if (!friendship) return res.status(404).json({ error: 'Friendship not found' });
 
-        const { data, error } = await supabase
+        const { data, error } = await db
             .from('friend_messages')
             .insert([{
                 friendship_id: friendship.id,
@@ -197,24 +201,25 @@ router.post('/:id/messages', requireUUID('id'), async (req, res, next) => {
 
 router.get('/search', async (req, res, next) => {
     try {
+        const db = getDb(req);
         const query = String(req.query.q || '').trim();
         if (query.length < 2) return res.json([]);
 
         const pattern = `%${query.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
         const [byUsername, byEmail, relationships] = await Promise.all([
-            supabase
+            db
                 .from('users')
                 .select(USER_FIELDS)
                 .ilike('username', pattern)
                 .neq('id', req.user.id)
                 .limit(8),
-            supabase
+            db
                 .from('users')
                 .select(USER_FIELDS)
                 .ilike('email', pattern)
                 .neq('id', req.user.id)
                 .limit(8),
-            supabase
+            db
                 .from('friendships')
                 .select(FRIENDSHIP_FIELDS)
                 .or(`requester_id.eq.${req.user.id},addressee_id.eq.${req.user.id}`)
@@ -250,14 +255,14 @@ router.get('/search', async (req, res, next) => {
     }
 });
 
-router.post('/requests', async (req, res, next) => {
+router.post('/requests', validate(schemas.friendRequest), async (req, res, next) => {
     try {
-        const addresseeId = String(req.body?.userId || '').trim();
-        if (!addresseeId) return res.status(400).json({ error: 'Friend user id is required' });
-        if (addresseeId.length > 20) return res.status(400).json({ error: 'Invalid user id' });
+        const db = getDb(req);
+        const { userId } = req.validatedBody;
+        const addresseeId = userId;
         if (addresseeId === req.user.id) return res.status(400).json({ error: 'You cannot add yourself as a friend' });
 
-        const { data: targetUser, error: targetError } = await supabase
+        const { data: targetUser, error: targetError } = await db
             .from('users')
             .select(USER_FIELDS)
             .eq('id', addresseeId)
@@ -265,7 +270,7 @@ router.post('/requests', async (req, res, next) => {
 
         if (targetError || !targetUser) return res.status(404).json({ error: 'User not found' });
 
-        const { data: existing, error: existingError } = await supabase
+        const { data: existing, error: existingError } = await db
             .from('friendships')
             .select(FRIENDSHIP_FIELDS)
             .or(relationQuery(req.user.id, addresseeId))
@@ -282,7 +287,7 @@ router.post('/requests', async (req, res, next) => {
         }
 
         const mutation = existing
-            ? supabase
+            ? db
                 .from('friendships')
                 .update({
                     requester_id: req.user.id,
@@ -293,7 +298,7 @@ router.post('/requests', async (req, res, next) => {
                 .eq('id', existing.id)
                 .select(FRIENDSHIP_FIELDS)
                 .single()
-            : supabase
+            : db
                 .from('friendships')
                 .insert([{
                     requester_id: req.user.id,
@@ -316,7 +321,8 @@ router.post('/requests', async (req, res, next) => {
 
 router.post('/requests/:id/accept', requireUUID('id'), async (req, res, next) => {
     try {
-        const { data: friendship, error } = await supabase
+        const db = getDb(req);
+        const { data: friendship, error } = await db
             .from('friendships')
             .update({
                 status: 'accepted',
@@ -330,7 +336,7 @@ router.post('/requests/:id/accept', requireUUID('id'), async (req, res, next) =>
 
         if (error || !friendship) return res.status(404).json({ error: 'Friend request not found' });
 
-        const usersById = await fetchUsersByIds([friendship.requester_id]);
+        const usersById = await fetchUsersByIds([friendship.requester_id], db);
         res.json(mapFriendship(friendship, req.user.id, usersById));
     } catch (err) {
         next(err);
@@ -339,7 +345,8 @@ router.post('/requests/:id/accept', requireUUID('id'), async (req, res, next) =>
 
 router.post('/requests/:id/decline', requireUUID('id'), async (req, res, next) => {
     try {
-        const { error, count } = await supabase
+        const db = getDb(req);
+        const { error, count } = await db
             .from('friendships')
             .delete({ count: 'exact' })
             .eq('id', req.params.id)
@@ -357,7 +364,8 @@ router.post('/requests/:id/decline', requireUUID('id'), async (req, res, next) =
 
 router.delete('/:id', requireUUID('id'), async (req, res, next) => {
     try {
-        const { error, count } = await supabase
+        const db = getDb(req);
+        const { error, count } = await db
             .from('friendships')
             .delete({ count: 'exact' })
             .eq('id', req.params.id)
