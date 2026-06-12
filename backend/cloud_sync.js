@@ -3,8 +3,8 @@ import { open } from 'sqlite';
 import { createClient } from '@supabase/supabase-js';
 import 'dotenv/config';
 
-// Migration Config
-const TARGET_EMAIL = 'justhorrid12@gmail.com';
+// Migration Config — set CLOUD_SYNC_EMAIL in your .env
+const TARGET_EMAIL = process.env.CLOUD_SYNC_EMAIL;
 const DAYS_TO_SYNC = 3; // Past 3 days
 
 const supabaseUrl = process.env.SUPABASE_URL;

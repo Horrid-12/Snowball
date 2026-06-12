@@ -15,6 +15,7 @@ frontend/.env.*
 dist/
 build/
 coverage/
+.vercel_build_output/
 frontend/dist/
 frontend/build/
 backend/dist/
@@ -48,25 +49,53 @@ frontend/~/
 frontend/src/index.css.tmp
 analysis.md
 Claude.Md
+(user)security_analysis.md
+SECURITY_ANALYSIS.md
+scripts/
+release-all.bat
+Analysis.md
+
 
 # Local databases and generated data
 backend/database.sqlite
 backend/*.sqlite
 backend/*.sqlite-shm
 backend/*.sqlite-wal
+backend/uploads/
 
 # Capacitor / Android generated files
 frontend/android/.gradle/
+frontend/android/.kotlin/
 frontend/android/.idea/
 frontend/android/local.properties
 frontend/android/captures/
 frontend/android/**/build/
+frontend/android/app/release/
+frontend/android/app/debug/
+frontend/android/app/profile/
 frontend/android/.cxx/
 frontend/android/.externalNativeBuild/
 
 # Tauri / Rust generated files
 frontend/src-tauri/target/
+frontend/src-tauri/gen/
+frontend/src-tauri/.cargo/
+frontend/src-tauri/.tauri/
 
 # Misc package manager files
 .npm/
 .pnpm-store/
+npm-cache/
+
+# Openclaw
+.opencode/
+.opencode.json
+.opencode.yml
+.opencode.config.*
+
+ARCHITECTURE.md
+AGENTS.md
+Taskflow.md
+
+# Dependency vulnerability reports
+alerts.json

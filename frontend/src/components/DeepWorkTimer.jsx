@@ -1,124 +1,393 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, RotateCcw, Settings, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
-import { API_URL } from '../config.js';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { BookOpen, ChevronDown, ChevronUp, Clock, Pause, Play, RotateCcw } from 'lucide-react';
+import { apiFetch } from '../utils/apiClient.js';
+import { queueMutation } from '../db/db';
+import { getTagColor, loadTagColors, parseTags } from '../utils/tagColors.js';
 
-const DeepWorkTimer = () => {
-    const [minutes, setMinutes] = useState(25);
-    const [seconds, setSeconds] = useState(0);
-    const [isActive, setIsActive] = useState(false);
-    const [mode, setMode] = useState('work'); // 'work', 'short', 'long'
-    const [showSettings, setShowSettings] = useState(false);
+const SESSIONS_KEY = 'snowball_study_timer_sessions';
+const ACTIVE_KEY = 'snowball_study_timer_active';
+const EXPANDED_KEY = 'snowball_study_timer_expanded';
+
+const stableStringify = (value) => JSON.stringify(value || null);
+
+const normalizeSessions = (value) => (
+    Array.isArray(value)
+        ? value.filter((session) => session?.id && session?.subject && session?.startedAt && session?.endedAt).slice(-500)
+        : []
+);
+
+const normalizeActiveSession = (value) => (
+    value?.subject && value?.startedAt
+        ? { subject: value.subject, startedAt: value.startedAt }
+        : null
+);
+
+const mergeSessions = (localSessions = [], remoteSessions = []) => {
+    const byId = new Map();
+    [...localSessions, ...remoteSessions].forEach((session) => {
+        if (!session?.id) return;
+        byId.set(session.id, session);
+    });
+    return [...byId.values()]
+        .sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime())
+        .slice(-500);
+};
+
+const chooseActiveSession = (localActive, remoteActive) => {
+    const local = normalizeActiveSession(localActive);
+    const remote = normalizeActiveSession(remoteActive);
+    if (!local) return remote;
+    if (!remote) return local;
+    return new Date(remote.startedAt).getTime() > new Date(local.startedAt).getTime() ? remote : local;
+};
+
+const buildTimerState = (sessions, activeSession) => ({
+    sessions: normalizeSessions(sessions),
+    activeSession: normalizeActiveSession(activeSession),
+    updatedAt: new Date().toISOString()
+});
+
+const safeJson = (value, fallback) => {
+    try {
+        return value ? JSON.parse(value) : fallback;
+    } catch (_error) {
+        return fallback;
+    }
+};
+
+const getStudyDayStart = (date = new Date(), offsetHours = 0) => {
+    const start = new Date(date);
+    const normalizedOffset = Number.isFinite(Number(offsetHours)) ? Number(offsetHours) : 0;
+    start.setHours(normalizedOffset, 0, 0, 0);
+    if (date.getTime() < start.getTime()) {
+        start.setDate(start.getDate() - 1);
+    }
+    return start;
+};
+
+const getNextStudyDayStart = (date = new Date(), offsetHours = 0) => {
+    const next = getStudyDayStart(date, offsetHours);
+    next.setDate(next.getDate() + 1);
+    return next;
+};
+
+const getDayKey = (date = new Date(), offsetHours = 0) => {
+    const start = getStudyDayStart(date, offsetHours);
+    return [
+        start.getFullYear(),
+        String(start.getMonth() + 1).padStart(2, '0'),
+        String(start.getDate()).padStart(2, '0')
+    ].join('-');
+};
+
+const getSessionDurationForDay = (session, dayStart, dayEnd) => {
+    const start = new Date(session.startedAt).getTime();
+    const end = new Date(session.endedAt).getTime();
+    const overlapStart = Math.max(start, dayStart.getTime());
+    const overlapEnd = Math.min(end, dayEnd.getTime());
+    return Math.max(0, overlapEnd - overlapStart);
+};
+
+const formatClock = (durationMs) => {
+    const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
+const formatDuration = (durationMs) => {
+    const totalMinutes = Math.max(0, Math.floor(durationMs / 60000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours <= 0) return `${minutes}m`;
+    if (minutes <= 0) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
+};
+
+const buildSubjectsFromTasks = (tasks = []) => {
+    const subjects = tasks
+        .flatMap((task) => parseTags(task?.tags || ''))
+        .filter(Boolean);
+    return [...new Set(subjects)].sort((a, b) => a.localeCompare(b));
+};
+
+const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
+    const [now, setNow] = useState(Date.now());
+    const isApplyingRemoteRef = useRef(false);
+    const hasLoadedRemoteRef = useRef(false);
+    const syncTimerRef = useRef(null);
+    const syncReqSeqRef = useRef(0);
+    const lastSyncedStateRef = useRef('');
+    const [tagColors, setTagColors] = useState(() => loadTagColors());
     const [isExpanded, setIsExpanded] = useState(() => {
-        const saved = localStorage.getItem('snowball_deep_work_expanded');
-        return saved !== null ? JSON.parse(saved) : true;
+        const saved = localStorage.getItem(EXPANDED_KEY);
+        return saved !== null ? Boolean(safeJson(saved, true)) : true;
+    });
+    const [sessions, setSessions] = useState(() => {
+        const saved = safeJson(localStorage.getItem(SESSIONS_KEY), []);
+        return Array.isArray(saved) ? saved : [];
+    });
+    const [activeSession, setActiveSession] = useState(() => {
+        const saved = safeJson(localStorage.getItem(ACTIVE_KEY), null);
+        return saved?.subject && saved?.startedAt ? saved : null;
     });
 
+    const storedSubjects = useMemo(() => Object.keys(tagColors), [tagColors]);
+    const taskSubjects = useMemo(() => buildSubjectsFromTasks(tasks), [tasks]);
+    const subjects = useMemo(() => {
+        const next = [...new Set([...taskSubjects, ...storedSubjects])].sort((a, b) => a.localeCompare(b));
+        if (activeSession?.subject && !next.includes(activeSession.subject)) {
+            next.unshift(activeSession.subject);
+        }
+        return next.length > 0 ? next : ['Study'];
+    }, [activeSession?.subject, storedSubjects, taskSubjects]);
+    const [selectedSubject, setSelectedSubject] = useState(() => subjects[0] || 'Study');
+
     useEffect(() => {
-        localStorage.setItem('snowball_deep_work_expanded', JSON.stringify(isExpanded));
+        if (!subjects.includes(selectedSubject)) {
+            setSelectedSubject(subjects[0] || 'Study');
+        }
+    }, [selectedSubject, subjects]);
+
+    useEffect(() => {
+        const refreshTagColors = () => setTagColors(loadTagColors());
+        window.addEventListener('snowball-tag-colors-changed', refreshTagColors);
+        return () => window.removeEventListener('snowball-tag-colors-changed', refreshTagColors);
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem(EXPANDED_KEY, JSON.stringify(isExpanded));
     }, [isExpanded]);
 
-    const [settings, setSettings] = useState(() => {
-        const saved = localStorage.getItem('snowball_timer_settings');
-        if (saved) {
-            try { return JSON.parse(saved); } catch (e) { }
-        }
-        return { work: 25, short: 5, long: 15 };
-    });
-
-    const timerRef = useRef(null);
-
-    // Sync active minutes when settings load or mode changes (if not active)
     useEffect(() => {
-        if (!isActive) {
-            setMinutes(settings[mode]);
-        }
-    }, [settings, mode]);
+        localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions.slice(-500)));
+        window.dispatchEvent(new Event('snowball-study-sessions-changed'));
+    }, [sessions]);
 
     useEffect(() => {
-        if (isActive) {
-            timerRef.current = setInterval(() => {
-                if (seconds > 0) {
-                    setSeconds(seconds - 1);
-                } else if (minutes > 0) {
-                    setMinutes(minutes - 1);
-                    setSeconds(59);
-                } else {
-                    completeSession();
+        if (activeSession) {
+            localStorage.setItem(ACTIVE_KEY, JSON.stringify(activeSession));
+        } else {
+            localStorage.removeItem(ACTIVE_KEY);
+        }
+        window.dispatchEvent(new Event('snowball-study-sessions-changed'));
+    }, [activeSession]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadRemoteTimerState = async () => {
+            try {
+                const response = await apiFetch('/api/auth/me');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const profile = await response.json();
+                const remoteState = profile?.study_timer_state || {};
+                const remoteSessions = normalizeSessions(remoteState.sessions);
+                const remoteActive = normalizeActiveSession(remoteState.activeSession);
+
+                if (cancelled) return;
+
+                isApplyingRemoteRef.current = true;
+                setSessions((currentSessions) => mergeSessions(currentSessions, remoteSessions));
+                setActiveSession((currentActive) => chooseActiveSession(currentActive, remoteActive));
+            } catch (error) {
+                console.warn('Failed to load synced study timer state', error);
+            } finally {
+                window.setTimeout(() => {
+                    isApplyingRemoteRef.current = false;
+                    hasLoadedRemoteRef.current = true;
+                }, 0);
+            }
+        };
+
+        loadRemoteTimerState();
+        return () => { cancelled = true; };
+    }, []);
+
+    useEffect(() => {
+        if (!hasLoadedRemoteRef.current || isApplyingRemoteRef.current) return;
+
+        const nextState = buildTimerState(sessions, activeSession);
+        const serialized = stableStringify({
+            sessions: nextState.sessions,
+            activeSession: nextState.activeSession
+        });
+        if (serialized === lastSyncedStateRef.current) return;
+
+        if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
+        syncReqSeqRef.current += 1;
+        const localSeq = syncReqSeqRef.current;
+        syncTimerRef.current = window.setTimeout(async () => {
+            try {
+                const response = await apiFetch('/api/auth/me', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ study_timer_state: nextState })
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                if (syncReqSeqRef.current === localSeq) {
+                    lastSyncedStateRef.current = serialized;
                 }
-            }, 1000);
-        } else {
-            clearInterval(timerRef.current);
-        }
-        return () => clearInterval(timerRef.current);
-    }, [isActive, minutes, seconds]);
+            } catch (error) {
+                console.warn('Failed to sync study timer state', error);
+                if (syncReqSeqRef.current === localSeq) {
+                    await queueMutation('timer_state_update', 'PUT', '/api/auth/me', { study_timer_state: nextState });
+                }
+            }
+        }, 150);
 
-    const completeSession = () => {
-        setIsActive(false);
-        if (mode === 'work') {
-            logMomentum();
-            alert('Great work! Time for a break.');
-            setMode('short');
-            setMinutes(settings.short);
-        } else {
-            alert('Break over! Back to deep work?');
-            setMode('work');
-            setMinutes(settings.work);
-        }
-        setSeconds(0);
-    };
+        return () => {
+            if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
+        };
+    }, [activeSession, sessions]);
 
-    const logMomentum = async () => {
+    useEffect(() => {
+        const interval = window.setInterval(() => setNow(Date.now()), 1000);
+        return () => window.clearInterval(interval);
+    }, []);
+
+    useEffect(() => {
+        if (!activeSession) return;
+
+        const dayStart = getStudyDayStart(new Date(now), resetOffsetHours);
+        const startedAt = new Date(activeSession.startedAt);
+        if (startedAt.getTime() >= dayStart.getTime()) return;
+
+        const splitDuration = dayStart.getTime() - startedAt.getTime();
+        if (splitDuration > 0) {
+            setSessions((prev) => [
+                ...prev,
+                {
+                    id: `${activeSession.startedAt}_${activeSession.subject}_split`,
+                    subject: activeSession.subject,
+                    startedAt: activeSession.startedAt,
+                    endedAt: dayStart.toISOString(),
+                    durationMs: splitDuration
+                }
+            ]);
+        }
+        setActiveSession({
+            subject: activeSession.subject,
+            startedAt: dayStart.toISOString()
+        });
+    }, [activeSession, now, resetOffsetHours]);
+
+    const dayStart = useMemo(() => getStudyDayStart(new Date(now), resetOffsetHours), [now, resetOffsetHours]);
+    const dayEnd = useMemo(() => getNextStudyDayStart(new Date(now), resetOffsetHours), [now, resetOffsetHours]);
+    const dayKey = useMemo(() => getDayKey(new Date(now), resetOffsetHours), [now, resetOffsetHours]);
+
+    const totals = useMemo(() => {
+        const bySubject = {};
+        sessions.forEach((session) => {
+            const duration = getSessionDurationForDay(session, dayStart, dayEnd);
+            if (duration <= 0) return;
+            bySubject[session.subject] = (bySubject[session.subject] || 0) + duration;
+        });
+
+        if (activeSession) {
+            const startedAt = new Date(activeSession.startedAt).getTime();
+            const duration = Math.max(0, Math.min(now, dayEnd.getTime()) - Math.max(startedAt, dayStart.getTime()));
+            bySubject[activeSession.subject] = (bySubject[activeSession.subject] || 0) + duration;
+        }
+
+        const total = Object.values(bySubject).reduce((sum, value) => sum + value, 0);
+        return { total, bySubject };
+    }, [activeSession, dayEnd, dayStart, now, sessions]);
+
+    const activeElapsed = activeSession
+        ? Math.max(0, now - new Date(activeSession.startedAt).getTime())
+        : 0;
+    const totalStudyMinutes = Math.floor(totals.total / 60000);
+    const activeStudyMinutes = Math.floor(activeElapsed / 60000);
+
+    useEffect(() => {
+        window.dispatchEvent(new CustomEvent('snowball-study-presence', {
+            detail: {
+                isActive: Boolean(activeSession),
+                subject: activeSession?.subject || selectedSubject,
+                totalMinutes: totalStudyMinutes,
+                activeMinutes: activeStudyMinutes
+            }
+        }));
+    }, [activeSession, activeSession?.subject, activeStudyMinutes, selectedSubject, totalStudyMinutes]);
+
+    const logMomentum = async (durationMs) => {
+        if (durationMs < 60000) return;
         try {
-            const token = localStorage.getItem('snowball_token');
-            await fetch(`${API_URL}/api/activity/log`, {
+            await apiFetch('/api/activity/log', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ type: 'DEEP_WORK', score: 2.0 })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'DEEP_WORK',
+                    score: Math.max(0.5, Math.min(6, durationMs / 1800000))
+                })
             });
-        } catch (err) {
-            console.error('Failed to log momentum', err);
+        } catch (error) {
+            console.error('Failed to log study momentum', error);
         }
     };
 
-    const toggleTimer = () => setIsActive(!isActive);
-
-    const resetTimer = () => {
-        setIsActive(false);
-        setMinutes(settings[mode]);
-        setSeconds(0);
+    const startTimer = () => {
+        setActiveSession({
+            subject: selectedSubject,
+            startedAt: new Date().toISOString()
+        });
     };
 
-    const handleSettingChange = (key, value) => {
-        setSettings(prev => ({ ...prev, [key]: parseInt(value) || 1 }));
-    };
+    const stopTimer = async () => {
+        if (!activeSession) return;
+        const endedAt = new Date();
+        const startedAt = new Date(activeSession.startedAt);
+        const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
 
-    const saveSettings = () => {
-        setShowSettings(false);
-        localStorage.setItem('snowball_timer_settings', JSON.stringify(settings));
-        if (!isActive) {
-            setMinutes(settings[mode]);
-            setSeconds(0);
+        if (durationMs > 0) {
+            setSessions((prev) => [
+                ...prev,
+                {
+                    id: `${activeSession.startedAt}_${endedAt.toISOString()}`,
+                    subject: activeSession.subject,
+                    startedAt: activeSession.startedAt,
+                    endedAt: endedAt.toISOString(),
+                    durationMs
+                }
+            ]);
+            logMomentum(durationMs);
         }
+
+        setActiveSession(null);
     };
+
+    const resetToday = () => {
+        const confirmed = window.confirm('Reset today\'s study timer totals?');
+        if (!confirmed) return;
+
+        setActiveSession(null);
+        setSessions((prev) => prev.filter((session) => (
+            getSessionDurationForDay(session, dayStart, dayEnd) <= 0
+        )));
+    };
+
+    const topSubjects = subjects
+        .map((subject) => ({ subject, duration: totals.bySubject[subject] || 0 }))
+        .filter((entry) => entry.duration > 0 || entry.subject === selectedSubject || entry.subject === activeSession?.subject)
+        .sort((a, b) => b.duration - a.duration);
 
     return (
         <div className="timer-card card-container" style={{
             background: 'var(--bg-secondary)',
             borderRadius: 'var(--radius)',
             border: '1px solid var(--border-color)',
-            display: 'flex', flexDirection: 'column',
+            display: 'flex',
+            flexDirection: 'column',
             position: 'relative',
             boxSizing: 'border-box',
             width: '100%',
             overflow: 'hidden'
         }}>
             <div
-                onClick={(e) => {
-                    // Prevent toggle if clicking settings
-                    if (e.target.closest('button')) return;
+                onClick={(event) => {
+                    if (event.target.closest('button, select')) return;
                     setIsExpanded(!isExpanded);
                 }}
                 style={{
@@ -131,94 +400,171 @@ const DeepWorkTimer = () => {
                     borderBottom: isExpanded ? '1px solid var(--border-color)' : 'none'
                 }}
             >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        {mode === 'work' ? 'Deep Work' : 'Break'}
-                    </h3>
-                    {!isExpanded && (isActive || minutes > 0) && (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--accent-color)', fontWeight: 'bold' }}>
-                            {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
-                        </span>
-                    )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', minWidth: 0 }}>
+                    <BookOpen size={16} style={{ color: 'var(--accent-color)', flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
+                        <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            Study Timer
+                        </h3>
+                        {!isExpanded && (
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {formatDuration(totals.total)} today
+                                {activeSession ? ` · ${activeSession.subject}` : ''}
+                            </div>
+                        )}
+                    </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <button onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); setIsExpanded(true); }} style={{ color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.7, padding: '0.2rem', display: 'flex', alignItems: 'center' }}>
-                        <Settings size={14} />
-                    </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <span style={{ fontSize: '0.72rem', color: activeSession ? 'var(--accent-color)' : 'var(--text-secondary)', fontWeight: 700 }}>
+                        {activeSession ? formatClock(activeElapsed) : formatDuration(totals.total)}
+                    </span>
                     {isExpanded ? <ChevronUp size={16} style={{ color: 'var(--text-secondary)' }} /> : <ChevronDown size={16} style={{ color: 'var(--text-secondary)' }} />}
                 </div>
             </div>
 
             {isExpanded && (
-                <div style={{ padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', minHeight: '180px', position: 'relative' }}>
-            {showSettings ? (
-                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {['work', 'short', 'long'].map(key => (
-                        <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.8rem', textTransform: 'capitalize' }}>{key} (min)</span>
-                            <input
-                                type="number"
-                                value={settings[key]}
-                                onChange={(e) => handleSettingChange(key, e.target.value)}
-                                style={{ width: '50px', background: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '4px', textAlign: 'center', padding: '2px' }}
-                            />
+                <div style={{ padding: '0.9rem 1rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'center' }}>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', minWidth: 0 }}>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                Subject
+                            </span>
+                            <select
+                                value={activeSession?.subject || selectedSubject}
+                                disabled={Boolean(activeSession)}
+                                onChange={(event) => setSelectedSubject(event.target.value)}
+                                style={{
+                                    width: '100%',
+                                    minWidth: 0,
+                                    padding: '0.65rem 0.7rem',
+                                    borderRadius: '0.55rem',
+                                    border: '1px solid var(--border-color)',
+                                    background: 'var(--bg-card)',
+                                    color: 'var(--text-primary)',
+                                    fontSize: '0.88rem',
+                                    fontWeight: 600
+                                }}
+                            >
+                                {subjects.map((subject) => (
+                                    <option key={subject} value={subject}>{subject}</option>
+                                ))}
+                            </select>
+                        </label>
+
+                        <button
+                            onClick={activeSession ? stopTimer : startTimer}
+                            style={{
+                                alignSelf: 'end',
+                                width: '48px',
+                                height: '48px',
+                                borderRadius: '999px',
+                                border: '1px solid var(--accent-color)',
+                                background: activeSession ? 'var(--bg-card)' : 'var(--accent-color)',
+                                color: activeSession ? 'var(--accent-color)' : '#ffffff',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                boxShadow: '0 8px 18px rgba(0,0,0,0.16)'
+                            }}
+                            title={activeSession ? 'Pause study session' : 'Start study session'}
+                        >
+                            {activeSession ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" style={{ marginLeft: '2px' }} />}
+                        </button>
+                    </div>
+
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '0.65rem'
+                    }}>
+                        <div style={{
+                            padding: '0.75rem',
+                            borderRadius: '0.75rem',
+                            background: 'var(--bg-card)',
+                            border: '1px solid var(--border-color)'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+                                <Clock size={13} /> Today
+                            </div>
+                            <div style={{ fontSize: '1.45rem', fontWeight: 800, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                                {formatClock(totals.total)}
+                            </div>
                         </div>
-                    ))}
-                    <button onClick={saveSettings} style={{ background: 'var(--accent-color)', color: 'white', padding: '0.5rem', borderRadius: '0.5rem', fontSize: '0.8rem', marginTop: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Save Settings</button>
-                </div>
-            ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem' }}>
-                    <div style={{ position: 'relative', width: '120px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <svg width="120" height="120" style={{ transform: 'rotate(-90deg)' }}>
-                            <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
-                            <circle
-                                cx="60" cy="60" r="54" fill="none" stroke="var(--accent-color)" strokeWidth="6"
-                                strokeDasharray="339.29"
-                                strokeDashoffset={339.29 - (339.29 * (minutes * 60 + seconds)) / (settings[mode] * 60)}
-                                style={{ transition: 'stroke-dashoffset 1s linear' }}
-                            />
-                        </svg>
-                        <div style={{ position: 'absolute', fontSize: '2rem', fontWeight: 'bold', fontFamily: 'monospace', color: 'var(--text-primary)', letterSpacing: '-1px' }}>
-                            {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
+                        <div style={{
+                            padding: '0.75rem',
+                            borderRadius: '0.75rem',
+                            background: 'var(--bg-card)',
+                            border: '1px solid var(--border-color)'
+                        }}>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+                                Current
+                            </div>
+                            <div style={{ fontSize: '1.45rem', fontWeight: 800, color: activeSession ? 'var(--accent-color)' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                                {formatClock(activeElapsed)}
+                            </div>
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-                        <div style={{ display: 'flex', gap: '0.25rem' }}>
-                            {[-10, -5, 5, 10].map(val => (
-                                <button
-                                    key={val}
-                                    onClick={() => {
-                                        const totalSecs = (minutes * 60 + seconds) + (val * 60);
-                                        if (totalSecs > 0) {
-                                            setMinutes(Math.floor(totalSecs / 60));
-                                            setSeconds(totalSecs % 60);
-                                        }
-                                    }}
-                                    style={{
-                                        fontSize: '0.65rem',
-                                        padding: '0.2rem 0.4rem',
-                                        borderRadius: '4px',
-                                        border: '1px solid var(--border-color)',
-                                        background: 'var(--bg-card)',
-                                        color: 'var(--text-secondary)',
-                                        cursor: 'pointer',
-                                        fontWeight: 'bold'
-                                    }}
-                                >
-                                    {val > 0 ? `+${val}` : val}
-                                </button>
-                            ))}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                Subject Totals
+                            </span>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                                Day {dayKey} starts {String(resetOffsetHours).padStart(2, '0')}:00
+                            </span>
                         </div>
-                        <div style={{ width: '1px', height: '24px', background: 'var(--border-color)', margin: '0 0.25rem' }} />
-                        <button onClick={resetTimer} style={{ color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }} title="Reset"><RotateCcw size={18} /></button>
-                        <button onClick={toggleTimer} style={{ background: isActive ? 'var(--text-secondary)' : 'var(--accent-color)', color: 'white', border: 'none', borderRadius: '50%', width: '48px', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
-                            {isActive ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" style={{ marginLeft: '4px' }} />}
-                        </button>
+
+                        {topSubjects.slice(0, 6).map(({ subject, duration }) => {
+                            const color = getTagColor(subject, tagColors);
+                            const width = totals.total > 0 ? `${Math.max(4, (duration / totals.total) * 100)}%` : '4%';
+                            return (
+                                <div key={subject} style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', fontSize: '0.8rem' }}>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', minWidth: 0, color: 'var(--text-primary)', fontWeight: 650 }}>
+                                            <span style={{ width: '10px', height: '10px', borderRadius: '999px', background: color, flexShrink: 0 }} />
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subject}</span>
+                                        </span>
+                                        <span style={{ color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                                            {formatDuration(duration)}
+                                        </span>
+                                    </div>
+                                    <div style={{ height: '6px', borderRadius: '999px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                                        <div style={{ width, height: '100%', borderRadius: '999px', background: color }} />
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        {topSubjects.length === 0 && (
+                            <div style={{ padding: '0.85rem', borderRadius: '0.75rem', background: 'var(--bg-card)', color: 'var(--text-secondary)', fontSize: '0.8rem', textAlign: 'center' }}>
+                                Pick a task tag as your subject and start studying.
+                            </div>
+                        )}
                     </div>
+
+                    <button
+                        onClick={resetToday}
+                        style={{
+                            alignSelf: 'flex-start',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.45rem 0.65rem',
+                            borderRadius: '0.55rem',
+                            border: '1px solid var(--border-color)',
+                            background: 'transparent',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            fontSize: '0.78rem',
+                            fontWeight: 650
+                        }}
+                    >
+                        <RotateCcw size={14} />
+                        Reset Today
+                    </button>
                 </div>
-            )}
-            </div>
             )}
         </div>
     );

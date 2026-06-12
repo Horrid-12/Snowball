@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { API_URL } from '../config.js';
+import { getApiErrorMessage } from '../utils/api.js';
+import { apiFetch, setAuthToken, persistSession } from '../utils/apiClient.js';
 
 const AuthModal = ({ onLogin }) => {
     const [isRegister, setIsRegister] = useState(false);
@@ -14,7 +15,7 @@ const AuthModal = ({ onLogin }) => {
         const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
 
         try {
-            const response = await fetch(`${API_URL}${endpoint}`, {
+            const response = await apiFetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)
@@ -22,13 +23,26 @@ const AuthModal = ({ onLogin }) => {
             const data = await response.json();
 
             if (response.ok) {
-                localStorage.setItem('snowball_token', data.token);
+                if (data.token) {
+                    setAuthToken(data.token);
+                    persistSession();
+                }
                 onLogin(data.user);
             } else {
-                setError(data.error || 'Authentication failed');
+                setError(getApiErrorMessage(data, 'Authentication failed'));
             }
         } catch (err) {
-            setError('Could not connect to server');
+            const msg = typeof err === 'string' ? err : (err.message || (err.toString && err.toString() !== '[object Object]' ? err.toString() : '') || '');
+            if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Network')) {
+                setError('Could not connect to server');
+            } else if (msg.includes('abort')) {
+                setError('Request timed out');
+            } else if (!msg) {
+                setError('Could not connect to server (Unknown)');
+            } else {
+                setError(`Connection error: ${msg}`);
+            }
+            console.error('[AuthModal] Login error:', err);
         } finally {
             setLoading(false);
         }

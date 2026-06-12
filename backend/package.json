@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",
-    "axios": "^1.13.6",
+    "axios": "^1.17.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
@@ -28,6 +28,14 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
+  },
+  "overrides": {
+    "ip-address": "10.1.1",
+    "path-to-regexp": "0.1.13",
+    "picomatch": "2.3.2",
+    "qs": "6.15.2",
+    "undici": "7.24.0",
+    "ws": "8.20.1"
   },
   "keywords": [],
   "author": "",

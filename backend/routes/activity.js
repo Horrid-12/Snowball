@@ -80,12 +80,15 @@ router.get('/stats', async (req, res, next) => {
         // Total tasks completed (fully allocated)
         const { data: tasks, error: tasksError } = await supabase
             .from('tasks')
-            .select('id')
-            .eq('user_id', req.user.id)
-            .filter('tasks_completed', 'gte', 'tasks_allocated')
-            .filter('tasks_allocated', 'gt', 0);
+            .select('tasks_completed, tasks_allocated')
+            .eq('user_id', req.user.id);
 
         if (tasksError) throw tasksError;
+        const completedTasks = (tasks || []).filter((task) => {
+            const allocated = Number(task?.tasks_allocated || 0);
+            const completed = Number(task?.tasks_completed || 0);
+            return allocated > 0 && completed >= allocated;
+        }).length;
 
         // Total habit logs
         const { data: userHabits, error: fetchHabitsError } = await supabase
@@ -119,7 +122,7 @@ router.get('/stats', async (req, res, next) => {
         const totalScore = logs.reduce((sum, log) => sum + (log.score || 0), 0);
 
         res.json({
-            completedTasks: tasks.length,
+            completedTasks,
             completedHabits: completedHabits || 0,
             totalActivityScore: totalScore
         });

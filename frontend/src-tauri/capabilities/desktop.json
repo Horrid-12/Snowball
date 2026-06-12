@@ -8,5 +8,23 @@
   "windows": [
     "main"
   ],
-  "permissions": []
+  "permissions": [
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-message",
+    "fs:default",
+    "notification:default",
+    "process:default",
+    "updater:default",
+    "http:default",
+    {
+      "identifier": "http:allow-fetch",
+      "allow": [
+        { "url": "https://*" },
+        { "url": "http://127.0.0.1:3000" },
+        { "url": "http://10.0.2.2:3000" }
+      ]
+    }
+  ]
 }

@@ -1,18 +1,45 @@
 import express from 'express';
 import axios from 'axios';
 import querystring from 'querystring';
+import jwt from 'jsonwebtoken';
 import { supabase } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 
+const getEnv = (name) => {
+    const upper = name.toUpperCase();
+    for (const key of Object.keys(process.env)) {
+        if (key.toUpperCase() === upper) return process.env[key];
+    }
+    return undefined;
+};
 const router = express.Router();
 
-const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
-const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
-const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI;
+const CLIENT_ID = getEnv('SPOTIFY_CLIENT_ID');
+const CLIENT_SECRET = getEnv('SPOTIFY_CLIENT_SECRET');
+const REDIRECT_URI = getEnv('SPOTIFY_REDIRECT_URI');
  
 // Aggressive Rate Limit Cache 🛡️📉
 const nowPlayingCache = new Map(); // userId -> { data, timestamp }
 const CACHE_DURATION_MS = 2000; // 2 seconds (was 15s) for snappier UI 📉⚡
+
+const createSpotifyState = (userId) => jwt.sign(
+    {
+        userId,
+        purpose: 'spotify_oauth'
+    },
+    getEnv('JWT_SECRET'),
+    { expiresIn: '10m' }
+);
+
+const parseSpotifyState = (stateToken) => {
+    const decoded = jwt.verify(stateToken, getEnv('JWT_SECRET'), { algorithms: ['HS256'] });
+
+    if (decoded.purpose !== 'spotify_oauth' || !decoded.userId) {
+        throw new Error('Invalid Spotify OAuth state');
+    }
+
+    return decoded.userId;
+};
  
 const getTokens = async (userId) => {
     const { data, error } = await supabase
@@ -22,6 +49,36 @@ const getTokens = async (userId) => {
         .single();
     if (error) return null;
     return data;
+};
+
+const getSpotifyCredentials = async (userId) => {
+    const { data, error } = await supabase
+        .from('spotify_credentials')
+        .select('client_id, client_secret')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (error && error.code !== '42P01') {
+        console.warn(`[Spotify] Failed to read personal credentials for user ${userId}:`, error.message);
+    }
+
+    if (data?.client_id && data?.client_secret) {
+        return {
+            clientId: data.client_id,
+            clientSecret: data.client_secret,
+            source: 'personal'
+        };
+    }
+
+    if (CLIENT_ID && CLIENT_SECRET) {
+        return {
+            clientId: CLIENT_ID,
+            clientSecret: CLIENT_SECRET,
+            source: 'shared'
+        };
+    }
+
+    return null;
 };
 
 const updateTokens = async (userId, tokens) => {
@@ -45,6 +102,8 @@ const updateTokens = async (userId, tokens) => {
 const refreshAccessToken = async (userId) => {
     const tokens = await getTokens(userId);
     if (!tokens || !tokens.refresh_token) return null;
+    const credentials = await getSpotifyCredentials(userId);
+    if (!credentials) return null;
 
     try {
         const response = await axios({
@@ -56,7 +115,7 @@ const refreshAccessToken = async (userId) => {
             }),
             headers: {
                 'content-type': 'application/x-www-form-urlencoded',
-                Authorization: 'Basic ' + (Buffer.from(CLIENT_ID + ':' + CLIENT_SECRET).toString('base64'))
+                Authorization: 'Basic ' + (Buffer.from(credentials.clientId + ':' + credentials.clientSecret).toString('base64'))
             }
         });
 
@@ -73,11 +132,117 @@ const refreshAccessToken = async (userId) => {
     }
 };
 
-router.get('/auth', requireAuth, (req, res) => {
+router.get('/status', requireAuth, async (req, res, next) => {
+    try {
+        const [tokens, credentials] = await Promise.all([
+            getTokens(req.user.id),
+            getSpotifyCredentials(req.user.id)
+        ]);
+
+        res.json({
+            connected: Boolean(tokens?.refresh_token),
+            credentialSource: credentials?.source || 'missing',
+            hasPersonalCredentials: credentials?.source === 'personal'
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get('/credentials', requireAuth, async (req, res, next) => {
+    try {
+        const { data, error } = await supabase
+            .from('spotify_credentials')
+            .select('client_id, updated_at')
+            .eq('user_id', req.user.id)
+            .maybeSingle();
+
+        if (error) {
+            if (error.code === '42P01') {
+                return res.json({
+                    clientId: '',
+                    hasClientSecret: false,
+                    updatedAt: null,
+                    redirectUri: REDIRECT_URI || '',
+                    missingTable: true
+                });
+            }
+            throw error;
+        }
+
+        res.json({
+            clientId: data?.client_id || '',
+            hasClientSecret: Boolean(data?.client_id),
+            updatedAt: data?.updated_at || null,
+            redirectUri: REDIRECT_URI || ''
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.put('/credentials', requireAuth, async (req, res, next) => {
+    try {
+        const clientId = String(req.body?.clientId || '').trim();
+        const clientSecret = String(req.body?.clientSecret || '').trim();
+
+        if (!clientId || !clientSecret) {
+            return res.status(400).json({ error: 'Spotify Client ID and Client Secret are required' });
+        }
+
+        const { data, error } = await supabase
+            .from('spotify_credentials')
+            .upsert({
+                user_id: req.user.id,
+                client_id: clientId,
+                client_secret: clientSecret,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id' })
+            .select('client_id, updated_at')
+            .single();
+
+        if (error) {
+            if (error.code === '42P01') {
+                return res.status(400).json({
+                    error: 'Run backend/spotify_credentials_migration.sql in Supabase before saving Spotify credentials.'
+                });
+            }
+            throw error;
+        }
+        nowPlayingCache.delete(req.user.id);
+        res.json({
+            clientId: data.client_id,
+            hasClientSecret: true,
+            updatedAt: data.updated_at,
+            redirectUri: REDIRECT_URI || ''
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.delete('/credentials', requireAuth, async (req, res, next) => {
+    try {
+        const { error } = await supabase
+            .from('spotify_credentials')
+            .delete()
+            .eq('user_id', req.user.id);
+
+        if (error) throw error;
+        nowPlayingCache.delete(req.user.id);
+        res.json({ success: true });
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get('/auth', requireAuth, async (req, res, next) => {
     const userId = req.user.id;
+    const state = createSpotifyState(userId);
     console.log(`[Spotify] Initiating auth for user: ${userId}`);
-    if (!CLIENT_ID || !CLIENT_SECRET || !REDIRECT_URI) {
-        console.error('❌ [Spotify] Missing Environment Variables:', { CLIENT_ID: !!CLIENT_ID, CLIENT_SECRET: !!CLIENT_SECRET, REDIRECT_URI: !!REDIRECT_URI });
+    const credentials = await getSpotifyCredentials(userId);
+    if (!credentials || !REDIRECT_URI) {
+        console.error('❌ [Spotify] Missing configuration:', { credentials: !!credentials, REDIRECT_URI: !!REDIRECT_URI });
         return res.status(500).json({ error: 'Spotify configuration incomplete' });
     }
 
@@ -85,27 +250,32 @@ router.get('/auth', requireAuth, (req, res) => {
     const authUrl = 'https://accounts.spotify.com/authorize?' +
         querystring.stringify({
             response_type: 'code',
-            client_id: CLIENT_ID,
+            client_id: credentials.clientId,
             scope: scope,
             redirect_uri: REDIRECT_URI,
-            state: userId,
+            state,
             show_dialog: true // Force user to see scopes and approve again
-        });
-    console.log(`[Spotify] Generated Auth URL with state: ${userId}`);
+    });
+    console.log(`[Spotify] Generated signed auth state for user: ${userId}`);
     res.json({ url: authUrl });
 });
 
 router.get('/callback', async (req, res) => {
     const code = req.query.code || null;
-    const userId = req.query.state || null;
-    console.log(`[Spotify] Callback received. State(userId): ${userId}, Code: ${code ? 'PRESENT' : 'MISSING'}`);
+    const stateToken = req.query.state || null;
+    console.log(`[Spotify] Callback received. State: ${stateToken ? 'PRESENT' : 'MISSING'}, Code: ${code ? 'PRESENT' : 'MISSING'}`);
 
-    if (!userId) {
-        console.error('❌ [Spotify] No state (userId) found in callback query');
-        return res.redirect((process.env.FRONTEND_URL || '/') + '?spotify=error_no_state');
+    if (!stateToken) {
+        console.error('❌ [Spotify] No state token found in callback query');
+        return res.redirect((getEnv('FRONTEND_URL') || '/') + '?spotify=error_no_state');
     }
 
     try {
+        const userId = parseSpotifyState(stateToken);
+        const credentials = await getSpotifyCredentials(userId);
+        if (!credentials || !REDIRECT_URI) {
+            throw new Error('Spotify configuration incomplete');
+        }
         const response = await axios({
             method: 'post',
             url: 'https://accounts.spotify.com/api/token',
@@ -116,18 +286,18 @@ router.get('/callback', async (req, res) => {
             }),
             headers: {
                 'content-type': 'application/x-www-form-urlencoded',
-                Authorization: 'Basic ' + (Buffer.from(CLIENT_ID + ':' + CLIENT_SECRET).toString('base64'))
+                Authorization: 'Basic ' + (Buffer.from(credentials.clientId + ':' + credentials.clientSecret).toString('base64'))
             }
         });
 
         console.log(`[Spotify] Tokens received for user ${userId}. Saving to DB...`);
         await updateTokens(userId, response.data);
-        const frontendUrl = process.env.FRONTEND_URL || '/';
+        const frontendUrl = getEnv('FRONTEND_URL') || '/';
         console.log(`[Spotify] Success! Redirecting to ${frontendUrl}`);
         res.redirect(`${frontendUrl}${frontendUrl.endsWith('/') ? '' : '/'}?spotify=connected`);
     } catch (error) {
         console.error('❌ [Spotify] Auth error:', error.response?.data || error.message);
-        const frontendUrl = process.env.FRONTEND_URL || '/';
+        const frontendUrl = getEnv('FRONTEND_URL') || '/';
         res.redirect(`${frontendUrl}${frontendUrl.endsWith('/') ? '' : '/'}?spotify=error`);
     }
 });
@@ -248,9 +418,13 @@ router.post('/previous', requireAuth, async (req, res) => {
 });
 
 router.put('/volume', requireAuth, async (req, res) => {
-    const { volume_percent } = req.query;
-    withRefresh((token) => axios.put(`https://api.spotify.com/v1/me/player/volume?volume_percent=${volume_percent}`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
+    const volume = parseInt(req.query.volume_percent, 10);
+    if (!Number.isFinite(volume) || volume < 0 || volume > 100) {
+        return res.status(400).json({ error: 'volume_percent must be a number between 0 and 100' });
+    }
+    withRefresh((token) => axios.put('https://api.spotify.com/v1/me/player/volume', {}, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { volume_percent: volume }
     }), req, res);
 });
 

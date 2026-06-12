@@ -1,10 +1,31 @@
 import React, { useState } from 'react';
 import { API_URL } from '../config.js';
-import { Calendar, Clock, CheckCircle2, Circle, GripVertical, Pin, Lock, Repeat } from 'lucide-react';
+import { Calendar, Clock, CheckCircle2, Circle, GripVertical, Pin, Lock, Repeat, ChevronDown, ChevronUp } from 'lucide-react';
 import { Reorder, useDragControls } from 'framer-motion';
+import { getTagColor, loadTagColors, normalizeHexColor, parseTags, saveTagColors } from '../utils/tagColors.js';
+import TagColorInput from './TagColorInput.jsx';
 
 const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, onReorder }) => {
     const [selectedTag, setSelectedTag] = useState('');
+    const [tagColors, setTagColors] = useState(() => loadTagColors());
+    const [compactMode, setCompactMode] = useState(() => {
+        const saved = localStorage.getItem('snowball_compact_tasks');
+        return saved ? JSON.parse(saved) : false;
+    });
+
+    React.useEffect(() => {
+        localStorage.setItem('snowball_compact_tasks', JSON.stringify(compactMode));
+    }, [compactMode]);
+
+    React.useEffect(() => {
+        const syncTagColors = () => setTagColors(loadTagColors());
+        window.addEventListener('snowball-tag-colors-changed', syncTagColors);
+        window.addEventListener('storage', syncTagColors);
+        return () => {
+            window.removeEventListener('snowball-tag-colors-changed', syncTagColors);
+            window.removeEventListener('storage', syncTagColors);
+        };
+    }, []);
 
     const handleReorder = (newOrder) => {
         // Optimistic update
@@ -42,8 +63,15 @@ const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, o
         ? tasks.filter(t => (t.tags || '').split(',').map(tag => tag.trim()).includes(selectedTag))
         : tasks;
 
-    // Ensure they are sorted: Pinned first, then by priority (High > Medium > Low), then by position
+    // Ensure they are sorted: Completed to bottom, then Pinned first, then by priority (High > Medium > Low), then by position
     const displayTasks = [...filteredTasks].sort((a, b) => {
+        const aComplete = a.tasksCompleted >= a.tasksAllocated && a.tasksAllocated > 0;
+        const bComplete = b.tasksCompleted >= b.tasksAllocated && b.tasksAllocated > 0;
+        
+        // Push completed to bottom
+        if (aComplete && !bComplete) return 1;
+        if (!aComplete && bComplete) return -1;
+
         if (a.isPinned && !b.isPinned) return -1;
         if (!a.isPinned && b.isPinned) return 1;
 
@@ -79,7 +107,7 @@ const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, o
                             onClick={() => setSelectedTag(tag)}
                             style={{
                                 fontSize: '0.75rem', padding: '0.2rem 0.6rem', borderRadius: '1rem',
-                                border: '1px solid var(--border-color)',
+                                border: `1px solid ${selectedTag === tag ? getTagColor(tag, tagColors) : 'var(--border-color)'}`,
                                 background: selectedTag === tag ? 'var(--accent-color)' : 'var(--bg-secondary)',
                                 color: selectedTag === tag ? '#fff' : 'var(--text-primary)',
                                 cursor: 'pointer'
@@ -90,12 +118,21 @@ const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, o
                     ))}
                 </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                <button
+                    onClick={() => setCompactMode(!compactMode)}
+                    style={{
+                        fontSize: '0.75rem', color: compactMode ? 'var(--accent-color)' : 'var(--text-secondary)', padding: '0.2rem 0.5rem',
+                        border: '1px solid var(--border-color)', borderRadius: '0.25rem', cursor: 'pointer', background: 'transparent'
+                    }}
+                >
+                    {compactMode ? 'View: Minimal' : 'View: Full'}
+                </button>
                 <button
                     onClick={handleClearAllInternal}
                     style={{
                         fontSize: '0.75rem', color: 'var(--text-secondary)', padding: '0.2rem 0.5rem',
-                        border: '1px solid var(--border-color)', borderRadius: '0.25rem', cursor: 'pointer'
+                        border: '1px solid var(--border-color)', borderRadius: '0.25rem', cursor: 'pointer', background: 'transparent'
                     }}
                 >
                     Clear All Tasks
@@ -110,6 +147,7 @@ const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, o
                         onUpdate={onTaskUpdate}
                         onDelete={handleDelete}
                         onToggleComplete={handleToggleComplete}
+                        compactMode={compactMode}
                     />
                 ))}
             </Reorder.Group>
@@ -117,7 +155,7 @@ const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, o
     );
 });
 
-const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete }) => {
+const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compactMode }) => {
     // Shared debounce timer for all inputs in this specific task
     const saveTimerRef = React.useRef(null);
     const dateRef = React.useRef(null);
@@ -146,6 +184,18 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete }) => 
     const [localIsPinned, setLocalIsPinned] = useState(!!task.isPinned);
     const [localIsSticky, setLocalIsSticky] = useState(!!task.isSticky);
     const [localRecurring, setLocalRecurring] = useState(task.recurring || 'none');
+    const [tagColors, setTagColors] = useState(() => loadTagColors());
+    const [isCompactExpanded, setIsCompactExpanded] = useState(false);
+
+    React.useEffect(() => {
+        const syncTagColors = () => setTagColors(loadTagColors());
+        window.addEventListener('snowball-tag-colors-changed', syncTagColors);
+        window.addEventListener('storage', syncTagColors);
+        return () => {
+            window.removeEventListener('snowball-tag-colors-changed', syncTagColors);
+            window.removeEventListener('storage', syncTagColors);
+        };
+    }, []);
 
     // Sync local state if task prop changes externally (e.g. from server/sync)
     React.useEffect(() => {
@@ -186,96 +236,214 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete }) => 
     else if (task.priority === 'Medium') { priorityColor = '#b45309'; priorityBg = '#fef3c7'; }
     else if (task.priority === 'Low') { priorityColor = '#15803d'; priorityBg = '#dcfce7'; }
 
+    const parsedTags = parseTags(localTags);
+    const showDetails = !compactMode || isCompactExpanded;
+    const dueLabel = [localDate, localTime].filter(Boolean).join(' ');
+
+    const handleTagColorChange = (tag, color) => {
+        const nextMap = {
+            ...tagColors,
+            [tag]: normalizeHexColor(color, getTagColor(tag, tagColors))
+        };
+        setTagColors(nextMap);
+        saveTagColors(nextMap);
+    };
+
     return (
         <Reorder.Item value={task} dragListener={false} dragControls={controls} style={{ listStyleType: 'none', width: '100%' }}>
             <div className="task-card card-container" style={{
                 background: 'var(--bg-card)',
-                padding: 'var(--card-padding)',
+                padding: compactMode ? '0.5rem 0.7rem' : '0.65rem 0.85rem',
                 borderRadius: 'var(--radius)',
                 border: `1px solid ${isComplete ? 'var(--success-color)' : 'var(--border-color)'}`,
-                display: 'flex', flexDirection: 'column', gap: '0.75rem',
+                display: 'flex', flexDirection: 'column', gap: compactMode ? '0.1rem' : '0.5rem',
                 opacity: isComplete ? 0.8 : 1, userSelect: 'none',
                 width: '100%', boxSizing: 'border-box'
             }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flex: 1 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                        <button onClick={() => onToggleComplete(task)} style={{ color: isComplete ? 'var(--success-color)' : 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer' }}>
-                            {isComplete ? <CheckCircle2 size={24} /> : <Circle size={24} />}
-                        </button>
-                        <div style={{ cursor: 'grab', opacity: 0.4 }} className="drag-handle" onPointerDown={(e) => controls.start(e)}>
-                            <GripVertical size={20} />
+                <div
+                    style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: compactMode ? 'center' : 'flex-start',
+                        gap: '0.75rem'
+                    }}
+                >
+                    <div style={{ display: 'flex', gap: compactMode ? '0.65rem' : '1rem', alignItems: compactMode ? 'center' : 'flex-start', flex: 1 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: compactMode ? '0.2rem' : '0.5rem', paddingTop: compactMode ? '0' : '0.2rem' }}>
+                            <button onClick={() => onToggleComplete(task)} style={{ color: isComplete ? 'var(--success-color)' : 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                                {isComplete ? <CheckCircle2 size={compactMode ? 18 : 24} /> : <Circle size={compactMode ? 18 : 24} />}
+                            </button>
+                            {!compactMode && (
+                                <div style={{ cursor: 'grab', opacity: 0.4 }} className="drag-handle" onPointerDown={(e) => controls.start(e)}>
+                                    <GripVertical size={20} />
+                                </div>
+                            )}
+                        </div>
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            {compactMode ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsCompactExpanded((prev) => !prev)}
+                                    style={{
+                                        width: '100%',
+                                        background: 'transparent',
+                                        border: 'none',
+                                        padding: 0,
+                                        margin: 0,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: '0.75rem',
+                                        textAlign: 'left',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', minWidth: 0 }}>
+                                        <div style={{
+                                            fontSize: '0.95rem',
+                                            fontWeight: 700,
+                                            color: isComplete ? 'var(--text-secondary)' : 'var(--text-primary)',
+                                            textDecoration: isComplete ? 'line-through' : 'none',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap'
+                                        }}>
+                                            {localTitle || 'Untitled task'}
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                            <span style={{
+                                                fontSize: '0.64rem',
+                                                fontWeight: '700',
+                                                padding: '0.18rem 0.42rem',
+                                                borderRadius: '999px',
+                                                background: priorityBg,
+                                                color: priorityColor
+                                            }}>
+                                                {task.priority || 'Medium'}
+                                            </span>
+                                            {dueLabel && (
+                                                <span style={{
+                                                    fontSize: '0.64rem',
+                                                    padding: '0.18rem 0.42rem',
+                                                    borderRadius: '999px',
+                                                    background: 'var(--bg-secondary)',
+                                                    color: 'var(--text-secondary)'
+                                                }}>
+                                                    {dueLabel}
+                                                </span>
+                                            )}
+                                            <span style={{
+                                                fontSize: '0.64rem',
+                                                padding: '0.18rem 0.42rem',
+                                                borderRadius: '999px',
+                                                background: 'var(--bg-secondary)',
+                                                color: 'var(--text-secondary)'
+                                            }}>
+                                                {localTasksCompleted}/{localTasksAllocated || 0} steps
+                                            </span>
+                                            {localIsPinned && <Pin size={12} style={{ color: 'var(--accent-color)' }} />}
+                                            {localIsSticky && <Lock size={12} style={{ color: 'var(--accent-color)' }} />}
+                                            {localRecurring !== 'none' && <Repeat size={12} style={{ color: 'var(--accent-color)' }} />}
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-secondary)' }}>
+                                        <div style={{ cursor: 'grab', opacity: 0.4, display: 'flex' }} className="drag-handle" onPointerDown={(e) => controls.start(e)}>
+                                            <GripVertical size={14} />
+                                        </div>
+                                        {isCompactExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                    </div>
+                                </button>
+                            ) : (
+                                <>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                        <input
+                                            value={localTitle}
+                                            onChange={(e) => {
+                                                setLocalTitle(e.target.value);
+                                                handleLocalUpdate({ ...task, title: e.target.value });
+                                            }}
+                                            style={{
+                                                fontSize: '1rem', fontWeight: 'bold', background: 'transparent',
+                                                border: 'none', padding: '2px 4px', margin: 0,
+                                                textDecoration: isComplete ? 'line-through' : 'none',
+                                                color: isComplete ? 'var(--text-secondary)' : 'var(--text-primary)',
+                                                width: '100%', maxWidth: '300px', borderRadius: '4px'
+                                            }}
+                                        />
+                                        <select
+                                            value={task.priority || 'Medium'}
+                                            onChange={(e) => handleLocalUpdate({ ...task, priority: e.target.value })}
+                                            style={{
+                                                fontSize: '0.7rem', fontWeight: '600', padding: '0.1rem 0.4rem', borderRadius: '1rem',
+                                                backgroundColor: priorityBg, color: priorityColor, border: 'none', cursor: 'pointer'
+                                            }}
+                                        >
+                                            <option value="Low">LOW</option>
+                                            <option value="Medium">MEDIUM</option>
+                                            <option value="High">HIGH</option>
+                                        </select>
+                                        <input
+                                            value={localTags}
+                                            placeholder="Tags..."
+                                            onChange={(e) => {
+                                                setLocalTags(e.target.value);
+                                                handleLocalUpdate({ ...task, tags: e.target.value });
+                                            }}
+                                            style={{
+                                                fontSize: '0.7rem', fontWeight: '600', padding: '0.1rem 0.4rem', borderRadius: '1rem',
+                                                backgroundColor: 'var(--bg-primary)', color: 'var(--text-secondary)',
+                                                border: '1px solid var(--border-color)', width: '80px'
+                                            }}
+                                        />
+                                    </div>
+                                    <textarea
+                                        value={localDesc}
+                                        placeholder="Add a description..."
+                                        onChange={(e) => {
+                                            setLocalDesc(e.target.value);
+                                            handleLocalUpdate({ ...task, description: e.target.value });
+                                        }}
+                                        rows="1"
+                                        style={{
+                                            marginTop: '0.25rem', fontSize: '0.875rem', color: 'var(--text-secondary)',
+                                            background: 'transparent', border: 'none', padding: '2px 4px',
+                                            width: '100%', resize: 'none', borderRadius: '4px'
+                                        }}
+                                    />
+                                </>
+                            )}
                         </div>
                     </div>
-                    <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                            <input
-                                value={localTitle}
-                                onChange={(e) => {
-                                    setLocalTitle(e.target.value);
-                                    handleLocalUpdate({ ...task, title: e.target.value });
-                                }}
-                                style={{
-                                    fontSize: '1rem', fontWeight: 'bold', background: 'transparent',
-                                    border: 'none', padding: '2px 4px', margin: 0,
-                                    textDecoration: isComplete ? 'line-through' : 'none',
-                                    color: isComplete ? 'var(--text-secondary)' : 'var(--text-primary)',
-                                    width: '100%', maxWidth: '300px', borderRadius: '4px'
-                                }}
-                            />
-                            <select
-                                value={task.priority || 'Medium'}
-                                onChange={(e) => handleLocalUpdate({ ...task, priority: e.target.value })}
-                                style={{
-                                    fontSize: '0.7rem', fontWeight: '600', padding: '0.1rem 0.4rem', borderRadius: '1rem',
-                                    backgroundColor: priorityBg, color: priorityColor, border: 'none', cursor: 'pointer'
-                                }}
-                            >
-                                <option value="Low">LOW</option>
-                                <option value="Medium">MEDIUM</option>
-                                <option value="High">HIGH</option>
-                            </select>
-                            <input
-                                value={localTags}
-                                placeholder="Tags..."
-                                onChange={(e) => {
-                                    setLocalTags(e.target.value);
-                                    handleLocalUpdate({ ...task, tags: e.target.value });
-                                }}
-                                style={{
-                                    fontSize: '0.7rem', fontWeight: '600', padding: '0.1rem 0.4rem', borderRadius: '1rem',
-                                    backgroundColor: 'var(--bg-primary)', color: 'var(--text-secondary)',
-                                    border: '1px solid var(--border-color)', width: '80px'
-                                }}
-                            />
-                        </div>
-                        <textarea
-                            value={localDesc}
-                            placeholder="Add a description..."
-                            onChange={(e) => {
-                                setLocalDesc(e.target.value);
-                                handleLocalUpdate({ ...task, description: e.target.value });
-                            }}
-                            rows="1"
-                            style={{
-                                marginTop: '0.25rem', fontSize: '0.875rem', color: 'var(--text-secondary)',
-                                background: 'transparent', border: 'none', padding: '2px 4px',
-                                width: '100%', resize: 'none', borderRadius: '4px'
-                            }}
-                        />
-                    </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
                     <button
                         onClick={() => {
-                            const newVal = localRecurring === 'daily' ? 'none' : 'daily';
+                            let newVal = 'none';
+                            if (localRecurring === 'none') newVal = 'daily';
+                            else if (localRecurring === 'daily') newVal = 'weekly';
+                            else if (localRecurring === 'weekly') newVal = 'monthly';
+                            else if (localRecurring === 'monthly') {
+                                const days = window.prompt("Enter integer days for custom recurrence (e.g., 5 for every 5 days):", "5");
+                                if (days && !isNaN(parseInt(days))) {
+                                    newVal = `custom:${parseInt(days)}`;
+                                } else {
+                                    newVal = 'none';
+                                }
+                            } else newVal = 'none';
+                            
                             setLocalRecurring(newVal);
                             handleImmediateUpdate({ ...task, recurring: newVal });
                         }}
-                        style={{ color: localRecurring === 'daily' ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: localRecurring === 'daily' ? 1 : 0.4, background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem' }}
-                        title="Toggle Daily Recurring"
+                        style={{ color: localRecurring !== 'none' ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: localRecurring !== 'none' ? 1 : 0.4, background: 'none', border: 'none', cursor: 'pointer', padding: compactMode ? '0.1rem' : '0.2rem', display: 'flex', alignItems: 'center', gap: '0.15rem' }}
+                        title={localRecurring === 'none' ? 'No Recurrence' : `Recurs: ${localRecurring}`}
                     >
-                        <Repeat size={16} />
+                        <Repeat size={compactMode ? 14 : 16} />
+                        {localRecurring !== 'none' && (
+                            <span style={{ fontSize: '0.6rem', fontWeight: 'bold' }}>
+                                {localRecurring === 'daily' ? 'D' : localRecurring === 'weekly' ? 'W' : localRecurring === 'monthly' ? 'M' : localRecurring?.startsWith('custom:') ? localRecurring.split(':')[1] : ''}
+                            </span>
+                        )}
                     </button>
                     <button
                         onClick={() => {
@@ -283,10 +451,10 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete }) => 
                             setLocalIsPinned(newVal);
                             handleImmediateUpdate({ ...task, isPinned: newVal });
                         }}
-                        style={{ color: localIsPinned ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: localIsPinned ? 1 : 0.4, background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ color: localIsPinned ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: localIsPinned ? 1 : 0.4, background: 'none', border: 'none', cursor: 'pointer', padding: compactMode ? '0.1rem' : '0.2rem' }}
                         title="Pin to Top"
                     >
-                        <Pin size={16} />
+                        <Pin size={compactMode ? 14 : 16} />
                     </button>
                     <button
                         onClick={() => {
@@ -294,34 +462,141 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete }) => 
                             setLocalIsSticky(newVal);
                             handleImmediateUpdate({ ...task, isSticky: newVal });
                         }}
-                        style={{ color: localIsSticky ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: localIsSticky ? 1 : 0.4, background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ color: localIsSticky ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: localIsSticky ? 1 : 0.4, background: 'none', border: 'none', cursor: 'pointer', padding: compactMode ? '0.1rem' : '0.2rem' }}
                         title="Sticky (Immune to Clear All)"
                     >
-                        <Lock size={16} />
+                        <Lock size={compactMode ? 14 : 16} />
                     </button>
-                    <button onClick={() => onDelete(task.id)} style={{ color: 'var(--danger-color)', fontSize: '0.8125rem', background: 'none', border: 'none', cursor: 'pointer', marginLeft: '0.5rem' }}>
+                    <button onClick={() => onDelete(task.id)} style={{ color: 'var(--danger-color)', fontSize: compactMode ? '0.7rem' : '0.8125rem', background: 'none', border: 'none', cursor: 'pointer', marginLeft: compactMode ? '0.2rem' : '0.5rem' }}>
                         Delete
                     </button>
                 </div>
-            </div>
-
-            <div className="responsive-grid" style={{ marginLeft: '3.5rem', marginTop: '0.25rem' }}>
-                <div className="metadata-item" style={{ position: 'relative', cursor: 'pointer', overflow: 'visible' }}>
-                    <Calendar size={14} />
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                        {localDate || 'Date'}
-                    </span>
-                    <input
-                        type="date" value={localDate}
-                        onClick={(e) => e.target.showPicker && e.target.showPicker()}
-                        onChange={(e) => {
-                            setLocalDate(e.target.value);
-                            const combined = e.target.value ? `${e.target.value}${localTime ? ' ' + localTime : ''}` : '';
-                            handleLocalUpdate({ ...task, date: combined });
-                        }}
-                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', zIndex: 2 }}
-                    />
                 </div>
+
+                {showDetails && (
+                    <>
+                        <div style={{ paddingLeft: compactMode ? '2rem' : 0 }}>
+                            {compactMode && (
+                                <>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.6rem' }}>
+                                        <select
+                                            value={task.priority || 'Medium'}
+                                            onChange={(e) => handleLocalUpdate({ ...task, priority: e.target.value })}
+                                            style={{
+                                                fontSize: '0.7rem', fontWeight: '600', padding: '0.1rem 0.4rem', borderRadius: '1rem',
+                                                backgroundColor: priorityBg, color: priorityColor, border: 'none', cursor: 'pointer'
+                                            }}
+                                        >
+                                            <option value="Low">LOW</option>
+                                            <option value="Medium">MEDIUM</option>
+                                            <option value="High">HIGH</option>
+                                        </select>
+                                        <input
+                                            value={localTags}
+                                            placeholder="Tags..."
+                                            onChange={(e) => {
+                                                setLocalTags(e.target.value);
+                                                handleLocalUpdate({ ...task, tags: e.target.value });
+                                            }}
+                                            style={{
+                                                fontSize: '0.7rem', fontWeight: '600', padding: '0.1rem 0.4rem', borderRadius: '1rem',
+                                                backgroundColor: 'var(--bg-primary)', color: 'var(--text-secondary)',
+                                                border: '1px solid var(--border-color)', width: '100px'
+                                            }}
+                                        />
+                                    </div>
+                                    <input
+                                        value={localTitle}
+                                        onChange={(e) => {
+                                            setLocalTitle(e.target.value);
+                                            handleLocalUpdate({ ...task, title: e.target.value });
+                                        }}
+                                        style={{
+                                            marginTop: '0.6rem',
+                                            width: '100%',
+                                            fontSize: '0.95rem',
+                                            fontWeight: '700',
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: 'var(--text-primary)'
+                                        }}
+                                    />
+                                    <textarea
+                                        value={localDesc}
+                                        placeholder="Add a description..."
+                                        onChange={(e) => {
+                                            setLocalDesc(e.target.value);
+                                            handleLocalUpdate({ ...task, description: e.target.value });
+                                        }}
+                                        rows="2"
+                                        style={{
+                                            marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)',
+                                            background: 'transparent', border: 'none', padding: 0,
+                                            width: '100%', resize: 'vertical', borderRadius: '4px'
+                                        }}
+                                    />
+                                </>
+                            )}
+
+                            {parsedTags.length > 0 && (
+                                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.35rem' }}>
+                                    {parsedTags.map((tag) => (
+                                        <label
+                                            key={tag}
+                                            style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '0.35rem',
+                                                padding: '0.18rem 0.45rem',
+                                                borderRadius: '999px',
+                                                background: 'var(--bg-secondary)',
+                                                border: '1px solid var(--border-color)',
+                                                fontSize: '0.68rem',
+                                                color: 'var(--text-secondary)'
+                                            }}
+                                        >
+                                            <span style={{
+                                                width: '8px',
+                                                height: '8px',
+                                                borderRadius: '999px',
+                                                background: getTagColor(tag, tagColors),
+                                                flexShrink: 0
+                                            }} />
+                                            <span>{tag}</span>
+                                            <TagColorInput
+                                                value={getTagColor(tag, tagColors)}
+                                                onChange={(color) => handleTagColorChange(tag, color)}
+                                                style={{
+                                                    width: '78px',
+                                                    padding: '0.15rem 0.35rem',
+                                                    fontSize: '0.66rem'
+                                                }}
+                                            />
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="responsive-grid" style={{ marginLeft: compactMode ? '2rem' : '3.5rem', marginTop: '0.4rem', opacity: compactMode ? 0.9 : 1 }}>
+                {(!compactMode || localDate) && (
+                    <div className="metadata-item" style={{ position: 'relative', cursor: 'pointer', overflow: 'visible' }}>
+                        <Calendar size={12} />
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                            {localDate || 'Date'}
+                        </span>
+                        <input
+                            type="date" value={localDate}
+                            onClick={(e) => e.target.showPicker && e.target.showPicker()}
+                            onChange={(e) => {
+                                setLocalDate(e.target.value);
+                                const combined = e.target.value ? `${e.target.value}${localTime ? ' ' + localTime : ''}` : '';
+                                handleLocalUpdate({ ...task, date: combined });
+                            }}
+                            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', zIndex: 2 }}
+                        />
+                    </div>
+                )}
 
                 <div className="metadata-item">
                     <Clock size={14} />
@@ -389,8 +664,10 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete }) => 
                         <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>hrs</span>
                     </div>
                 </div>
+                        </div>
+                    </>
+                )}
             </div>
-        </div>
         </Reorder.Item>
     );
 });

@@ -82,7 +82,8 @@ router.post('/', async (req, res, next) => {
     try {
         const { name, frequency, icon, color } = req.body;
 
-        if (!name) return res.status(400).json({ error: 'Name is required' });
+        if (!name || typeof name !== 'string') return res.status(400).json({ error: 'Name is required' });
+        if (name.length > 100) return res.status(400).json({ error: 'Name must be at most 100 characters' });
 
         const { data: newHabit, error } = await supabase
             .from('habits')
@@ -139,6 +140,35 @@ router.post('/:id/toggle', async (req, res, next) => {
             await recomputeDailyProductivity(req.user.id);
             res.json({ completed: true });
         }
+    } catch (err) {
+        next(err);
+    }
+});
+
+// UPDATE habit
+router.put('/:id', async (req, res, next) => {
+    try {
+        const { name, frequency, icon, color } = req.body;
+
+        if (!name || typeof name !== 'string') return res.status(400).json({ error: 'Name is required' });
+        if (name.length > 100) return res.status(400).json({ error: 'Name must be at most 100 characters' });
+
+        const updateData = {};
+        if (name !== undefined) updateData.name = name;
+        if (frequency !== undefined) updateData.frequency = frequency;
+        if (icon !== undefined) updateData.icon = icon;
+        if (color !== undefined) updateData.color = color;
+
+        const { data: updatedHabit, error } = await supabase
+            .from('habits')
+            .update(updateData)
+            .eq('id', req.params.id)
+            .eq('user_id', req.user.id)
+            .select()
+            .single();
+
+        if (error || !updatedHabit) return res.status(404).json({ error: 'Habit not found' });
+        res.json(updatedHabit);
     } catch (err) {
         next(err);
     }

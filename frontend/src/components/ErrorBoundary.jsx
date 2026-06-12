@@ -1,4 +1,5 @@
 import React from 'react';
+import { getApiErrorMessage } from '../utils/api.js';
 
 class ErrorBoundary extends React.Component {
     constructor(props) {
@@ -26,7 +27,9 @@ class ErrorBoundary extends React.Component {
                     margin: '1rem'
                 }}>
                     <h3>Something went wrong in this section.</h3>
-                    <p style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>{this.state.error?.toString()}</p>
+                    <p style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>
+                        {getApiErrorMessage(this.state.error, this.state.error?.toString?.() || 'Unexpected error')}
+                    </p>
                     <button
                         onClick={() => this.setState({ hasError: false })}
                         style={{ marginTop: '1rem', background: '#ef4444', color: '#fff', padding: '0.5rem 1rem', borderRadius: '0.5rem' }}

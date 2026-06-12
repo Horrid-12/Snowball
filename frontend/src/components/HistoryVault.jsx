@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Archive, X, CheckSquare, Activity, Calendar, Award } from 'lucide-react';
-import { API_URL } from '../config.js';
 import { useAppContext } from '../context/AppContext.jsx';
 import { calculateProductivityScore, getTodayDateString } from '../utils/productivityScore.js';
+import { apiFetch } from '../utils/apiClient.js';
 
 const HistoryVault = ({ onClose, tasks: currentTasks = [] }) => {
     const { globalHabits } = useAppContext();
@@ -12,19 +12,16 @@ const HistoryVault = ({ onClose, tasks: currentTasks = [] }) => {
     const [activity, setActivity] = useState([]);
     const [loading, setLoading] = useState(true);
     const today = getTodayDateString();
-    const { displayScore: currentDisplayScore, totals, habitsCompleted } = calculateProductivityScore(currentTasks, globalHabits);
+    const { displayScore: currentDisplayScore, totals, habitsCompleted } = calculateProductivityScore(currentTasks, globalHabits, { targetDate: today });
 
     useEffect(() => {
         const fetchHistory = async () => {
             setLoading(true);
             try {
-                const token = localStorage.getItem('snowball_token');
-                const headers = { 'Authorization': `Bearer ${token}` };
-
                 const [tasksRes, habitsRes, activityRes] = await Promise.all([
-                    fetch(`${API_URL}/api/tasks/history`, { headers }),
-                    fetch(`${API_URL}/api/habits/history`, { headers }),
-                    fetch(`${API_URL}/api/activity/history`, { headers })
+                    apiFetch('/api/tasks/history'),
+                    apiFetch('/api/habits/history'),
+                    apiFetch('/api/activity/history')
                 ]);
 
                 if (tasksRes.ok) setTasks(await tasksRes.json());

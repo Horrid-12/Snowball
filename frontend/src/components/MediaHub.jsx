@@ -1,11 +1,25 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Music, Video, Play, Pause, SkipForward, SkipBack, ExternalLink, Volume2, Search, ChevronDown, ChevronUp } from 'lucide-react';
-import { API_URL } from '../config';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Music, Video, Play, Pause, SkipForward, SkipBack, Search, ChevronDown, ChevronUp } from 'lucide-react';
 import { AppLauncher } from '@capacitor/app-launcher';
+import { App as CapacitorApp } from '@capacitor/app';
+import { apiFetch } from '../utils/apiClient';
+import { isTauriDesktop } from '../config.js';
+import YouTubePanel from './YouTubePanel.jsx';
 
-const MediaHub = () => {
+const MediaHub = ({ onReady }) => {
     const [activeTab, setActiveTab] = useState('spotify'); // 'spotify' or 'youtube'
     const [isExpanded, setIsExpanded] = useState(true);
+    const [youtubeBackgroundPlayback, setYoutubeBackgroundPlayback] = useState(() => {
+        try {
+            return localStorage.getItem('snowball_yt_background_playback') === 'true';
+        } catch (_error) {
+            return false;
+        }
+    });
+
+    useEffect(() => {
+        localStorage.setItem('snowball_yt_background_playback', String(youtubeBackgroundPlayback));
+    }, [youtubeBackgroundPlayback]);
 
     // Spotify State
     const [spotifyData, setSpotifyData] = useState(null);
@@ -20,12 +34,15 @@ const MediaHub = () => {
     const [showLyrics, setShowLyrics] = useState(false);
     const [retryInterval, setRetryInterval] = useState(30000); // Super slow default (30s)
     const [isSyncPaused, setIsSyncPaused] = useState(false);
+    const [isRateLimited, setIsRateLimited] = useState(false);
     const [syncedLyrics, setSyncedLyrics] = useState(null); // [{ time: ms, text: string }]
     const [currentLyricIndex, setCurrentLyricIndex] = useState(-1);
     const lyricsContainerRef = useRef(null);
     const [isHovered, setIsHovered] = useState(false);
     const [spotifySearching, setSpotifySearching] = useState(false);
     const [hasAttemptedPlaylists, setHasAttemptedPlaylists] = useState(false);
+    const [spotifyCredentialSource, setSpotifyCredentialSource] = useState('shared');
+    const [spotifyStatusError, setSpotifyStatusError] = useState('');
     
     // Playlists & Lyrics (These were already grouped, keeping them here)
     // const [playlists, setPlaylists] = useState([]); // Moved above
@@ -33,12 +50,22 @@ const MediaHub = () => {
     // const [showLyrics, setShowLyrics] = useState(false); // Moved above
     // const [lyrics, setLyrics] = useState(''); // Moved above
 
-    // YouTube State
-    const [ytQuery, setYtQuery] = useState('');
-    const [ytResults, setYtResults] = useState([]);
-    const [ytSearching, setYtSearching] = useState(false);
-    const [ytId, setYtId] = useState(null); // e.g., 'dQw4w9WgXcQ'
     const [message, setMessage] = useState(null); // { type: 'success' | 'error', text: string }
+
+    const refreshSpotifyStatus = useCallback(async () => {
+        try {
+            const response = await apiFetch('/api/spotify/status');
+            if (!response.ok) return false;
+            const data = await response.json();
+            setSpotifyConnected(Boolean(data.connected));
+            setSpotifyCredentialSource(data.credentialSource || 'shared');
+            setSpotifyStatusError('');
+            return Boolean(data.connected);
+        } catch (_error) {
+            setSpotifyStatusError('Could not check Spotify connection status.');
+            return false;
+        }
+    }, []);
 
     // Scroll lyrics to active line
     useEffect(() => {
@@ -57,21 +84,17 @@ const MediaHub = () => {
     }, [spotifyProgress, syncedLyrics, showLyrics, currentLyricIndex]);
 
     // Spotify Polling
-    const pollInterval = useRef(null); // No longer needed with dynamic useEffect
+    const pollInterval = useRef(null);
+    const pollTimeouts = useRef([]);
 
-    const fetchSpotify = async () => {
-        const token = localStorage.getItem('snowball_token');
-        if (!token) {
-            setSpotifyConnected(false);
-            setSpotifyData(null);
-            setSpotifyLoading(false);
-            return;
-        }
+    const clearTimeouts = () => {
+        pollTimeouts.current.forEach(clearTimeout);
+        pollTimeouts.current = [];
+    };
 
+    const fetchSpotify = useCallback(async () => {
         try {
-            const response = await fetch(`${API_URL}/api/spotify/now-playing`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const response = await apiFetch('/api/spotify/now-playing');
 
             if (response.status === 429) {
                 const data = await response.json().catch(() => ({}));
@@ -79,8 +102,10 @@ const MediaHub = () => {
                 
                 if (retryAfter > 60) {
                     setIsSyncPaused(true);
+                    setIsRateLimited(true);
                     setMessage({ type: 'error', text: `Spotify rate limit is high (${retryAfter}s). Sync paused to protect your account.` });
                 } else {
+                    setIsRateLimited(false);
                     setRetryInterval(retryAfter * 1000 + 1000);
                 }
                 console.warn(`Rate limited. retryAfter: ${retryAfter}s`);
@@ -92,6 +117,8 @@ const MediaHub = () => {
                 const data = await response.json();
                 setSpotifyConnected(true);
                 setSpotifyData(data);
+                setIsSyncPaused(false);
+                setIsRateLimited(false);
                 if (data.item) { // Only set progress if an item is playing
                     setSpotifyProgress(data.progress_ms);
                 }
@@ -100,24 +127,32 @@ const MediaHub = () => {
                 // Consolidated playlist fetch logic
                 if (!hasAttemptedPlaylists && playlists.length === 0) {
                     setHasAttemptedPlaylists(true);
-                    fetch(`${API_URL}/api/spotify/playlists`, { headers: { 'Authorization': `Bearer ${token}` } })
+                    apiFetch('/api/spotify/playlists')
                         .then(async r => { if (r.ok) setPlaylists(await r.json()); })
                         .catch(() => {});
                 }
 
             } else if (response.status === 401) {
-                setSpotifyConnected(false);
-                setSpotifyData(null);
+                const stillConnected = await refreshSpotifyStatus();
+                if (!stillConnected) {
+                    setSpotifyConnected(false);
+                    setSpotifyData(null);
+                }
+                setIsRateLimited(false);
                 // No need to show persistent error for 401, it just means not connected
             } else {
-                setSpotifyConnected(false);
-                setSpotifyData(null);
+                const stillConnected = await refreshSpotifyStatus();
+                setSpotifyConnected(stillConnected);
+                setIsRateLimited(false);
                 if (response.status !== 401) {
                     const errData = await response.json().catch(() => ({}));
                     console.error('Spotify API error:', errData);
                     // Only show persistent error if it's serious (like 403 Forbidden)
                     if (response.status === 403) {
-                        setMessage({ type: 'error', text: 'Spotify Access Denied (Developer Whitelist Issue)' });
+                        setMessage({
+                            type: 'error',
+                            text: 'Spotify access is limited on the shared app right now. Self-hosted users can swap in their own Spotify app credentials.',
+                        });
                     }
                 }
             }
@@ -126,10 +161,21 @@ const MediaHub = () => {
         } finally {
             setSpotifyLoading(false);
         }
-    };
+    }, [hasAttemptedPlaylists, playlists.length, refreshSpotifyStatus]);
 
     useEffect(() => {
         let visibilityInterval = null;
+        let appStateListener = null;
+
+        const startPolling = () => {
+            if (pollInterval.current) {
+                clearInterval(pollInterval.current);
+            }
+            fetchSpotify();
+            if (!isSyncPaused && !document.hidden) {
+                pollInterval.current = setInterval(fetchSpotify, retryInterval);
+            }
+        };
 
         const handleVisibilityChange = () => {
             if (document.hidden) {
@@ -138,17 +184,29 @@ const MediaHub = () => {
                     pollInterval.current = null;
                 }
             } else if (!isSyncPaused) {
-                fetchSpotify();
-                pollInterval.current = setInterval(fetchSpotify, retryInterval);
+                startPolling();
             }
         };
 
-        if (!isSyncPaused && !document.hidden) {
-            fetchSpotify();
-            pollInterval.current = setInterval(fetchSpotify, retryInterval);
-        }
+        refreshSpotifyStatus()
+            .then(() => fetchSpotify())
+            .catch(() => {})
+            .finally(() => {
+                onReady?.();
+                if (!isSyncPaused && !document.hidden) {
+                    pollInterval.current = setInterval(fetchSpotify, retryInterval);
+                }
+            });
 
         document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', startPolling);
+        CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+            if (isActive) {
+                startPolling();
+            }
+        }).then(listener => {
+            appStateListener = listener;
+        }).catch(() => {});
  
         // Check for URL params from Spotify redirect
         const params = new URLSearchParams(window.location.search);
@@ -159,37 +217,50 @@ const MediaHub = () => {
             setMessage({ type: 'success', text: 'Spotify connected successfully!' });
             // Clean URL
             window.history.replaceState({}, document.title, window.location.pathname);
-            setTimeout(() => setMessage(null), 5000);
+            pollTimeouts.current.push(setTimeout(() => setMessage(null), 5000));
         } else if (spotifyStatus === 'error') {
             setMessage({ type: 'error', text: `Spotify connection failed: ${details || 'Unknown error'}` });
             window.history.replaceState({}, document.title, window.location.pathname);
-            setTimeout(() => setMessage(null), 10000);
+            pollTimeouts.current.push(setTimeout(() => setMessage(null), 10000));
         }
 
         return () => {
+            clearTimeouts();
             if (pollInterval.current) clearInterval(pollInterval.current);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', startPolling);
+            if (appStateListener) {
+                appStateListener.remove();
+            }
         };
-    }, [retryInterval, isSyncPaused]);
+    }, [retryInterval, isSyncPaused, fetchSpotify]);
 
-    // Lyrics Fetching
+    // Lyrics Fetching with cache
+    const lyricsCacheRef = useRef(new Map());
     useEffect(() => {
         if (!showLyrics || !spotifyData?.item) return;
         const fetchLyrics = async () => {
+            const artist = spotifyData.item.artists[0]?.name || '';
+            const title = spotifyData.item.name || '';
+            const cacheKey = `${artist}||${title}`;
+
+            const cached = lyricsCacheRef.current.get(cacheKey);
+            if (cached) {
+                setLyrics(cached.lyrics);
+                setSyncedLyrics(cached.syncedLyrics);
+                return;
+            }
+
             setLyrics('Loading lyrics...');
-            const token = localStorage.getItem('snowball_token');
             try {
-                const artist = spotifyData.item.artists[0]?.name || '';
-                const title = spotifyData.item.name || '';
-                const res = await fetch(`${API_URL}/api/spotify/lyrics?artist=${encodeURIComponent(artist)}&title=${encodeURIComponent(title)}`, { 
-                    headers: { 'Authorization': `Bearer ${token}` } 
-                });
+                const res = await apiFetch(`/api/spotify/lyrics?artist=${encodeURIComponent(artist)}&title=${encodeURIComponent(title)}`);
                 if (res.ok) {
                     const data = await res.json();
-                    setLyrics(data.lyrics || 'Lyrics not found');
-                    
+                    const lyrics = data.lyrics || 'Lyrics not found';
+                    let syncedLyrics = null;
+
                     if (data.syncedLyrics) {
-                        const lines = data.syncedLyrics.split('\n').map(line => {
+                        syncedLyrics = data.syncedLyrics.split('\n').map(line => {
                             const match = line.match(/\[(\d+):(\d+\.\d+)\](.*)/);
                             if (match) {
                                 const ms = (parseInt(match[1]) * 60 + parseFloat(match[2])) * 1000;
@@ -197,10 +268,11 @@ const MediaHub = () => {
                             }
                             return null;
                         }).filter(l => l && l.text);
-                        setSyncedLyrics(lines);
-                    } else {
-                        setSyncedLyrics(null);
                     }
+
+                    lyricsCacheRef.current.set(cacheKey, { lyrics, syncedLyrics });
+                    setLyrics(lyrics);
+                    setSyncedLyrics(syncedLyrics);
                 } else {
                     setLyrics('Lyrics unavailable');
                 }
@@ -216,16 +288,37 @@ const MediaHub = () => {
     useEffect(() => {
         let timer;
         if (spotifyData?.is_playing) {
-            timer = setInterval(() => setSpotifyProgress(p => p + 100), 100);
+            timer = setInterval(() => setSpotifyProgress(p => p + 500), 500);
         }
         return () => clearInterval(timer);
     }, [spotifyData?.is_playing, spotifyData?.item?.id]);
 
+    const progressPercent = useMemo(() => {
+        if (!spotifyData?.item?.duration_ms) return 0;
+        return Math.min((spotifyProgress / spotifyData.item.duration_ms) * 100, 100);
+    }, [spotifyProgress, spotifyData?.item?.duration_ms]);
+
     const launchSpotifyApp = async () => {
         try {
-            const { value: canOpen } = await AppLauncher.canOpenUrl({ url: 'spotify:' });
-            if (canOpen) {
-                await AppLauncher.openUrl({ url: 'spotify:' });
+            if (isTauriDesktop) {
+                try {
+                    // Fallback to let the OS handle the protocol via a standard anchor click
+                    const a = document.createElement('a');
+                    a.href = 'spotify://';
+                    a.target = '_blank';
+                    a.click();
+                    return;
+                } catch (e) {
+                    console.error("Tauri shell open failed", e);
+                }
+            }
+            if (window.Capacitor && Capacitor.isNativePlatform()) {
+                const { value: canOpen } = await AppLauncher.canOpenUrl({ url: 'spotify:' });
+                if (canOpen) {
+                    await AppLauncher.openUrl({ url: 'spotify:' });
+                } else {
+                    window.open('https://open.spotify.com', '_blank');
+                }
             } else {
                 window.open('https://open.spotify.com', '_blank');
             }
@@ -235,17 +328,12 @@ const MediaHub = () => {
     };
 
     const handleSpotifyControl = async (action, method = 'PUT', params = '') => {
-        const token = localStorage.getItem('snowball_token');
         try {
-            const res = await fetch(`${API_URL}/api/spotify/${action}${params}`, {
-                method,
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const res = await apiFetch(`/api/spotify/${action}${params}`, { method });
             if (res.ok) {
                 if (action === 'play') setSpotifyData(prev => ({ ...prev, is_playing: true }));
                 if (action === 'pause') setSpotifyData(prev => ({ ...prev, is_playing: false }));
-                // Instant update after ANY control action ⚡
-                setTimeout(fetchSpotify, 300); 
+                pollTimeouts.current.push(setTimeout(fetchSpotify, 300));
             } else if (res.status === 404 && action === 'play') {
                 // No active device? Launch the app!
                 launchSpotifyApp();
@@ -260,11 +348,8 @@ const MediaHub = () => {
         if (!spotifyQuery.trim()) return;
 
         setSpotifySearching(true);
-        const token = localStorage.getItem('snowball_token');
         try {
-            const res = await fetch(`${API_URL}/api/spotify/search?q=${encodeURIComponent(spotifyQuery)}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const res = await apiFetch(`/api/spotify/search?q=${encodeURIComponent(spotifyQuery)}`);
             if (res.ok) {
                 const data = await res.json();
                 setSpotifyResults(data);
@@ -277,20 +362,18 @@ const MediaHub = () => {
     };
 
     const playSpotifyTrack = async (uri) => {
-        const token = localStorage.getItem('snowball_token');
         try {
             // Spotify play API can take a context_uri or uris array
-            await fetch(`${API_URL}/api/spotify/play`, {
+            await apiFetch('/api/spotify/play', {
                 method: 'PUT',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ uris: [uri] })
             });
             setSpotifyResults([]);
             setSpotifyQuery('');
-            setTimeout(fetchSpotify, 300); // Instant update after playing results ⚡
+            pollTimeouts.current.push(setTimeout(fetchSpotify, 300));
         } catch (err) {
             console.error('Failed to play track', err);
         }
@@ -298,51 +381,17 @@ const MediaHub = () => {
     
     const handleSpotifyDisconnect = async () => {
         if (!window.confirm('Disconnect Spotify account?')) return;
-        const token = localStorage.getItem('snowball_token');
         try {
-            const res = await fetch(`${API_URL}/api/spotify/disconnect`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const res = await apiFetch('/api/spotify/disconnect', { method: 'DELETE' });
             if (res.ok) {
                 setSpotifyConnected(false);
                 setSpotifyData(null);
                 setPlaylists([]);
                 setMessage({ type: 'success', text: 'Spotify disconnected' });
-                setTimeout(() => setMessage(null), 3000);
+                pollTimeouts.current.push(setTimeout(() => setMessage(null), 3000));
             }
         } catch (err) {
             console.error('Failed to disconnect Spotify', err);
-        }
-    };
-
-    const handleYouTubeSearch = async (e) => {
-        e.preventDefault();
-        if (!ytQuery.trim()) return;
-
-        // Extract ID if it's a link
-        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-        const match = ytQuery.match(regExp);
-        if (match && match[2].length === 11) {
-            setYtId(match[2]);
-            setYtQuery('');
-            return;
-        }
-
-        setYtSearching(true);
-        try {
-            const token = localStorage.getItem('snowball_token');
-            const res = await fetch(`${API_URL}/api/youtube/search?q=${encodeURIComponent(ytQuery)}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setYtResults(data);
-            }
-        } catch (err) {
-            console.error('YouTube search error:', err);
-        } finally {
-            setYtSearching(false);
         }
     };
 
@@ -353,7 +402,32 @@ const MediaHub = () => {
             return (
                 <div style={{ textAlign: 'center', padding: '1rem 0' }}>
                     <Music size={24} style={{ color: 'var(--accent-color)', marginBottom: '0.5rem' }} />
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>Connect Spotify for live sync.</p>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.6rem' }}>Connect Spotify for live sync.</p>
+                    <p style={{
+                        fontSize: '0.7rem',
+                        color: 'var(--text-secondary)',
+                        lineHeight: 1.5,
+                        marginBottom: '1rem',
+                        maxWidth: '22rem',
+                        marginInline: 'auto',
+                    }}>
+                        {spotifyCredentialSource === 'personal'
+                            ? 'Using your personal Spotify app credentials. Connect again to authorize this Spotify account.'
+                            : 'The shared Spotify integration can be capped by Spotify development-mode limits. If you are building from source, you can plug in your own Spotify app credentials in Settings.'}
+                    </p>
+                    {spotifyStatusError && (
+                        <div style={{
+                            fontSize: '0.7rem',
+                            padding: '0.4rem',
+                            borderRadius: '0.4rem',
+                            marginBottom: '1rem',
+                            backgroundColor: 'rgba(220, 38, 38, 0.1)',
+                            color: '#ef4444',
+                            border: '1px solid rgba(220, 38, 38, 0.2)'
+                        }}>
+                            {spotifyStatusError}
+                        </div>
+                    )}
                     {message && (
                         <div style={{
                             fontSize: '0.7rem',
@@ -370,10 +444,7 @@ const MediaHub = () => {
                     )}
                     <button
                         onClick={() => {
-                            const token = localStorage.getItem('snowball_token');
-                            fetch(`${API_URL}/api/spotify/auth`, {
-                                headers: { 'Authorization': `Bearer ${token}` }
-                            })
+                            apiFetch('/api/spotify/auth')
                                 .then(r => r.json())
                                 .then(d => {
                                     if (d.url) window.location.href = d.url;
@@ -397,12 +468,11 @@ const MediaHub = () => {
                             onChange={(e) => {
                                 setSelectedPlaylist(e.target.value);
                                 if (e.target.value) {
-                                    const token = localStorage.getItem('snowball_token');
-                                    fetch(`${API_URL}/api/spotify/play`, {
+                                    apiFetch('/api/spotify/play', {
                                         method: 'PUT',
-                                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                        headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({ context_uri: e.target.value })
-                                    }).then(() => setTimeout(fetchSpotify, 1000));
+                                    }).then(() => { pollTimeouts.current.push(setTimeout(fetchSpotify, 1000)); });
                                 }
                             }}
                             style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', padding: '0.4rem', fontSize: '0.75rem', minWidth: '80px', maxWidth: '120px', textOverflow: 'ellipsis' }}
@@ -414,8 +484,7 @@ const MediaHub = () => {
                             type="button"
                             onClick={() => {
                                 console.log('Manual refresh triggered');
-                                const token = localStorage.getItem('snowball_token');
-                                fetch(`${API_URL}/api/spotify/playlists`, { headers: { 'Authorization': `Bearer ${token}` } })
+                                apiFetch('/api/spotify/playlists')
                                     .then(async r => { 
                                         if (r.ok) {
                                             const data = await r.json();
@@ -464,7 +533,7 @@ const MediaHub = () => {
                                 onMouseEnter={(e) => e.currentTarget.style.borderColor = 'rgba(29,185,84,0.3)'}
                                 onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
                             >
-                                <img src={track.albumArt} style={{ width: '40px', height: '40px', borderRadius: '2px', objectFit: 'cover' }} alt="" />
+                                <img src={track.albumArt} loading="lazy" style={{ width: '40px', height: '40px', borderRadius: '2px', objectFit: 'cover' }} alt="" />
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                     <p style={{ margin: 0, fontSize: '0.75rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-primary)' }}>{track.name}</p>
                                     <p style={{ margin: 0, fontSize: '0.65rem', color: 'var(--text-secondary)' }}>{track.artist}</p>
@@ -475,21 +544,37 @@ const MediaHub = () => {
                 )}
 
                 {/* Now Playing or Paused */}
-                {(!spotifyData || !spotifyData.is_playing) ? (
+                {(!spotifyData?.item) ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.5rem' }}>
                         <div style={{ background: 'rgba(255,255,255,0.05)', padding: '0.75rem', borderRadius: '0.5rem' }}>
                             <Music size={20} style={{ color: 'var(--text-secondary)' }} />
                         </div>
                         <div style={{ flex: 1 }}>
-                            <h4 style={{ margin: 0, fontSize: '0.85rem' }}>Spotify Paused</h4>
+                            <h4 style={{ margin: 0, fontSize: '0.85rem' }}>Spotify Stopped</h4>
                             <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Search for a track above</p>
                         </div>
-                        <button onClick={() => handleSpotifyControl('play')} style={{ color: 'var(--accent-color)' }}><Play size={18} fill="currentColor" /></button>
+                        <a 
+                            href="spotify://"
+                            onClick={(e) => {
+                                setTimeout(() => {
+                                    window.open("https://open.spotify.com", "_blank");
+                                }, 500);
+                            }} 
+                            style={{ 
+                                background: 'transparent', color: '#1DB954', border: '1px solid rgba(29, 185, 84, 0.3)', 
+                                padding: '0.4rem 0.8rem', borderRadius: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', transition: 'all 0.2s', fontSize: '0.75rem', fontWeight: 'bold', textDecoration: 'none'
+                            }} 
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(29, 185, 84, 0.1)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                            title="Open Spotify App"
+                        >
+                            <Music size={16} /> Open Spotify
+                        </a>
                     </div>
                 ) : (
                     <div style={{ position: 'relative' }}>
                         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem' }}>
-                            <img src={spotifyData.item.album.images[0]?.url} style={{ width: '48px', height: '48px', borderRadius: '0.25rem' }} alt="" />
+                            <img src={spotifyData.item.album.images[0]?.url} loading="lazy" style={{ width: '48px', height: '48px', borderRadius: '0.25rem' }} alt="" />
                             <div style={{ flex: 1, minWidth: 0 }}>
                                 <h4 style={{ margin: 0, fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{spotifyData.item.name}</h4>
                                 <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -548,8 +633,8 @@ const MediaHub = () => {
                         )}
 
                         {isSyncPaused && (
-                            <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.65rem', color: '#ff4d4d', textAlign: 'center', fontWeight: 'bold' }}>
-                                ⚠️ Sync Paused (Rate Limit)
+                            <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.65rem', color: isRateLimited ? '#ff4d4d' : 'var(--text-secondary)', textAlign: 'center', fontWeight: 'bold' }}>
+                                {isRateLimited ? '⚠️ Sync Paused (Rate Limit)' : 'Sync Paused'}
                             </p>
                         )}
 
@@ -557,30 +642,26 @@ const MediaHub = () => {
                             {/* Left Wing (Stabilizer) */}
                             <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
                                 {/* Placeholder or mini status */}
-                                <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: isSyncPaused ? '#ff4d4d' : 'var(--success-color)', opacity: 0.3, filter: 'blur(4px)' }} />
+                                <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: isSyncPaused ? (isRateLimited ? '#ff4d4d' : 'var(--text-secondary)') : 'var(--success-color)', opacity: 0.3, filter: 'blur(4px)' }} />
                             </div>
 
                             {/* Center Controls (The Hero) */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
                                 <button onClick={() => handleSpotifyControl('previous', 'POST')} style={{ color: 'var(--text-secondary)' }}><SkipBack size={16} /></button>
-                                <button onClick={() => handleSpotifyControl('pause')} style={{ background: 'var(--text-primary)', color: 'var(--bg-card)', borderRadius: '50%', padding: '0.4rem', display: 'flex' }}><Pause size={20} fill="currentColor" /></button>
+                                <button 
+                                    onClick={() => handleSpotifyControl(spotifyData.is_playing ? 'pause' : 'play')} 
+                                    style={{ background: 'var(--text-primary)', color: 'var(--bg-card)', borderRadius: '50%', padding: '0.4rem', display: 'flex' }}
+                                >
+                                    {spotifyData.is_playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
+                                </button>
                                 <button onClick={() => handleSpotifyControl('next', 'POST')} style={{ color: 'var(--text-secondary)' }}><SkipForward size={16} /></button>
                             </div>
 
-                            {/* Right Wing (Action) */}
-                            <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
-                                <button 
-                                    onClick={() => setIsSyncPaused(!isSyncPaused)} 
-                                    title={isSyncPaused ? "Resume Sync" : "Pause Sync"}
-                                    style={{ color: isSyncPaused ? '#ff4d4d' : 'var(--text-secondary)' }}
-                                >
-                                    <Volume2 size={16} style={{ transform: isSyncPaused ? 'scale(1.1)' : 'scale(1)', transition: '0.2s' }} />
-                                </button>
-                            </div>
+                            <div style={{ flex: 1 }} />
                         </div>
 
                         <div style={{ height: '3px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px' }}>
-                            <div style={{ width: `${Math.min((spotifyProgress / spotifyData.item.duration_ms) * 100, 100)}%`, height: '100%', background: 'var(--accent-color)', borderRadius: '2px', transition: 'width 0.1s linear' }} />
+                            <div style={{ width: `${progressPercent}%`, height: '100%', background: 'var(--accent-color)', borderRadius: '2px', transition: 'width 0.1s linear' }} />
                         </div>
                     </div>
                 )}
@@ -602,64 +683,10 @@ const MediaHub = () => {
 
     const renderYouTube = () => {
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {!ytId ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        <form onSubmit={handleYouTubeSearch} style={{ display: 'flex', gap: '0.5rem' }}>
-                            <input
-                                type="text"
-                                placeholder="Search or Paste Link..."
-                                value={ytQuery}
-                                onChange={(e) => setYtQuery(e.target.value)}
-                                style={{ flex: 1, background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', padding: '0.4rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.8rem' }}
-                            />
-                            <button type="submit" disabled={ytSearching} style={{ background: 'var(--accent-color)', color: 'white', borderRadius: '0.5rem', width: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: ytSearching ? 0.7 : 1 }}>
-                                <Search size={16} />
-                            </button>
-                        </form>
-
-                        {ytResults.length > 0 && !ytSearching && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '200px', overflowY: 'auto', paddingRight: '4px' }}>
-                                {ytResults.map(video => (
-                                    <button
-                                        key={video.id}
-                                        onClick={() => { setYtId(video.id); setYtResults([]); setYtQuery(''); }}
-                                        style={{
-                                            display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.4rem',
-                                            borderRadius: '0.4rem', background: 'rgba(255,255,255,0.03)', border: '1px solid transparent',
-                                            textAlign: 'left', cursor: 'pointer', transition: 'all 0.2s'
-                                        }}
-                                        onMouseEnter={(e) => e.currentTarget.style.borderColor = 'rgba(var(--accent-rgb), 0.3)'}
-                                        onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
-                                    >
-                                        <img src={video.thumbnail} style={{ width: '40px', height: '30px', borderRadius: '2px', objectFit: 'cover' }} alt="" />
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            <p style={{ margin: 0, fontSize: '0.75rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-primary)' }}>{video.title}</p>
-                                            <p style={{ margin: 0, fontSize: '0.65rem', color: 'var(--text-secondary)' }}>{video.author}</p>
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                        {ytSearching && <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Searching...</p>}
-                    </div>
-                ) : (
-                    <div style={{ position: 'relative', paddingTop: '56.25%', borderRadius: '0.5rem', overflow: 'hidden', background: '#000' }}>
-                        <iframe
-                            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
-                            src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
-                            allow="autoplay; encrypted-media"
-                            allowFullScreen
-                        />
-                        <button
-                            onClick={() => setYtId(null)}
-                            style={{ position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.6)', color: 'white', border: 0, borderRadius: '50%', width: '20px', height: '20px', fontSize: '10px', cursor: 'pointer', zIndex: 10 }}
-                        >
-                            ✕
-                        </button>
-                    </div>
-                )}
-            </div>
+            <YouTubePanel
+                backgroundPlayback={youtubeBackgroundPlayback}
+                onBackgroundPlaybackChange={setYoutubeBackgroundPlayback}
+            />
         );
     };
 
@@ -732,7 +759,14 @@ const MediaHub = () => {
 
                     {/* Content */}
                     <div style={{ minHeight: '100px', position: 'relative', zIndex: 1 }}>
-                        {activeTab === 'spotify' ? renderSpotify() : renderYouTube()}
+                        <div style={{ display: activeTab === 'spotify' ? 'block' : 'none' }}>
+                            {renderSpotify()}
+                        </div>
+                        {(activeTab === 'youtube' || youtubeBackgroundPlayback) && (
+                            <div style={{ display: activeTab === 'youtube' ? 'block' : 'none' }}>
+                                {renderYouTube()}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -750,4 +784,4 @@ const MediaHub = () => {
     );
 };
 
-export default MediaHub;
+export default React.memo(MediaHub);

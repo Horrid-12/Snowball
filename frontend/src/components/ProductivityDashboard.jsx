@@ -14,7 +14,7 @@ const ProductivityDashboard = ({ tasks }) => {
         localStorage.setItem('snowball_productivity_expanded', JSON.stringify(isExpanded));
     }, [isExpanded]);
 
-    const { totals, displayScore } = calculateProductivityScore(tasks, globalHabits);
+    const { totals, displayScore, bonusAdjustment, overduePenalty } = calculateProductivityScore(tasks, globalHabits);
 
     return (
         <div 
@@ -69,6 +69,12 @@ const ProductivityDashboard = ({ tasks }) => {
                         <div style={{ minWidth: 0 }}>
                             <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Hours</p>
                             <p style={{ fontWeight: '600', margin: 0 }}>{totals.hoursTaken.toFixed(1)} / {totals.hoursAllocated.toFixed(1)}</p>
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Adjustments</p>
+                            <p style={{ fontWeight: '600', margin: 0 }}>
+                                +{(bonusAdjustment * 100).toFixed(1)} / -{(overduePenalty * 100).toFixed(1)}
+                            </p>
                         </div>
                     </div>
                 </div>

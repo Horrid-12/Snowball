@@ -2,6 +2,70 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { X, Delete } from 'lucide-react';
 
+const safeEvaluate = (expression) => {
+    const tokens = [];
+    let i = 0;
+    while (i < expression.length) {
+        if (expression[i] === ' ') { i++; continue; }
+        if ('+-*/()'.includes(expression[i])) {
+            if (expression[i] === '-' && (tokens.length === 0 || '+-*/('.includes(tokens[tokens.length - 1]))) {
+                i++;
+                let num = '';
+                while (i < expression.length && /[\d.]/.test(expression[i])) { num += expression[i++]; }
+                if (!num) throw new Error('Invalid expression');
+                tokens.push('-' + num);
+            } else {
+                tokens.push(expression[i++]);
+            }
+        } else if (/[\d.]/.test(expression[i])) {
+            let num = '';
+            while (i < expression.length && /[\d.]/.test(expression[i])) { num += expression[i++]; }
+            tokens.push(num);
+        } else {
+            throw new Error('Invalid expression');
+        }
+    }
+
+    let pos = 0;
+    const parseFactor = () => {
+        const token = tokens[pos++];
+        if (token === '(') {
+            const val = parseExpression();
+            if (tokens[pos++] !== ')') throw new Error('Mismatched parentheses');
+            return val;
+        }
+        if (token === '-') return -parseFactor();
+        const num = parseFloat(token);
+        if (isNaN(num)) throw new Error('Invalid number');
+        return num;
+    };
+
+    const parseTerm = () => {
+        let val = parseFactor();
+        while (pos < tokens.length && (tokens[pos] === '*' || tokens[pos] === '/')) {
+            const op = tokens[pos++];
+            const right = parseFactor();
+            if (op === '/' && right === 0) throw new Error('Division by zero');
+            val = op === '*' ? val * right : val / right;
+        }
+        return val;
+    };
+
+    const parseExpression = () => {
+        let val = parseTerm();
+        while (pos < tokens.length && (tokens[pos] === '+' || tokens[pos] === '-')) {
+            const op = tokens[pos++];
+            const right = parseTerm();
+            val = op === '+' ? val + right : val - right;
+        }
+        return val;
+    };
+
+    const result = parseExpression();
+    if (pos !== tokens.length) throw new Error('Invalid expression');
+    return result;
+};
+
 const CalculatorWidget = ({ onClose }) => {
     const [display, setDisplay] = useState('0');
     const [equation, setEquation] = useState('');
@@ -29,7 +93,6 @@ const CalculatorWidget = ({ onClose }) => {
             setEquation(equation + display + ' ' + op + ' ');
             setIsNewNumber(true);
         } else if (equation) {
-            // Replace last operator
             setEquation(equation.slice(0, -2) + op + ' ');
         }
     };
@@ -38,12 +101,9 @@ const CalculatorWidget = ({ onClose }) => {
         if (!equation && isNewNumber) return;
         
         try {
-            // Safe eval alternative for basic math
             const fullEquation = equation + display;
-            // eslint-disable-next-line no-new-func
-            const result = new Function('return ' + fullEquation)();
+            const result = safeEvaluate(fullEquation);
             
-            // Format to avoid long decimals
             const formattedResult = Number.isInteger(result) ? result.toString() : parseFloat(result.toFixed(6)).toString();
             
             setDisplay(formattedResult);

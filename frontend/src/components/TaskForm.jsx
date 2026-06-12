@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { API_URL } from '../config.js';
 import { Pin, Lock, Repeat, Calendar, Clock } from 'lucide-react';
+import { getTagColor, loadTagColors, normalizeHexColor, parseTags, saveTagColors } from '../utils/tagColors.js';
+import TagColorInput from './TagColorInput.jsx';
 
 const TaskForm = ({ onTaskAdded }) => {
     const [formData, setFormData] = useState({
@@ -19,8 +21,19 @@ const TaskForm = ({ onTaskAdded }) => {
     });
 
     const [loading, setLoading] = useState(false);
+    const [tagColors, setTagColors] = useState(() => loadTagColors());
     const dateRef = useRef(null);
     const timeRef = useRef(null);
+
+    React.useEffect(() => {
+        const syncTagColors = () => setTagColors(loadTagColors());
+        window.addEventListener('snowball-tag-colors-changed', syncTagColors);
+        window.addEventListener('storage', syncTagColors);
+        return () => {
+            window.removeEventListener('snowball-tag-colors-changed', syncTagColors);
+            window.removeEventListener('storage', syncTagColors);
+        };
+    }, []);
 
     const handleChange = (e) => {
         const { name, value, type } = e.target;
@@ -65,6 +78,17 @@ const TaskForm = ({ onTaskAdded }) => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const parsedTags = parseTags(formData.tags);
+
+    const handleTagColorChange = (tag, color) => {
+        const nextMap = {
+            ...tagColors,
+            [tag]: normalizeHexColor(color, getTagColor(tag, tagColors))
+        };
+        setTagColors(nextMap);
+        saveTagColors(nextMap);
     };
 
     return (
@@ -132,6 +156,56 @@ const TaskForm = ({ onTaskAdded }) => {
                     value={formData.tags}
                     onChange={handleChange}
                 />
+                {parsedTags.length > 0 && (
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.5rem',
+                        padding: '0.75rem',
+                        background: 'var(--bg-secondary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '0.75rem'
+                    }}>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                            Tag colors
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            {parsedTags.map((tag) => (
+                                <div key={tag} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                                        <span style={{
+                                            width: '10px',
+                                            height: '10px',
+                                            borderRadius: '999px',
+                                            background: getTagColor(tag, tagColors),
+                                            flexShrink: 0
+                                        }} />
+                                        <span style={{ fontSize: '0.78rem', color: 'var(--text-primary)' }}>{tag}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                                        <span style={{
+                                            width: '18px',
+                                            height: '18px',
+                                            borderRadius: '999px',
+                                            background: getTagColor(tag, tagColors),
+                                            border: '1px solid var(--border-color)',
+                                            flexShrink: 0
+                                        }} />
+                                        <TagColorInput
+                                            value={getTagColor(tag, tagColors)}
+                                            onChange={(color) => handleTagColorChange(tag, color)}
+                                            style={{
+                                                width: '84px',
+                                                padding: '0.3rem 0.45rem',
+                                                fontSize: '0.72rem'
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', width: '100%' }}>
@@ -203,17 +277,45 @@ const TaskForm = ({ onTaskAdded }) => {
                 </button>
                 <button
                     type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, recurring: prev.recurring === 'daily' ? 'none' : 'daily' }))}
+                    onClick={() => {
+                        setFormData(prev => {
+                            let newVal = 'none';
+                            if (prev.recurring === 'none') newVal = 'daily';
+                            else if (prev.recurring === 'daily') newVal = 'weekly';
+                            else if (prev.recurring === 'weekly') newVal = 'monthly';
+                            else if (prev.recurring === 'monthly') {
+                                const days = window.prompt("Enter integer days for custom recurrence (e.g., 5 for every 5 days):", "5");
+                                if (days && !isNaN(parseInt(days))) {
+                                    newVal = `custom:${parseInt(days)}`;
+                                } else {
+                                    newVal = 'none';
+                                }
+                            } else newVal = 'none';
+                            
+                            return { ...prev, recurring: newVal };
+                        });
+                    }}
                     style={{
                         display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', borderRadius: '2rem',
-                        backgroundColor: formData.recurring === 'daily' ? 'var(--accent-color)' : 'transparent',
-                        color: formData.recurring === 'daily' ? '#ffffff' : 'var(--text-secondary)',
-                        border: `1px solid ${formData.recurring === 'daily' ? 'var(--accent-color)' : 'var(--border-color)'}`,
+                        backgroundColor: formData.recurring !== 'none' ? 'var(--accent-color)' : 'transparent',
+                        color: formData.recurring !== 'none' ? '#ffffff' : 'var(--text-secondary)',
+                        border: `1px solid ${formData.recurring !== 'none' ? 'var(--accent-color)' : 'var(--border-color)'}`,
                         cursor: 'pointer', fontSize: '0.75rem', fontWeight: '500', transition: 'all 0.2s',
-                        boxShadow: formData.recurring === 'daily' ? '0 2px 8px rgba(0,0,0,0.1)' : 'none'
+                        boxShadow: formData.recurring !== 'none' ? '0 2px 8px rgba(0,0,0,0.1)' : 'none'
                     }}
                 >
-                    <Repeat size={14} /> {formData.recurring === 'daily' ? 'Daily Reset' : 'Daily Reset'}
+                    <Repeat size={14} /> Repeat 
+                    {formData.recurring !== 'none' && (
+                        <span style={{ 
+                            background: 'rgba(255,255,255,0.2)', padding: '0.1rem 0.35rem', 
+                            borderRadius: '0.35rem', fontSize: '0.65rem', marginLeft: '0.1rem' 
+                        }}>
+                            {formData.recurring === 'daily' ? 'D' : 
+                             formData.recurring === 'weekly' ? 'W' : 
+                             formData.recurring === 'monthly' ? 'M' : 
+                             formData.recurring?.startsWith('custom:') ? formData.recurring.split(':')[1] : ''}
+                        </span>
+                    )}
                 </button>
             </div>
 

@@ -133,7 +133,11 @@ export const backfillDailyProductivity = async (userId) => {
     try {
         const today = await getTodayWithOffset(userId);
 
-        const [{ data: activityLogs, error: activityError }, { data: habitIds, error: habitsError }] = await Promise.all([
+        const [
+            { data: activityLogs, error: activityError },
+            { data: habitIds, error: habitsError },
+            { data: existingSnapshots, error: snapshotsError }
+        ] = await Promise.all([
             supabase
                 .from('activity_logs')
                 .select('date, type, score')
@@ -142,13 +146,19 @@ export const backfillDailyProductivity = async (userId) => {
             supabase
                 .from('habits')
                 .select('id')
+                .eq('user_id', userId),
+            supabase
+                .from('daily_productivity')
+                .select('date')
                 .eq('user_id', userId)
         ]);
 
         if (activityError) throw activityError;
         if (habitsError) throw habitsError;
+        if (snapshotsError) throw snapshotsError;
 
         const ownedHabitIds = (habitIds || []).map(habit => habit.id);
+        const existingSnapshotDates = new Set((existingSnapshots || []).map(snapshot => snapshot.date));
         let habitLogs = [];
 
         if (ownedHabitIds.length > 0) {
@@ -206,7 +216,7 @@ export const backfillDailyProductivity = async (userId) => {
         }
 
         const historicalPayload = Array.from(groupedByDate.values())
-            .filter(snapshot => snapshot.date !== today)
+            .filter(snapshot => snapshot.date !== today && !existingSnapshotDates.has(snapshot.date))
             .map(snapshot => ({
                 ...snapshot,
                 score: Number((snapshot.score || 0).toFixed(1))

@@ -1,25 +1,76 @@
-import { Network } from '@capacitor/network';
-import { db } from '../db/db';
-import { API_URL } from '../config';
+import { clearNoteDeletionMark, db } from '../db/db';
+import { hasPersistedSession, apiFetch } from '../utils/apiClient';
+
+let Network = null;
+
+const isCapacitorAndroid = (() => {
+    try {
+        return typeof window !== 'undefined'
+            && window.Capacitor
+            && window.Capacitor.isNativePlatform()
+            && window.Capacitor.getPlatform() === 'android';
+    } catch {
+        return false;
+    }
+})();
+
+if (isCapacitorAndroid) {
+    try {
+        const mod = await import('@capacitor/network');
+        Network = mod.Network;
+    } catch (e) {
+        console.warn('SyncService: @capacitor/network unavailable on this platform');
+    }
+}
 
 class SyncService {
     constructor() {
         this.isSyncing = false;
+        this.syncDebounceTimer = null;
         this.init();
     }
 
-    async init() {
-        // Listen for network changes
-        Network.addListener('networkStatusChange', status => {
-            console.log('Network status changed:', status);
-            if (status.connected) {
-                this.sync();
-            }
-        });
+    debouncedSync(debounceMs = 2000) {
+        if (this.syncDebounceTimer) {
+            clearTimeout(this.syncDebounceTimer);
+        }
+        this.syncDebounceTimer = setTimeout(() => {
+            this.syncDebounceTimer = null;
+            this.sync();
+        }, debounceMs);
+    }
 
-        // Trigger initial sync if online
-        const status = await Network.getStatus();
-        if (status.connected) {
+    triggerSync() {
+        if (this.syncDebounceTimer) {
+            clearTimeout(this.syncDebounceTimer);
+            this.syncDebounceTimer = null;
+        }
+        this.sync();
+    }
+
+    async init() {
+        if (Network) {
+            try {
+                Network.addListener('networkStatusChange', status => {
+                    console.log('Network status changed:', status);
+                    if (status.connected) {
+                        this.debouncedSync();
+                    }
+                });
+
+                const status = await Network.getStatus();
+                if (status.connected) {
+                    this.sync();
+                }
+                return;
+            } catch (e) {
+                console.warn('SyncService: Capacitor Network listener failed', e);
+            }
+        }
+
+        // Web / Tauri fallback: listen to browser online event
+        window.addEventListener('online', () => this.debouncedSync());
+        if (navigator.onLine) {
             this.sync();
         }
     }
@@ -30,8 +81,7 @@ class SyncService {
         console.log('🚀 Sync engine starting...');
 
         try {
-            const token = localStorage.getItem('snowball_token');
-            if (!token) {
+            if (!hasPersistedSession()) {
                 this.isSyncing = false;
                 return;
             }
@@ -40,33 +90,31 @@ class SyncService {
             
             for (const mutation of mutations) {
                 try {
-                    const response = await fetch(mutation.url, {
+                    const response = await apiFetch(mutation.url, {
                         method: mutation.method,
                         headers: {
-                            'Authorization': `Bearer ${token}`,
                             'Content-Type': 'application/json'
                         },
                         body: mutation.body ? JSON.stringify(mutation.body) : null
                     });
 
-                    if (response.ok) {
+                    const noteDeleteMissingRemotely = mutation.type === 'notes_delete' && response.status === 404;
+
+                    if (response.ok || noteDeleteMissingRemotely) {
                         let data = {};
-                        if (response.status !== 204) {
+                        if (response.status !== 204 && response.status !== 404) {
                             try {
                                 data = await response.json();
                             } catch (e) {
                                 console.warn("Response was ok but not JSON", e);
                             }
                         }
-                        
-                        await db.outbox.delete(mutation.id);
-                        
-                        // tempId resolution for tasks
+
+                        // tempId resolution for tasks (do BEFORE deleting mutation)
                         if (mutation.type === 'task_add' && mutation.body && mutation.body.id && data?.id) {
                             const tempId = mutation.body.id;
                             const realId = data.id;
 
-                            // 1. Update following mutations in outbox
                             const pendingMutations = await db.outbox.toArray();
                             for (const pm of pendingMutations) {
                                 if (pm.url.includes(tempId)) {
@@ -77,12 +125,20 @@ class SyncService {
                                 }
                             }
 
-                            // 2. Update local DB
                             await db.tasks.delete(tempId);
                             await db.tasks.add(data);
                         }
 
-                        console.log(`✅ Mutation ${mutation.id} synced successfully`);
+                        if (mutation.type === 'notes_delete') {
+                            const noteId = mutation?.body?.note_id
+                                || mutation?.body?.id
+                                || mutation?.url?.split('/').filter(Boolean).pop();
+                            if (noteId) {
+                                await clearNoteDeletionMark(String(noteId));
+                            }
+                        }
+
+                        await db.outbox.delete(mutation.id);
                         window.dispatchEvent(new CustomEvent('snowball-sync-complete', { detail: { type: mutation.type } }));
                     } else if (response.status === 401 || response.status === 403) {
                         // Auth issue - stop syncing for now
