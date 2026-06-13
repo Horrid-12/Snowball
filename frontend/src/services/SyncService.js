@@ -144,6 +144,10 @@ class SyncService {
                         // Auth issue - stop syncing for now
                         console.warn('Sync stopped due to auth error');
                         break;
+                    } else if (response.status === 413) {
+                        // Payload too large - stop syncing and keep in outbox for user to reduce size
+                        console.error('Payload too large, sync stopped.');
+                        break;
                     } else if (response.status >= 500) {
                         // Server error - try again later
                         console.error('Server error during sync, will retry');

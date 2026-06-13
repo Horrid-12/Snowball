@@ -2,7 +2,7 @@ import express from 'express';
 import { supabase as serviceDb } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 
-const getDb = (req) => req.anonDb || serviceDb;
+const getDb = () => serviceDb;
 import { getTodayWithOffset, getPastDateWithOffset } from '../utils.js';
 import { backfillDailyProductivity } from '../utils/productivityScore.js';
 

@@ -47,7 +47,10 @@ export const validate = (schema) => (req, res, next) => {
         const message = firstError?.message || 'Validation failed';
         return res.status(400).json({ error: message });
     }
-    req.validatedBody = result.data;
+    // Merge validated data back into raw body so extra fields (e.g. camelCase task fields)
+    // that zod strips are preserved. Known/schema fields get validated+transformed,
+    // unknown fields pass through untouched.
+    req.validatedBody = { ...req.body, ...result.data };
     next();
 };
 

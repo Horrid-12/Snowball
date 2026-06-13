@@ -210,6 +210,9 @@ function YouTubePanel({ backgroundPlayback = false, onBackgroundPlaybackChange =
     const progressIntervalRef = useRef(null);
     const settingsSyncTimeoutRef = useRef(null);
     const settingsSyncBootstrappedRef = useRef(false);
+    const ytQueueRef = useRef(ytQueue);
+
+    useEffect(() => { ytQueueRef.current = ytQueue; }, [ytQueue]);
 
     useEffect(() => {
         const handleFullscreenChange = () => {
@@ -325,20 +328,12 @@ function YouTubePanel({ backgroundPlayback = false, onBackgroundPlaybackChange =
     }, []);
 
     const playNextInQueue = useCallback(() => {
-        let nextVideo = null;
+        const queue = ytQueueRef.current;
+        if (queue.length === 0) return;
 
-        setYtQueue((previousQueue) => {
-            if (previousQueue.length === 0) {
-                return previousQueue;
-            }
-
-            [nextVideo] = previousQueue;
-            return previousQueue.slice(1);
-        });
-
-        if (nextVideo) {
-            playVideo(nextVideo);
-        }
+        const [nextVideo, ...rest] = queue;
+        setYtQueue(rest);
+        playVideo(nextVideo);
     }, [playVideo]);
 
     const importPlaylist = async () => {
@@ -552,7 +547,7 @@ function YouTubePanel({ backgroundPlayback = false, onBackgroundPlaybackChange =
                             syncProgress();
 
                             if (state === YT.PlayerState.ENDED) {
-                                if (ytQueue.length > 0) {
+                                if (ytQueueRef.current.length > 0) {
                                     playNextInQueue();
                                 } else if (!autoplayRelated) {
                                     event.target.stopVideo();
@@ -575,7 +570,7 @@ function YouTubePanel({ backgroundPlayback = false, onBackgroundPlaybackChange =
             isCancelled = true;
             destroyPlayer();
         };
-    }, [autoplayRelated, currentVideo?.id, playNextInQueue, ytQueue.length]);
+    }, [autoplayRelated, currentVideo?.id, playNextInQueue]);
 
     const handlePlayPause = () => {
         const player = playerRef.current;

@@ -506,18 +506,27 @@ function App() {
     }, [showMediaHub]);
 
     useEffect(() => {
+        let lastMobile = window.innerWidth <= 768;
+
         const handleResize = () => {
             const mobile = window.innerWidth <= 768;
             setIsMobile(mobile);
-            if (mobile) {
-                setShowSidebar(false);
-                setShowTaskComposer(false);
-            } else {
-                setShowSidebar(true);
-                setShowMediaHub(true);
+            if (mobile !== lastMobile) {
+                if (mobile) {
+                    setShowSidebar(false);
+                    setShowTaskComposer(false);
+                } else {
+                    setShowSidebar(true);
+                    setShowMediaHub(true);
+                }
+                lastMobile = mobile;
             }
         };
-        handleResize();
+
+        if (lastMobile) {
+            setShowSidebar(false);
+        }
+
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, []);
@@ -986,7 +995,19 @@ function App() {
         setTheme(newTheme);
     }, []);
 
+    const keyboardDismissedRef = useRef(false);
+
     const closeTransientUi = useCallback(() => {
+        if (keyboardDismissedRef.current) {
+            keyboardDismissedRef.current = false;
+            return true;
+        }
+        if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+            document.activeElement.blur();
+            keyboardDismissedRef.current = true;
+            setTimeout(() => { keyboardDismissedRef.current = false; }, 400);
+            return true;
+        }
         if (showSettings) {
             setShowSettings(false);
             return true;
@@ -1069,6 +1090,12 @@ function App() {
         let backCancelled = false;
 
         CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+            if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+                document.activeElement.blur();
+                keyboardDismissedRef.current = true;
+                setTimeout(() => { keyboardDismissedRef.current = false; }, 400);
+                return;
+            }
             if (handleInAppBack()) {
                 return;
             }
@@ -1449,7 +1476,13 @@ function App() {
                 {showTaskComposer && user && (
                     <Suspense fallback={<LoadingFallback height="200px" />}>
                         <TaskComposerPanel
-                            onClose={() => setShowTaskComposer(false)}
+                            onClose={() => {
+                                if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+                                    document.activeElement.blur();
+                                    return;
+                                }
+                                setShowTaskComposer(false);
+                            }}
                             onTaskAdded={handleTaskAdded}
                             isMobile={isMobile}
                         />

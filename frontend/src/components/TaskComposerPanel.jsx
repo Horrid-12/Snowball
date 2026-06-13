@@ -1,25 +1,54 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
 
 import TaskForm from './TaskForm.jsx';
 
+const KB_PADDING = 260;
+
 const TaskComposerPanel = ({ onClose, onTaskAdded, isMobile }) => {
+    const [viewportHeight, setViewportHeight] = useState(
+        isMobile ? (window.visualViewport?.height || window.innerHeight) : null
+    );
+    const [keyboardPadding, setKeyboardPadding] = useState(KB_PADDING);
+
     React.useEffect(() => {
+        if (isMobile) return;
+
         const handleEscape = (e) => {
             if (e.key === 'Escape') onClose();
         };
 
         window.addEventListener('keydown', handleEscape);
         return () => window.removeEventListener('keydown', handleEscape);
-    }, [onClose]);
+    }, [onClose, isMobile]);
+
+    React.useEffect(() => {
+        if (!isMobile || !window.visualViewport) return;
+
+        const handleViewport = () => {
+            const vh = window.visualViewport.height;
+            setViewportHeight(vh);
+            const fullHeight = window.innerHeight;
+            const diff = fullHeight - vh;
+            if (diff > 80) {
+                setKeyboardPadding(diff + 60);
+            } else {
+                setKeyboardPadding(KB_PADDING);
+            }
+        };
+
+        handleViewport();
+        window.visualViewport.addEventListener('resize', handleViewport);
+        return () => window.visualViewport.removeEventListener('resize', handleViewport);
+    }, [isMobile]);
 
     return (
         <>
-            {isMobile && (
-                <div 
-                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1199, backdropFilter: 'blur(4px)' }} 
-                    onClick={onClose} 
+            {!isMobile && (
+                <div
+                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1199, backdropFilter: 'blur(4px)' }}
+                    onClick={onClose}
                 />
             )}
             <motion.div
@@ -27,6 +56,7 @@ const TaskComposerPanel = ({ onClose, onTaskAdded, isMobile }) => {
                 animate={{ opacity: 1, y: 0, x: 0, scale: 1 }}
                 exit={{ opacity: 0, y: isMobile ? 50 : 0, x: isMobile ? 0 : 24, scale: 0.98 }}
                 transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+                onPointerDown={(e) => e.stopPropagation()}
                 style={{
                     position: 'fixed',
                     top: isMobile ? '0' : '6.5rem',
@@ -35,7 +65,7 @@ const TaskComposerPanel = ({ onClose, onTaskAdded, isMobile }) => {
                     bottom: isMobile ? '0' : 'auto',
                     width: isMobile ? '100vw' : '360px',
                     maxWidth: isMobile ? '100vw' : 'calc(100vw - 2rem)',
-                    maxHeight: isMobile ? '100vh' : 'calc(100vh - 8rem)',
+                    maxHeight: isMobile && viewportHeight ? `${viewportHeight}px` : 'calc(100vh - 8rem)',
                     background: 'var(--bg-primary)',
                     border: isMobile ? 'none' : '1px solid var(--border-color)',
                     borderRadius: isMobile ? '0' : '1.5rem',
@@ -79,7 +109,7 @@ const TaskComposerPanel = ({ onClose, onTaskAdded, isMobile }) => {
             </div>
 
             <div style={{
-                padding: isMobile ? '1rem 1rem calc(env(safe-area-inset-bottom, 0px) + 1rem)' : '1rem',
+                padding: isMobile ? `1rem 1rem ${keyboardPadding}px` : '1rem',
                 overflowY: 'auto',
                 flex: 1
             }}>
