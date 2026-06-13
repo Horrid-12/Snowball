@@ -54,8 +54,7 @@ Snowball is built on a **Local-First** philosophy. The application prioritizes i
 - **Hosting**: Vercel
 
 ### 🐛 Known Bugs
-- Cross-Device Syncronising Issues
-- Spotify Widget Issues
+- Timer Showing Accent of Selected Tag at 0m
 
 ### 🗡 Installation
 Head Over to Releases and Download Suitable Platfrom
