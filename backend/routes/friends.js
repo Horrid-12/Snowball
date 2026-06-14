@@ -3,7 +3,7 @@ import { supabase as serviceDb } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireUUID, validate, schemas } from '../middleware/validate.js';
 
-const getDb = () => serviceDb;
+const getDb = (req) => req?.anonDb || serviceDb;
 
 const router = express.Router();
 
@@ -31,11 +31,12 @@ const uniqById = (users = []) => {
     });
 };
 
-const fetchUsersByIds = async (userIds = [], db = serviceDb) => {
+const fetchUsersByIds = async (userIds = [], _db = serviceDb) => {
     const ids = [...new Set(userIds.filter(Boolean))];
     if (ids.length === 0) return new Map();
 
-    const { data, error } = await db
+    // Always use serviceDb for users table — RLS policy only allows reading own row
+    const { data, error } = await serviceDb
         .from('users')
         .select(USER_FIELDS)
         .in('id', ids);
@@ -206,14 +207,15 @@ router.get('/search', async (req, res, next) => {
         if (query.length < 2) return res.json([]);
 
         const pattern = `%${query.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
+        // users table queries use serviceDb — RLS only allows reading own row
         const [byUsername, byEmail, relationships] = await Promise.all([
-            db
+            serviceDb
                 .from('users')
                 .select(USER_FIELDS)
                 .ilike('username', pattern)
                 .neq('id', req.user.id)
                 .limit(8),
-            db
+            serviceDb
                 .from('users')
                 .select(USER_FIELDS)
                 .ilike('email', pattern)
@@ -262,7 +264,8 @@ router.post('/requests', validate(schemas.friendRequest), async (req, res, next)
         const addresseeId = userId;
         if (addresseeId === req.user.id) return res.status(400).json({ error: 'You cannot add yourself as a friend' });
 
-        const { data: targetUser, error: targetError } = await db
+        // users table lookup uses serviceDb — RLS only allows reading own row
+        const { data: targetUser, error: targetError } = await serviceDb
             .from('users')
             .select(USER_FIELDS)
             .eq('id', addresseeId)

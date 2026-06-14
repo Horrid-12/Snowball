@@ -3,9 +3,9 @@ import { supabase as serviceDb } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validate, schemas } from '../middleware/validate.js';
 
-// Using service role client for all queries (app-level user filtering via .eq('user_id', ...))
-// The anon client (req.anonDb) can't carry our custom JWT — Supabase PostgREST can't decode it
-const getDb = () => serviceDb;
+// Using per-request anon client so Supabase RLS policies are enforced.
+// Falls back to service role if anon client isn't configured.
+const getDb = (req) => req?.anonDb || serviceDb;
 import { logActivity } from './activity.js';
 import { getTodayWithOffset } from '../utils.js';
 import { recomputeDailyProductivity } from '../utils/productivityScore.js';

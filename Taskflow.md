@@ -30,6 +30,8 @@
 
 14. **Production build loading screen hangs on auth failure** — `App.jsx` catch handler for `/api/auth/me` never set `checkingAuth = false`, causing infinite loading overlay. Fixed by adding `setCheckingAuth(false)` + 15s safety timeout that forces the check to resolve.
 
+15. **RLS bypass — all routes used `serviceDb` (admin key)** — Supabase RLS policies existed but were never enforced because every route used the service role key (bypasses RLS). Fixed by: (a) `getAnonClient(token)` now accepts the user's JWT and passes it as `Authorization: Bearer` header so Supabase decodes it for `auth.jwt()` in RLS policies; (b) `requireAuth` creates `req.anonDb` with the user's token; (c) route files (`tasks.js`, `habits.js`, `notes.js`, `activity.js`, `friends.js`) switched from `const getDb = () => serviceDb` to `const getDb = (req) => req?.anonDb || serviceDb` — RLS is enforced where policies permit (`friendships`, `friend_presence`, `friend_messages`) while `users` table queries (friend search) remain on `serviceDb` because RLS only allows self-read. `auth.js`, `spotify.js`, `productivityScore.js`, `utils.js` stay on service role (auth/admin operations).
+
 ## Upcoming Features
 
 1. **Ctrl+Tab quick-switch between notes** — Keyboard shortcut to cycle through recent notes without mousing
@@ -69,6 +71,8 @@
 6. **Android task creation closes on tapping Title input** — On Android 14+ (Vivo, WebView 147), tapping the Task Title input caused the TaskComposerPanel to close immediately. Android 14's predictive back gesture fires events when the keyboard starts showing. The path went through `popstate` → `handleInAppBack` → `closeTransientUi` (not through the Capacitor `backButton` listener). First call blurred the input and returned; the cascade from viewport change fired a second call where `document.activeElement` was null, so `closeTransientUi` closed the panel. **Fixed** by setting `keyboardDismissedRef` inside `closeTransientUi` itself when it blurs input (not just in the backButton listener), so both code paths are covered. (`App.jsx`)
 
 7. **YouTube Next button restarts current media and skips queue item** — `playNextInQueue()` used a closure variable trick (`let nextVideo = null; setYtQueue(prev => { [nextVideo] = prev; ... }); if (nextVideo) playVideo(nextVideo)`) that relied on React calling the functional updater synchronously. React 18's automatic batching defers functional updaters to the render phase, so `nextVideo` was always `null` when checked — `playVideo` was never called. The lost item changed `ytQueue.length`, which was in the effect dependency array, causing the player to be destroyed and recreated with the same `currentVideo.id` — restarting the current video from the beginning. **Fixed** by: (1) reading `ytQueue` through a `useRef` that stays in sync with state, removing the broken closure trick; (2) removing `ytQueue.length` from the effect deps and using the ref inside `onStateChange` instead. (`YouTubePanel.jsx`)
+
+8. **Sync data loss on 4xx errors** — The `SyncService` immediately deleted mutations from the outbox if the server returned any `4xx` error (excluding 401, 403, 413), leading to permanent data loss on transient validation errors. **Fixed** by introducing a `failed_mutations` Dexie table. Instead of discarding, failing mutations are now moved to this store for potential later recovery, unblocking the sync queue. (`SyncService.js`, `db.js`)
 
 ## Dependabot Vulnerability Backlog
 

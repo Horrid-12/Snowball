@@ -54,9 +54,10 @@ export const requireAuth = (req, res, next) => {
         req.user = decoded;
         req.authToken = token;
 
-        // Attach per-request anon client for public queries (no user context)
+        // Attach per-request anon client with the user's JWT
+        // so Supabase RLS policies can identify who the user is
         try {
-            req.anonDb = getAnonClient();
+            req.anonDb = getAnonClient(req.authToken);
         } catch {
             // anon key not configured — routes will fall back to serviceDb
         }

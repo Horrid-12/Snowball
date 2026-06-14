@@ -3,7 +3,7 @@ import { supabase as serviceDb } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validate, schemas } from '../middleware/validate.js';
 
-const getDb = () => serviceDb;
+const getDb = (req) => req?.anonDb || serviceDb;
 
 const router = express.Router();
 

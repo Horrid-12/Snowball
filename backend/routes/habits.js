@@ -6,7 +6,7 @@ import { getTodayWithOffset } from '../utils.js';
 import { recomputeDailyProductivity } from '../utils/productivityScore.js';
 import { validate, schemas } from '../middleware/validate.js';
 
-const getDb = () => serviceDb;
+const getDb = (req) => req?.anonDb || serviceDb;
 
 const router = express.Router();
 

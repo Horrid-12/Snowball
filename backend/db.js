@@ -40,11 +40,12 @@ export const getServiceClient = () => {
     return _serviceClient;
 };
 
-// Creates an anon-key client for public (non-user-scoped) queries.
-// This client does NOT send a user JWT to Supabase, so RLS policies
-// relying on auth.uid() won't apply. For user-scoped queries, use the
-// service role client and filter by user_id at the app level.
-export const getAnonClient = () => {
+// Creates an anon-key client that passes the user's JWT to Supabase.
+// When a token is provided, Supabase PostgREST decodes it and enforces
+// Row Level Security policies via auth.jwt(). When no token is provided
+// (e.g. non-user-scoped queries), RLS policies relying on auth.jwt()
+// won't apply — same as before.
+export const getAnonClient = (token) => {
     const supabaseUrl = getSupabaseUrl();
     const supabaseAnonKey = env('SUPABASE_ANON_KEY') || env('SUPABASE_KEY');
 
@@ -53,6 +54,7 @@ export const getAnonClient = () => {
     }
 
     return createClient(supabaseUrl, supabaseAnonKey, {
+        global: token ? { headers: { Authorization: `Bearer ${token}` } } : {},
         auth: {
             persistSession: false,
             autoRefreshToken: false
