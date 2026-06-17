@@ -19,6 +19,7 @@ import habitRoutes from './routes/habits.js';
 import youtubeRoutes from './routes/youtube.js';
 import notesRoutes from './routes/notes.js';
 import friendRoutes from './routes/friends.js';
+import timerRoutes from './routes/timer.js';
 import { initDB } from './db.js';
 
 // Middleware imports
@@ -136,6 +137,7 @@ app.use('/api/habits', habitRoutes);
 app.use('/api/youtube', youtubeRoutes);
 app.use('/api/notes', notesRoutes);
 app.use('/api/friends', friendRoutes);
+app.use('/api/timer', timerRoutes);
 
 // --- Error Handling (must be last) ---
 app.use(errorHandler);

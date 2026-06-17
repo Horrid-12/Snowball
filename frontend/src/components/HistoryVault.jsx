@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Archive, X, CheckSquare, Activity, Calendar, Award } from 'lucide-react';
+import { Archive, X, CheckSquare, Activity, Calendar, Award, Clock } from 'lucide-react';
 import { useAppContext } from '../context/AppContext.jsx';
 import { calculateProductivityScore, getTodayDateString } from '../utils/productivityScore.js';
 import { apiFetch } from '../utils/apiClient.js';
@@ -10,23 +10,35 @@ const HistoryVault = ({ onClose, tasks: currentTasks = [] }) => {
     const [tasks, setTasks] = useState([]);
     const [habits, setHabits] = useState([]);
     const [activity, setActivity] = useState([]);
+    const [timerSessions, setTimerSessions] = useState([]);
     const [loading, setLoading] = useState(true);
     const today = getTodayDateString();
+
+    const formatDuration = (durationMs) => {
+        const totalMinutes = Math.floor(durationMs / 60000);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        if (hours <= 0) return `${minutes}m`;
+        if (minutes <= 0) return `${hours}h`;
+        return `${hours}h ${minutes}m`;
+    };
     const { displayScore: currentDisplayScore, totals, habitsCompleted } = calculateProductivityScore(currentTasks, globalHabits, { targetDate: today });
 
     useEffect(() => {
         const fetchHistory = async () => {
             setLoading(true);
             try {
-                const [tasksRes, habitsRes, activityRes] = await Promise.all([
+                const [tasksRes, habitsRes, activityRes, timerRes] = await Promise.all([
                     apiFetch('/api/tasks/history'),
                     apiFetch('/api/habits/history'),
-                    apiFetch('/api/activity/history')
+                    apiFetch('/api/activity/history'),
+                    apiFetch('/api/timer/sessions')
                 ]);
 
                 if (tasksRes.ok) setTasks(await tasksRes.json());
                 if (habitsRes.ok) setHabits(await habitsRes.json());
                 if (activityRes.ok) setActivity(await activityRes.json());
+                if (timerRes.ok) setTimerSessions(await timerRes.json());
             } catch (err) {
                 console.error("Failed to fetch history", err);
             } finally {
@@ -76,6 +88,17 @@ const HistoryVault = ({ onClose, tasks: currentTasks = [] }) => {
                 }}
             >
                 <Activity size={16} /> Productivity
+            </button>
+            <button
+                onClick={() => setActiveTab('timer')}
+                style={{
+                    display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: '0.5rem',
+                    background: activeTab === 'timer' ? 'var(--bg-secondary)' : 'transparent',
+                    color: activeTab === 'timer' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    border: 'none', cursor: 'pointer', fontWeight: '500'
+                }}
+            >
+                <Clock size={16} /> Timer
             </button>
         </div>
     );
@@ -181,6 +204,22 @@ const HistoryVault = ({ onClose, tasks: currentTasks = [] }) => {
                                     </div>
                                 ));
                             })()}
+
+                            {activeTab === 'timer' && timerSessions.map(session => {
+                                const start = new Date(session.startedAt || session.started_at);
+                                const dateStr = start.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                                const timeStr = start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+                                return (
+                                    <div key={session.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}>
+                                        <div>
+                                            <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>{session.subject}</div>
+                                            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>{dateStr} at {timeStr}</div>
+                                        </div>
+                                        <div style={{ fontWeight: 'bold', fontSize: '1.25rem', color: 'var(--accent-color)' }}>{formatDuration(session.durationMs || session.duration_ms)}</div>
+                                    </div>
+                                );
+                            })}
+                            {activeTab === 'timer' && timerSessions.length === 0 && <div style={{ color: 'var(--text-secondary)' }}>No timer history found.</div>}
                         </div>
                     )}
                 </div>

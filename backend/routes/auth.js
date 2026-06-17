@@ -279,6 +279,26 @@ router.put('/me', requireAuth, validate(schemas.userSettings), async (req, res, 
             return res.json(mapUserSettings(user));
         }
 
+        // Backward compatibility: If an old client sends sessions in the blob, 
+        // migrate them on-the-fly to the new table so offline/outdated clients don't lose data.
+        if (study_timer_state?.sessions && Array.isArray(study_timer_state.sessions)) {
+            const legacySessions = study_timer_state.sessions
+                .filter(s => s?.subject && s?.startedAt && s?.endedAt && s?.durationMs)
+                .map(s => ({
+                    user_id: req.user.id,
+                    subject: s.subject,
+                    started_at: s.startedAt,
+                    ended_at: s.endedAt,
+                    duration_ms: s.durationMs
+                }));
+            
+            if (legacySessions.length > 0) {
+                // Insert into the new table. We ignore errors here so that it doesn't break the main auth update
+                // if there are duplicate 'started_at' timestamps (handled by DB constraints)
+                supabase.from('study_sessions').insert(legacySessions).then();
+            }
+        }
+
         const { data: user, error } = await updateUserWithFallback(req.user.id, updateFields);
 
         if (error) throw error;
@@ -301,8 +321,8 @@ router.put('/me', requireAuth, validate(schemas.userSettings), async (req, res, 
 });
 
 // Logout
-router.post('/logout', requireAuth, (req, res) => {
-    revokeToken(req.user.jti, req.user.exp);
+router.post('/logout', requireAuth, async (req, res) => {
+    await revokeToken(req.user.jti, req.user.exp);
     clearAuthCookie(res);
     res.json({ message: 'Logged out successfully' });
 });

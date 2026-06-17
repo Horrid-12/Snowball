@@ -62,9 +62,9 @@ export const AppProvider = ({ children }) => {
                 const data = await response.json();
                 const sortedHabits = sortHabits(data);
                 setGlobalHabits(sortedHabits);
-                // Sync cache
+                // Sync cache (use bulkPut to avoid ConstraintError on StrictMode double-mount)
                 await db.habits.clear();
-                await db.habits.bulkAdd(sortedHabits);
+                await db.habits.bulkPut(sortedHabits);
             }
         } catch (err) {
             console.error("Failed to fetch global habits:", err.message);

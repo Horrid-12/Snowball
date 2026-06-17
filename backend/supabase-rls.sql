@@ -19,7 +19,8 @@ begin
         'friend_presence',
         'friend_messages',
         'spotify_tokens',
-        'support_requests'
+        'support_requests',
+        'study_sessions'
     ]
     loop
         execute format('alter table if exists public.%I enable row level security', table_name);

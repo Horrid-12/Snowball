@@ -47,6 +47,12 @@ const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, o
         onClearAll();
     };
 
+    const handleClearCompletedInternal = () => {
+        if (!window.confirm("Are you sure you want to clear all completed tasks?")) return;
+        const completedTasks = tasks.filter(t => t.tasksCompleted >= t.tasksAllocated && t.tasksAllocated > 0 && !t.isSticky && (!t.recurring || t.recurring === 'none'));
+        completedTasks.forEach(t => onTaskDelete(t.id));
+    };
+
     if (!tasks || tasks.length === 0) {
         return (
             <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
@@ -127,6 +133,15 @@ const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, o
                     }}
                 >
                     {compactMode ? 'View: Minimal' : 'View: Full'}
+                </button>
+                <button
+                    onClick={handleClearCompletedInternal}
+                    style={{
+                        fontSize: '0.75rem', color: 'var(--text-secondary)', padding: '0.2rem 0.5rem',
+                        border: '1px solid var(--border-color)', borderRadius: '0.25rem', cursor: 'pointer', background: 'transparent'
+                    }}
+                >
+                    Clear Completed
                 </button>
                 <button
                     onClick={handleClearAllInternal}

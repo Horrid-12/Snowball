@@ -2,8 +2,9 @@ import express from 'express';
 import axios from 'axios';
 import querystring from 'querystring';
 import jwt from 'jsonwebtoken';
-import { supabase } from '../db.js';
+import { supabase as serviceDb } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requireString, validate, schemas } from '../middleware/validate.js';
 
 const getEnv = (name) => {
     const upper = name.toUpperCase();
@@ -13,6 +14,8 @@ const getEnv = (name) => {
     return undefined;
 };
 const router = express.Router();
+
+const getDb = () => serviceDb;
 
 const CLIENT_ID = getEnv('SPOTIFY_CLIENT_ID');
 const CLIENT_SECRET = getEnv('SPOTIFY_CLIENT_SECRET');
@@ -42,27 +45,31 @@ const parseSpotifyState = (stateToken) => {
 };
  
 const getTokens = async (userId) => {
-    const { data, error } = await supabase
+    const { data, error } = await serviceDb
         .from('spotify_tokens')
         .select('*')
         .eq('user_id', userId)
         .single();
-    if (error) return null;
+    if (error) {
+        console.error(`[Spotify] Error fetching tokens for user ${userId}:`, error.message);
+        return null;
+    }
     return data;
 };
 
 const getSpotifyCredentials = async (userId) => {
-    const { data, error } = await supabase
+    const { data, error } = await serviceDb
         .from('spotify_credentials')
         .select('client_id, client_secret')
         .eq('user_id', userId)
         .maybeSingle();
 
-    if (error && error.code !== '42P01') {
+    if (error) {
         console.warn(`[Spotify] Failed to read personal credentials for user ${userId}:`, error.message);
     }
 
     if (data?.client_id && data?.client_secret) {
+        console.log(`[Spotify] Using personal credentials for user ${userId}`);
         return {
             clientId: data.client_id,
             clientSecret: data.client_secret,
@@ -71,6 +78,7 @@ const getSpotifyCredentials = async (userId) => {
     }
 
     if (CLIENT_ID && CLIENT_SECRET) {
+        console.log(`[Spotify] Using shared credentials for user ${userId}`);
         return {
             clientId: CLIENT_ID,
             clientSecret: CLIENT_SECRET,
@@ -78,6 +86,7 @@ const getSpotifyCredentials = async (userId) => {
         };
     }
 
+    console.warn(`[Spotify] No credentials found for user ${userId}. CLIENT_ID: ${!!CLIENT_ID}, CLIENT_SECRET: ${!!CLIENT_SECRET}`);
     return null;
 };
 
@@ -88,7 +97,7 @@ const updateTokens = async (userId, tokens) => {
         ? new Date(Date.now() + (tokens.expires_in * 1000)).toISOString()
         : tokens.expires_at;
 
-    const { error } = await supabase
+    const { error } = await serviceDb
         .from('spotify_tokens')
         .upsert({
             user_id: userId,
@@ -100,10 +109,21 @@ const updateTokens = async (userId, tokens) => {
 };
 
 const refreshAccessToken = async (userId) => {
+    console.log(`[Spotify] Refreshing access token for user ${userId}...`);
     const tokens = await getTokens(userId);
-    if (!tokens || !tokens.refresh_token) return null;
+    if (!tokens) {
+        console.warn(`[Spotify] Cannot refresh token: No tokens found in DB for user ${userId}`);
+        return null;
+    }
+    if (!tokens.refresh_token) {
+        console.warn(`[Spotify] Cannot refresh token: No refresh_token found in tokens for user ${userId}`);
+        return null;
+    }
     const credentials = await getSpotifyCredentials(userId);
-    if (!credentials) return null;
+    if (!credentials) {
+        console.warn(`[Spotify] Cannot refresh token: No credentials found for user ${userId}`);
+        return null;
+    }
 
     try {
         const response = await axios({
@@ -151,7 +171,7 @@ router.get('/status', requireAuth, async (req, res, next) => {
 
 router.get('/credentials', requireAuth, async (req, res, next) => {
     try {
-        const { data, error } = await supabase
+        const { data, error } = await serviceDb
             .from('spotify_credentials')
             .select('client_id, updated_at')
             .eq('user_id', req.user.id)
@@ -181,16 +201,11 @@ router.get('/credentials', requireAuth, async (req, res, next) => {
     }
 });
 
-router.put('/credentials', requireAuth, async (req, res, next) => {
+router.put('/credentials', requireAuth, validate(schemas.spotifyCredentials), async (req, res, next) => {
     try {
-        const clientId = String(req.body?.clientId || '').trim();
-        const clientSecret = String(req.body?.clientSecret || '').trim();
+        const { clientId, clientSecret } = req.validatedBody;
 
-        if (!clientId || !clientSecret) {
-            return res.status(400).json({ error: 'Spotify Client ID and Client Secret are required' });
-        }
-
-        const { data, error } = await supabase
+        const { data, error } = await serviceDb
             .from('spotify_credentials')
             .upsert({
                 user_id: req.user.id,
@@ -223,7 +238,7 @@ router.put('/credentials', requireAuth, async (req, res, next) => {
 
 router.delete('/credentials', requireAuth, async (req, res, next) => {
     try {
-        const { error } = await supabase
+        const { error } = await serviceDb
             .from('spotify_credentials')
             .delete()
             .eq('user_id', req.user.id);
@@ -243,7 +258,7 @@ router.get('/auth', requireAuth, async (req, res, next) => {
     const credentials = await getSpotifyCredentials(userId);
     if (!credentials || !REDIRECT_URI) {
         console.error('❌ [Spotify] Missing configuration:', { credentials: !!credentials, REDIRECT_URI: !!REDIRECT_URI });
-        return res.status(500).json({ error: 'Spotify configuration incomplete' });
+        return res.status(400).json({ error: 'Spotify not configured. Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET in your environment, or add personal credentials in Settings > Spotify.' });
     }
 
     const scope = 'user-read-currently-playing user-read-playback-state user-modify-playback-state playlist-read-private playlist-read-collaborative user-library-read';
@@ -267,7 +282,9 @@ router.get('/callback', async (req, res) => {
 
     if (!stateToken) {
         console.error('❌ [Spotify] No state token found in callback query');
-        return res.redirect((getEnv('FRONTEND_URL') || '/') + '?spotify=error_no_state');
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const frontendUrl = getEnv('FRONTEND_URL') || `${protocol}://${req.get('host')}`;
+        return res.redirect(`${frontendUrl}${frontendUrl.endsWith('/') ? '' : '/'}?spotify=error_no_state`);
     }
 
     try {
@@ -292,12 +309,14 @@ router.get('/callback', async (req, res) => {
 
         console.log(`[Spotify] Tokens received for user ${userId}. Saving to DB...`);
         await updateTokens(userId, response.data);
-        const frontendUrl = getEnv('FRONTEND_URL') || '/';
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const frontendUrl = getEnv('FRONTEND_URL') || `${protocol}://${req.get('host')}`;
         console.log(`[Spotify] Success! Redirecting to ${frontendUrl}`);
         res.redirect(`${frontendUrl}${frontendUrl.endsWith('/') ? '' : '/'}?spotify=connected`);
     } catch (error) {
         console.error('❌ [Spotify] Auth error:', error.response?.data || error.message);
-        const frontendUrl = getEnv('FRONTEND_URL') || '/';
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const frontendUrl = getEnv('FRONTEND_URL') || `${protocol}://${req.get('host')}`;
         res.redirect(`${frontendUrl}${frontendUrl.endsWith('/') ? '' : '/'}?spotify=error`);
     }
 });
@@ -428,13 +447,12 @@ router.put('/volume', requireAuth, async (req, res) => {
     }), req, res);
 });
 
-router.get('/search', requireAuth, async (req, res) => {
+router.get('/search', requireAuth, requireString('q', { source: 'query' }), async (req, res) => {
     const userId = req.user.id;
     let tokens = await getTokens(userId);
     if (!tokens) return res.status(401).json({ error: 'Not connected' });
 
-    const { q } = req.query;
-    if (!q) return res.status(400).json({ error: 'Query required' });
+    const q = req.query.q;
 
     const fetchSearch = (token) => axios.get(`https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=5`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -516,9 +534,8 @@ router.get('/playlists', requireAuth, async (req, res) => {
     }
 });
 
-router.get('/lyrics', requireAuth, async (req, res) => {
+router.get('/lyrics', requireAuth, requireString('artist', { source: 'query' }), requireString('title', { source: 'query' }), async (req, res) => {
     const { artist, title } = req.query;
-    if (!artist || !title) return res.status(400).json({ error: 'Artist and title required' });
     
     try {
         // Advanced cleaning for song titles to improve lyrics match rate
@@ -577,7 +594,7 @@ router.get('/lyrics', requireAuth, async (req, res) => {
 router.delete('/disconnect', requireAuth, async (req, res) => {
     const userId = req.user.id;
     try {
-        const { error } = await supabase
+        const { error } = await serviceDb
             .from('spotify_tokens')
             .delete()
             .eq('user_id', userId);

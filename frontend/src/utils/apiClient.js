@@ -32,8 +32,9 @@ const openDB = () => new Promise((resolve, reject) => {
     req.onerror = () => reject(req.error);
     req.onsuccess = () => resolve(req.result);
     req.onupgradeneeded = () => {
-        // Stats store already exists in schema version 3+
-        req.result.createObjectStore(STORE_NAME, { keyPath: 'id' });
+        if (!req.result.objectStoreNames.contains(STORE_NAME)) {
+            req.result.createObjectStore(STORE_NAME, { keyPath: 'id' });
+        }
     };
 });
 

@@ -23,12 +23,13 @@ const normalizeActiveSession = (value) => (
 );
 
 const mergeSessions = (localSessions = [], remoteSessions = []) => {
-    const byId = new Map();
+    const byKey = new Map();
     [...localSessions, ...remoteSessions].forEach((session) => {
-        if (!session?.id) return;
-        byId.set(session.id, session);
+        if (!session?.startedAt || !session?.endedAt) return;
+        const key = `${session.startedAt}_${session.endedAt}`;
+        byKey.set(key, session);
     });
-    return [...byId.values()]
+    return [...byKey.values()]
         .sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime())
         .slice(-500);
 };
@@ -183,8 +184,18 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const profile = await response.json();
                 const remoteState = profile?.study_timer_state || {};
-                const remoteSessions = normalizeSessions(remoteState.sessions);
                 const remoteActive = normalizeActiveSession(remoteState.activeSession);
+
+                let remoteSessions = [];
+                try {
+                    const sessionsRes = await apiFetch('/api/timer/sessions');
+                    if (sessionsRes.ok) {
+                        const sessionsData = await sessionsRes.json();
+                        remoteSessions = normalizeSessions(sessionsData);
+                    }
+                } catch (err) {
+                    console.warn('Failed to load remote sessions', err);
+                }
 
                 if (cancelled) return;
 
@@ -208,9 +219,8 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
     useEffect(() => {
         if (!hasLoadedRemoteRef.current || isApplyingRemoteRef.current) return;
 
-        const nextState = buildTimerState(sessions, activeSession);
+        const nextState = buildTimerState([], activeSession);
         const serialized = stableStringify({
-            sessions: nextState.sessions,
             activeSession: nextState.activeSession
         });
         if (serialized === lastSyncedStateRef.current) return;
@@ -240,7 +250,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         return () => {
             if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
         };
-    }, [activeSession, sessions]);
+    }, [activeSession]);
 
     useEffect(() => {
         const interval = window.setInterval(() => setNow(Date.now()), 1000);
@@ -256,16 +266,13 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
 
         const splitDuration = dayStart.getTime() - startedAt.getTime();
         if (splitDuration > 0) {
-            setSessions((prev) => [
-                ...prev,
-                {
-                    id: `${activeSession.startedAt}_${activeSession.subject}_split`,
-                    subject: activeSession.subject,
-                    startedAt: activeSession.startedAt,
-                    endedAt: dayStart.toISOString(),
-                    durationMs: splitDuration
-                }
-            ]);
+            addCompletedSession({
+                id: `${activeSession.startedAt}_${activeSession.subject}_split`,
+                subject: activeSession.subject,
+                startedAt: activeSession.startedAt,
+                endedAt: dayStart.toISOString(),
+                durationMs: splitDuration
+            });
         }
         setActiveSession({
             subject: activeSession.subject,
@@ -328,6 +335,30 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         }
     };
 
+    const addCompletedSession = async (sessionData) => {
+        setSessions((prev) => mergeSessions(prev, [sessionData]));
+        try {
+            const res = await apiFetch('/api/timer/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    subject: sessionData.subject,
+                    started_at: sessionData.startedAt,
+                    ended_at: sessionData.endedAt,
+                    duration_ms: sessionData.durationMs
+                })
+            });
+            if (!res.ok) throw new Error();
+        } catch (error) {
+            await queueMutation('study_session_create', 'POST', '/api/timer/sessions', {
+                subject: sessionData.subject,
+                started_at: sessionData.startedAt,
+                ended_at: sessionData.endedAt,
+                duration_ms: sessionData.durationMs
+            });
+        }
+    };
+
     const startTimer = () => {
         setActiveSession({
             subject: selectedSubject,
@@ -342,16 +373,13 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
 
         if (durationMs > 0) {
-            setSessions((prev) => [
-                ...prev,
-                {
-                    id: `${activeSession.startedAt}_${endedAt.toISOString()}`,
-                    subject: activeSession.subject,
-                    startedAt: activeSession.startedAt,
-                    endedAt: endedAt.toISOString(),
-                    durationMs
-                }
-            ]);
+            addCompletedSession({
+                id: `${activeSession.startedAt}_${endedAt.toISOString()}`,
+                subject: activeSession.subject,
+                startedAt: activeSession.startedAt,
+                endedAt: endedAt.toISOString(),
+                durationMs
+            });
             logMomentum(durationMs);
         }
 
@@ -518,7 +546,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
 
                         {topSubjects.slice(0, 6).map(({ subject, duration }) => {
                             const color = getTagColor(subject, tagColors);
-                            const width = totals.total > 0 ? `${Math.max(4, (duration / totals.total) * 100)}%` : '4%';
+                            const width = totals.total > 0 && duration > 0 ? `${Math.max(4, (duration / totals.total) * 100)}%` : '0%';
                             return (
                                 <div key={subject} style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', fontSize: '0.8rem' }}>

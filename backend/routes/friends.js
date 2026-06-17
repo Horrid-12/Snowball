@@ -1,7 +1,7 @@
 import express from 'express';
 import { supabase as serviceDb } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
-import { requireUUID, validate, schemas } from '../middleware/validate.js';
+import { requireUUID, requireString, validate, schemas } from '../middleware/validate.js';
 
 const getDb = (req) => req?.anonDb || serviceDb;
 
@@ -200,7 +200,7 @@ router.post('/:id/messages', requireUUID('id'), validate(schemas.friendMessage),
     }
 });
 
-router.get('/search', async (req, res, next) => {
+router.get('/search', requireString('q', { source: 'query', minLength: 1 }), async (req, res, next) => {
     try {
         const db = getDb(req);
         const query = String(req.query.q || '').trim();

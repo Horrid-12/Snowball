@@ -33,7 +33,7 @@ const parseCookies = (cookieHeader = '') => cookieHeader
         return acc;
     }, {});
 
-export const requireAuth = (req, res, next) => {
+export const requireAuth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     const cookies = parseCookies(req.headers.cookie);
     const bearerToken = authHeader && authHeader.startsWith('Bearer ')
@@ -47,7 +47,8 @@ export const requireAuth = (req, res, next) => {
 
     try {
         const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] });
-        if (isTokenRevoked(decoded.jti)) {
+        const revoked = await isTokenRevoked(decoded.jti);
+        if (revoked) {
             return res.status(401).json({ error: 'Unauthorized: Session expired' });
         }
 

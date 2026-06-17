@@ -585,16 +585,15 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
             }
 
             const logicalDate = getTaskLogicalDate(task, resetOffsetHours);
-            const isComplete = Number(task.tasksCompleted || 0) >= Number(task.tasksAllocated || 1);
 
             if (tagRange === 'today') {
-                return isComplete || !logicalDate || logicalDate === today;
+                return logicalDate === today || (!logicalDate && !task.is_archived);
             }
             if (tagRange === 'weekly') {
-                return !logicalDate || (logicalDate >= weeklyStartKey && logicalDate <= today);
+                return (!logicalDate && !task.is_archived) || (logicalDate >= weeklyStartKey && logicalDate <= today);
             }
             if (tagRange === 'monthly') {
-                return !logicalDate || (logicalDate >= monthlyStartKey && logicalDate <= today);
+                return (!logicalDate && !task.is_archived) || (logicalDate >= monthlyStartKey && logicalDate <= today);
             }
             return true;
         });
