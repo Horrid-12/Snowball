@@ -86,6 +86,16 @@ const DEFAULT_CUSTOM_COLORS = {
     notes: '#f8fafc'
 };
 
+const loadingMessages = [
+    "Packing the snow...",
+    "Starting the avalanche...",
+    "Sharpening the axe...",
+    "Warming up the engines...",
+    "Brewing digital coffee...",
+    "Reticulating splines...",
+    "Finding the perfect Spotify playlist...",
+];
+
 const LoadingFallback = ({ height = '120px' }) => (
     <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem', gap: '0.5rem' }}>
         <CloudSync size={16} /> Loading...
@@ -1530,7 +1540,7 @@ function App() {
                             <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }}>
                                 <RefreshCcw size={40} color="var(--accent-color)" />
                             </motion.div>
-                            <p style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Entering the Snowball universe...</p>
+<p style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>{loadingMessages[Math.floor(Math.random() * loadingMessages.length)]}</p>
                         </div>
                     ) : (
                         <AuthModal onLogin={handleLogin} />
@@ -1797,7 +1807,7 @@ function App() {
                     >
                         <RefreshCcw size={40} color="var(--accent-color)" />
                     </motion.div>
-                    <p style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Entering the Snowball universe...</p>
+                    <p style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>{loadingMessages[Math.floor(Math.random() * loadingMessages.length)]}</p>
                 </div>
             )}
             {/* <Analytics /> */}

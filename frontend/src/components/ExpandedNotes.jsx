@@ -314,19 +314,51 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
         }
     };
 
-    // Handle Escape to quick-save and close
+    // Handle Keyboard Shortcuts (Escape, Ctrl+Tab, Ctrl+S)
     useEffect(() => {
         const handleKeyDown = (e) => {
+            // Escape to quick-save and close
             if (e.key === 'Escape') {
                 if (hasUnsavedChanges && editor) {
                     handleSave(editor.getHTML());
                 }
                 onClose();
+                return;
+            }
+
+            // Ctrl+Tab (and Ctrl+Shift+Tab) quick-switch between notes
+            if (e.ctrlKey && e.key === 'Tab') {
+                e.preventDefault(); // Prevent browser/desktop tab switch
+                if (notes.length > 1) {
+                    const currentIndex = notes.findIndex(n => n.id === activeNoteId);
+                    if (currentIndex !== -1) {
+                        const step = e.shiftKey ? -1 : 1;
+                        const nextIndex = (currentIndex + step + notes.length) % notes.length;
+                        
+                        // Quick save before switching if dirty
+                        if (hasUnsavedChanges && editor) {
+                            handleSave(editor.getHTML());
+                        }
+                        
+                        setActiveNoteId(notes[nextIndex].id);
+                        localStorage.setItem('snowball_active_note_id', notes[nextIndex].id);
+                    }
+                }
+                return;
+            }
+
+            // Ctrl+S quick-save (Tauri only)
+            if (isTauriDesktop && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                if (editor) {
+                    handleSave(editor.getHTML());
+                }
+                return;
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [hasUnsavedChanges, editor, onClose]);
+    }, [hasUnsavedChanges, editor, onClose, notes, activeNoteId]);
 
     // Load notes: Dexie (local) then Sync from Cloud ☁️
     useEffect(() => {

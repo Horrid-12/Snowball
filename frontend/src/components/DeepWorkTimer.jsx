@@ -34,9 +34,10 @@ const mergeSessions = (localSessions = [], remoteSessions = []) => {
         .slice(-500);
 };
 
-const chooseActiveSession = (localActive, remoteActive) => {
+const chooseActiveSession = (localActive, remoteActive, remoteHasState) => {
     const local = normalizeActiveSession(localActive);
     const remote = normalizeActiveSession(remoteActive);
+    if (remoteHasState && !remote) return null;
     if (!local) return remote;
     if (!remote) return local;
     return new Date(remote.startedAt).getTime() > new Date(local.startedAt).getTime() ? remote : local;
@@ -185,6 +186,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                 const profile = await response.json();
                 const remoteState = profile?.study_timer_state || {};
                 const remoteActive = normalizeActiveSession(remoteState.activeSession);
+                const remoteHasState = profile?.study_timer_state != null;
 
                 let remoteSessions = [];
                 try {
@@ -201,7 +203,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
 
                 isApplyingRemoteRef.current = true;
                 setSessions((currentSessions) => mergeSessions(currentSessions, remoteSessions));
-                setActiveSession((currentActive) => chooseActiveSession(currentActive, remoteActive));
+                setActiveSession((currentActive) => chooseActiveSession(currentActive, remoteActive, remoteHasState));
             } catch (error) {
                 console.warn('Failed to load synced study timer state', error);
             } finally {
