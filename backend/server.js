@@ -105,6 +105,9 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH']
 }));
 
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+
 // Apply general rate limiter to all routes except Spotify
 // (Spotify has its own API rate limiting, already handled in the route with 429 retry logic)
 app.use((req, res, next) => {
@@ -112,8 +115,6 @@ app.use((req, res, next) => {
     return generalRateLimiter(req, res, next);
 });
 app.use(csrfProtection);
-app.use(express.json({ limit: '20mb' }));
-app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 app.use((req, res, next) => {
     const origin = req.headers.origin || 'No Origin';
     const auth = req.headers.authorization ? 'Present' : 'Missing';

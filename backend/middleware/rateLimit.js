@@ -1,35 +1,51 @@
+import { supabase } from '../db.js';
+
 export const createRateLimiter = ({ windowMs, maxRequests, message }) => {
-    const store = new Map();
-
-    const pruneExpiredEntries = (now) => {
-        for (const [key, entry] of store.entries()) {
-            if (entry.resetAt <= now) {
-                store.delete(key);
-            }
-        }
-    };
-
-    return (req, res, next) => {
+    return async (req, res, next) => {
         const now = Date.now();
-        pruneExpiredEntries(now);
-
         const key = `${req.ip}:${req.baseUrl}${req.path}`;
-        const current = store.get(key);
 
-        if (!current || current.resetAt <= now) {
-            store.set(key, { count: 1, resetAt: now + windowMs });
+        try {
+            // Prune expired entries in the background (5% probability to avoid DB spam)
+            if (Math.random() < 0.05) {
+                supabase.rpc('prune_expired_rate_limits').then(({ error }) => {
+                    if (error) console.error('Failed to prune rate limits:', error.message);
+                });
+            }
+
+            // Fetch the current rate limit entry for this key
+            const { data: current } = await supabase
+                .from('rate_limits')
+                .select('count, reset_at')
+                .eq('key', key)
+                .maybeSingle();
+
+            if (!current || current.reset_at <= now) {
+                // Insert or overwrite expired entry
+                await supabase
+                    .from('rate_limits')
+                    .upsert({ key, count: 1, reset_at: now + windowMs }, { onConflict: 'key' });
+                return next();
+            }
+
+            if (current.count >= maxRequests) {
+                const retryAfterSeconds = Math.ceil((current.reset_at - now) / 1000);
+                res.setHeader('Retry-After', retryAfterSeconds);
+                return res.status(429).json({ error: { message } });
+            }
+
+            // Increment the count
+            await supabase
+                .from('rate_limits')
+                .update({ count: current.count + 1 })
+                .eq('key', key);
+                
+            return next();
+        } catch (error) {
+            // Fail open — if Supabase is down, allow the request to proceed
+            console.error('Rate Limiter Error (fail-open):', error.message);
             return next();
         }
-
-        if (current.count >= maxRequests) {
-            const retryAfterSeconds = Math.ceil((current.resetAt - now) / 1000);
-            res.setHeader('Retry-After', retryAfterSeconds);
-            return res.status(429).json({ error: { message } });
-        }
-
-        current.count += 1;
-        store.set(key, current);
-        return next();
     };
 };
 

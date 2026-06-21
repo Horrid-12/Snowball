@@ -49,7 +49,8 @@ const getTokens = async (userId) => {
         .from('spotify_tokens')
         .select('*')
         .eq('user_id', userId)
-        .single();
+        .limit(1)
+        .maybeSingle();
     if (error) {
         console.error(`[Spotify] Error fetching tokens for user ${userId}:`, error.message);
         return null;
@@ -62,6 +63,7 @@ const getSpotifyCredentials = async (userId) => {
         .from('spotify_credentials')
         .select('client_id, client_secret')
         .eq('user_id', userId)
+        .limit(1)
         .maybeSingle();
 
     if (error) {

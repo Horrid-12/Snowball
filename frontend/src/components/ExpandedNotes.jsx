@@ -24,6 +24,7 @@ import { useOnline } from '../context/OnlineContext';
 import { apiFetch } from '../utils/apiClient.js';
 import { API_URL, isTauriDesktop } from '../config.js';
 import { syncService } from '../services/SyncService.js';
+import { nativeConfirm } from '../utils/confirm.js';
 import { motion, AnimatePresence } from 'framer-motion';
 import { saveAs } from 'file-saver';
 import { Document, Packer, Paragraph, TextRun } from 'docx';
@@ -702,7 +703,7 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
     const deleteNote = async (id, e) => {
         e?.stopPropagation();
         const noteToDelete = notes.find(n => n.id === id);
-        if (window.confirm(`Delete "${noteToDelete?.title || 'this note'}"?`)) {
+        if (await nativeConfirm(`Delete "${noteToDelete?.title || 'this note'}"?`)) {
             // 1. Local Delete
             await markNoteDeleted(id);
             await db.notes.delete(id);
@@ -784,8 +785,8 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
                     a.click();
                     
                     // Option 2: Provide a manual button as backup if it's been 2 seconds and nothing happened
-                    setTimeout(() => {
-                        const confirmCopy = window.confirm(`Download might be blocked by Tauri. Copy note content to clipboard instead?`);
+                    setTimeout(async () => {
+                        const confirmCopy = await nativeConfirm(`Download might be blocked by Tauri. Copy note content to clipboard instead?`);
                         if (confirmCopy) {
                             navigator.clipboard.writeText(editor.getText());
                             alert("Copied to clipboard!");
@@ -891,9 +892,9 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
         input.click();
     };
 
-    const handleCloseAttempt = () => {
+    const handleCloseAttempt = async () => {
         if (hasUnsavedChanges) {
-            const confirmed = window.confirm("You have unsaved changes. Are you sure you want to close without saving?\n\n(Tip: Press Esc to quick-save and close)");
+            const confirmed = await nativeConfirm("You have unsaved changes. Are you sure you want to close without saving?\n\n(Tip: Press Esc to quick-save and close)");
             if (confirmed) onClose();
         } else {
             onClose();
