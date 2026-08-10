@@ -1,7 +1,7 @@
 {
     "name":  "frontend",
     "private":  true,
-    "version":  "7.3.6",
+    "version":  "7.4.0",
     "type":  "module",
     "scripts":  {
                     "dev":  "vite --host 127.0.0.1",
@@ -15,7 +15,8 @@
                             "@tauri-apps/cli":  "~2.11.0",
                             "@vitejs/plugin-react":  "^5.1.4",
                             "typescript":  "^5.9.3",
-                            "vite":  "^7.3.5"
+                            "vite":  "^7.3.5",
+                            "vite-plugin-compression":  "^0.5.1"
                         },
     "dependencies":  {
                          "@aparajita/capacitor-biometric-auth":  "^10.0.0",
