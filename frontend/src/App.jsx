@@ -20,7 +20,7 @@ import { syncService } from './services/SyncService.js';
 import { desktopUpdateService } from './services/DesktopUpdateService.js';
 import { discordPresenceService } from './services/DiscordPresenceService.js';
 import { apiFetch, hasPersistedSession, setAuthToken, setUserData, clearUserData, clearSession, initAuthFromStorage } from './utils/apiClient.js';
-import { calculateProductivityScore, filterTasksForDate } from './utils/productivityScore.js';
+import { calculateProductivityScore, filterTasksForDate, formatLocalDate } from './utils/productivityScore.js';
 import { registerPlugin, Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Wifi, WifiOff, CloudSync, RefreshCcw } from 'lucide-react';
@@ -115,7 +115,10 @@ function App() {
     const [theme, setTheme] = useState(() => {
         const stored = localStorage.getItem('snowball_theme');
         if (stored) return stored;
-        return (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') ? 'dynamic' : 'light';
+        if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
+            return 'dynamic';
+        }
+        return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     });
 
     const [customColors, setCustomColors] = useState(() => {
@@ -447,6 +450,7 @@ function App() {
             invalidateMonetTagPaletteCache();
 
             document.body.className = theme === 'light' ? '' : `theme-${theme}`;
+            document.documentElement.className = document.body.className;
             localStorage.setItem('snowball_theme', theme);
             const root = document.documentElement;
             const resolvedAccent = theme === 'custom'
@@ -559,7 +563,7 @@ function App() {
         const checkAndResetTasks = async (userOffset) => {
             const now = new Date();
             const shifted = new Date(now.getTime() - (userOffset * 60 * 60 * 1000));
-            const logicalToday = shifted.toISOString().split('T')[0];
+            const logicalToday = formatLocalDate(shifted);
             const lastReset = localStorage.getItem('snowball_tasks_last_reset');
 
             if (lastReset && lastReset !== logicalToday) {
@@ -659,17 +663,11 @@ function App() {
             };
             doAuth();
 
-            const interval = setInterval(() => {
-                const currentUser = userRef.current;
-                if (currentUser) checkAndResetTasks(currentUser.reset_offset_hours || 0);
-            }, 60000);
-
             const authSafetyTimeout = setTimeout(() => {
                 setCheckingAuth(false);
             }, 15000);
 
             return () => {
-                clearInterval(interval);
                 clearTimeout(authSafetyTimeout);
             };
         }
@@ -717,6 +715,8 @@ function App() {
         }
     }, [isRefreshing, isMobile, token, user]);
 
+    const pullRafRef = useRef(null);
+
     // Pull-to-Refresh Logic safely implemented for Capacitor
     useEffect(() => {
         if (!isMobile) return;
@@ -735,11 +735,19 @@ function App() {
                 const distance = e.touches[0].clientY - startY;
                 if (distance > 0 && distance < 150) {
                     pDistance = distance;
-                    setPullDistance(distance);
+                    if (pullRafRef.current) return;
+                    pullRafRef.current = requestAnimationFrame(() => {
+                        setPullDistance(pDistance);
+                        pullRafRef.current = null;
+                    });
                 }
             } else {
                 pDistance = 0;
-                setPullDistance(0);
+                if (pullRafRef.current) return;
+                pullRafRef.current = requestAnimationFrame(() => {
+                    setPullDistance(0);
+                    pullRafRef.current = null;
+                });
             }
         };
         
@@ -749,6 +757,10 @@ function App() {
             }
             startY = 0;
             pDistance = 0;
+            if (pullRafRef.current) {
+                cancelAnimationFrame(pullRafRef.current);
+                pullRafRef.current = null;
+            }
             setPullDistance(0);
         };
         
@@ -825,6 +837,14 @@ function App() {
             });
         };
 
+        const heartbeat = () => {
+            syncNotifications();
+            const currentUser = userRef.current;
+            if (currentUser) {
+                checkAndResetTasks(currentUser.reset_offset_hours || 0);
+            }
+        };
+
         syncNotifications();
 
         const handleSettingsChanged = () => {
@@ -837,7 +857,7 @@ function App() {
             }
         };
 
-        const refreshInterval = setInterval(syncNotifications, 60000);
+        const refreshInterval = setInterval(heartbeat, 60000);
         window.addEventListener('focus', syncNotifications);
         document.addEventListener('visibilitychange', handleVisibilityChange);
         CapacitorApp.addListener('appStateChange', ({ isActive }) => {

@@ -3,6 +3,7 @@ import { BookOpen, ChevronDown, ChevronUp, Clock, Pause, Play, RotateCcw } from 
 import { apiFetch } from '../utils/apiClient.js';
 import { queueMutation } from '../db/db';
 import { getTagColor, loadTagColors, parseTags } from '../utils/tagColors.js';
+import { nativeConfirm } from '../utils/confirm.js';
 
 const SESSIONS_KEY = 'snowball_study_timer_sessions';
 const ACTIVE_KEY = 'snowball_study_timer_active';
@@ -202,7 +203,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                 if (cancelled) return;
 
                 isApplyingRemoteRef.current = true;
-                setSessions((currentSessions) => mergeSessions(currentSessions, remoteSessions));
+                setSessions(remoteSessions.length > 0 ? remoteSessions : []);
                 setActiveSession((currentActive) => chooseActiveSession(currentActive, remoteActive, remoteHasState));
             } catch (error) {
                 console.warn('Failed to load synced study timer state', error);
@@ -388,14 +389,36 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         setActiveSession(null);
     };
 
-    const resetToday = () => {
-        const confirmed = window.confirm('Reset today\'s study timer totals?');
+    const resetToday = async () => {
+        const confirmed = await nativeConfirm('Reset today\'s study timer totals?');
         if (!confirmed) return;
 
         setActiveSession(null);
         setSessions((prev) => prev.filter((session) => (
             getSessionDurationForDay(session, dayStart, dayEnd) <= 0
         )));
+
+        // Sync deletion to backend
+        const fromISO = dayStart.toISOString();
+        const toISO = dayEnd.toISOString();
+        try {
+            const [delRes, stateRes] = await Promise.all([
+                apiFetch(`/api/timer/sessions?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`, {
+                    method: 'DELETE'
+                }),
+                apiFetch('/api/auth/me', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ study_timer_state: { activeSession: null, updatedAt: new Date().toISOString() } })
+                })
+            ]);
+            if (!delRes.ok) throw new Error(`DELETE ${delRes.status}`);
+            if (!stateRes.ok) throw new Error(`PUT ${stateRes.status}`);
+        } catch (error) {
+            console.warn('Failed to sync timer reset, queueing for later', error);
+            await queueMutation('timer_sessions_delete', 'DELETE', `/api/timer/sessions?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`, {});
+            await queueMutation('timer_state_update', 'PUT', '/api/auth/me', { study_timer_state: { activeSession: null, updatedAt: new Date().toISOString() } });
+        }
     };
 
     const topSubjects = subjects

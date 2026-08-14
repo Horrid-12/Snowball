@@ -7,6 +7,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { createRateLimiter } from '../middleware/rateLimit.js';
 import { revokeToken } from '../middleware/sessionStore.js';
 import { validate, schemas } from '../middleware/validate.js';
+import { clearUserOffsetCache } from '../utils.js';
 
 const getEnv = (name) => {
     const upper = name.toUpperCase();
@@ -302,6 +303,10 @@ router.put('/me', requireAuth, validate(schemas.userSettings), async (req, res, 
         const { data: user, error } = await updateUserWithFallback(req.user.id, updateFields);
 
         if (error) throw error;
+        
+        if (updateFields.reset_offset_hours !== undefined || updateFields.timezone_offset_minutes !== undefined) {
+            clearUserOffsetCache(req.user.id);
+        }
 
         if (!user) {
             // User didn't exist in Supabase — create with the data we have

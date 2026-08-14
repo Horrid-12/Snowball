@@ -27,10 +27,6 @@ import { syncService } from '../services/SyncService.js';
 import { nativeConfirm } from '../utils/confirm.js';
 import { motion, AnimatePresence } from 'framer-motion';
 import { saveAs } from 'file-saver';
-import { Document, Packer, Paragraph, TextRun } from 'docx';
-import jsPDF from 'jspdf';
-import PptxGenJS from 'pptxgenjs';
-import mammoth from 'mammoth';
 import {
     getBiometricUnlockStatus,
     isBiometricUnlockSupported,
@@ -857,6 +853,7 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
 
     const exportAsDocx = async () => {
         try {
+            const { Document, Packer, Paragraph, TextRun } = await import('docx');
             const doc = new Document({
                 sections: [{ children: [new Paragraph({ children: [new TextRun(editor.getText())] })] }],
             });
@@ -867,8 +864,9 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
         }
     };
 
-    const exportAsPdf = () => {
+    const exportAsPdf = async () => {
         try {
+            const { default: jsPDF } = await import('jspdf');
             const doc = new jsPDF();
             const title = notes.find(n => n.id === activeNoteId)?.title || "Note";
             doc.setFontSize(22); doc.text(title, 20, 20);
@@ -882,8 +880,9 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
         }
     };
 
-    const exportAsPptx = () => {
+    const exportAsPptx = async () => {
         try {
+            const { default: PptxGenJS } = await import('pptxgenjs');
             let pptx = new PptxGenJS();
             let slide = pptx.addSlide();
             const title = notes.find(n => n.id === activeNoteId)?.title || "Note";
@@ -907,9 +906,14 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
             if (type === 'docx') {
                 const reader = new FileReader();
                 reader.onload = async (event) => {
-                    const arrayBuffer = event.target.result;
-                    const result = await mammoth.convertToHtml({ arrayBuffer });
-                    editor.commands.setContent(result.value);
+                    try {
+                        const { default: mammoth } = await import('mammoth');
+                        const arrayBuffer = event.target.result;
+                        const result = await mammoth.convertToHtml({ arrayBuffer });
+                        editor.commands.setContent(result.value);
+                    } catch (err) {
+                        alert("Error importing DOCX: " + err.message);
+                    }
                 };
                 reader.readAsArrayBuffer(file);
             } else {

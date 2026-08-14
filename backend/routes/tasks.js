@@ -219,7 +219,7 @@ router.post('/', validate(schemas.task), async (req, res, next) => {
         }
 
         if (error) throw error;
-        await recomputeDailyProductivity(req.user.id);
+        recomputeDailyProductivity(req.user.id).catch(err => console.error('Background recompute failed:', err));
         res.status(201).json(mapTask(newTask));
     } catch (err) {
         next(err);
@@ -271,6 +271,9 @@ router.put('/bulk-remove-tag', async (req, res, next) => {
                 .single();
         });
 
+        // Note: A single SQL UPDATE isn't feasible here via Supabase JS because each row
+        // requires a different 'tags' value. Supabase JS 'update' does not support bulk upserts 
+        // with different values out of the box without RPCs, so we use Promise.all.
         const results = await Promise.all(updates);
         const updatedTasks = results
             .filter(r => !r.error && r.data)
@@ -330,6 +333,9 @@ router.put('/bulk-rename-tag', async (req, res, next) => {
                 .single();
         });
 
+        // Note: A single SQL UPDATE isn't feasible here via Supabase JS because each row
+        // requires a different 'tags' value. Supabase JS 'update' does not support bulk upserts 
+        // with different values out of the box without RPCs, so we use Promise.all.
         const results = await Promise.all(updates);
         const updatedTasks = results
             .filter(r => !r.error && r.data)
@@ -393,7 +399,7 @@ router.put('/:id', validate(schemas.taskUpdate), async (req, res, next) => {
 
         // Log activity
         await logActivity(req.user.id, 'TASK_STEP', req.params.id, 1.0);
-        await recomputeDailyProductivity(req.user.id);
+        recomputeDailyProductivity(req.user.id).catch(err => console.error('Background recompute failed:', err));
 
         res.json(mapTask(data[0]));
     } catch (err) {
@@ -423,7 +429,7 @@ router.delete('/', async (req, res, next) => {
         }
 
         if (error) throw error;
-        await recomputeDailyProductivity(req.user.id);
+        recomputeDailyProductivity(req.user.id).catch(err => console.error('Background recompute failed:', err));
         res.status(204).send();
     } catch (err) {
         next(err);
@@ -456,7 +462,7 @@ router.delete('/:id', async (req, res, next) => {
         if (error || count === 0) {
             return res.status(404).json({ error: 'Task not found or access denied' });
         }
-        await recomputeDailyProductivity(req.user.id);
+        recomputeDailyProductivity(req.user.id).catch(err => console.error('Background recompute failed:', err));
         res.status(204).send();
     } catch (err) {
         next(err);

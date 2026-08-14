@@ -63,4 +63,28 @@ router.post('/sessions', requireAuth, validate(schemas.studySession), async (req
     }
 });
 
+// Delete study sessions within a date range (used by "Reset Today")
+router.delete('/sessions', requireAuth, async (req, res, next) => {
+    try {
+        const { from, to } = req.query;
+
+        if (!from || !to) {
+            return res.status(400).json({ error: 'Both "from" and "to" query parameters are required (ISO 8601)' });
+        }
+
+        const { error } = await supabase
+            .from('study_sessions')
+            .delete()
+            .eq('user_id', req.user.id)
+            .gte('started_at', from)
+            .lte('started_at', to);
+
+        if (error) throw error;
+
+        res.json({ success: true });
+    } catch (err) {
+        next(err);
+    }
+});
+
 export default router;

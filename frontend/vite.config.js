@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import viteCompression from 'vite-plugin-compression';
 
 // https://vitejs.dev/config/
 export default defineConfig(() => {
@@ -9,6 +10,7 @@ export default defineConfig(() => {
     return {
         plugins: [
             react(),
+            viteCompression({ algorithm: 'brotliCompress' }),
             !isTauri && VitePWA({
                 registerType: 'autoUpdate',
                 includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
@@ -44,6 +46,9 @@ export default defineConfig(() => {
                         'vendor-react': ['react', 'react-dom'],
                         'vendor-framer': ['framer-motion'],
                         'vendor-lucide': ['lucide-react'],
+                        'vendor-docs': ['docx', 'jspdf', 'pptxgenjs', 'mammoth'],
+                        'vendor-editor': ['@tiptap/react', '@tiptap/starter-kit', '@tiptap/extension-underline', '@tiptap/extension-link'],
+                        'vendor-db': ['dexie'],
                     }
                 }
             }

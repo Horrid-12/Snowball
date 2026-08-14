@@ -1,6 +1,7 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { db } from '../db/db';
 import { apiFetch, hasPersistedSession } from '../utils/apiClient.js';
+import { formatLocalDate } from '../utils/productivityScore.js';
 import { useOnline } from './OnlineContext.jsx';
 
 const AppContext = createContext();
@@ -107,7 +108,7 @@ export const AppProvider = ({ children }) => {
 
         const now = new Date();
         const shifted = new Date(now.getTime() - (offset * 60 * 60 * 1000));
-        const logicalToday = shifted.toISOString().split('T')[0];
+        const logicalToday = formatLocalDate(shifted);
         
         const lastReset = localStorage.getItem('snowball_last_reset_date');
 

@@ -14,7 +14,6 @@ router.use(requireAuth);
 router.get('/heatmap', async (req, res, next) => {
     try {
         const startDate = await getPastDateWithOffset(req.user.id, 365);
-        await backfillDailyProductivity(req.user.id);
 
         const { data: snapshots, error } = await getDb(req)
             .from('daily_productivity')
@@ -39,8 +38,6 @@ router.get('/heatmap', async (req, res, next) => {
 // GET paginated activity history 
 router.get('/history', async (req, res, next) => {
     try {
-        await backfillDailyProductivity(req.user.id);
-
         const { data: snapshots, error } = await getDb(req)
             .from('daily_productivity')
             .select('*')

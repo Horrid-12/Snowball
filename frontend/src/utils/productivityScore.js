@@ -184,9 +184,28 @@ export const extractTaskDate = (rawDate) => {
     return match ? match[0] : null;
 };
 
+const taskHasTimeComponent = (rawDate) => {
+    if (!rawDate || typeof rawDate !== 'string') return false;
+    return /\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}/.test(rawDate.trim());
+};
+
 export const filterTasksForDate = (tasks = [], targetDate = getTodayDateString(), resetOffsetHours = getStoredResetOffsetHours()) => (
     tasks.filter(task => {
-        const logicalDate = getTaskLogicalDate(task, resetOffsetHours);
-        return !logicalDate || logicalDate === targetDate;
+        const rawDate = task?.date;
+        if (!rawDate || typeof rawDate !== 'string') return true; // undated tasks always included
+
+        if (taskHasTimeComponent(rawDate)) {
+            // Tasks with a specific time (e.g., "2026-08-15 01:30") use offset-shifted
+            // logical date. A task at 1:30 AM with a 3 AM reset belongs to the previous
+            // logical day, matching how targetDate is computed.
+            const logicalDate = getTaskLogicalDate(task, resetOffsetHours);
+            return logicalDate === targetDate;
+        }
+
+        // Bare-date tasks (e.g., "2026-08-15") are all-day assignments for that calendar
+        // date. No offset shift — a task dated Aug 15 belongs to Aug 15 regardless of
+        // the reset offset.
+        const taskDate = extractTaskDate(rawDate);
+        return taskDate === targetDate;
     })
 );

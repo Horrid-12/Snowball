@@ -18,7 +18,12 @@
     color-scheme: dark;
 }
 
-html,
+html {
+    margin: 0;
+    padding: 0;
+    background: var(--bg-primary);
+}
+
 body,
 #root {
     margin: 0;
@@ -28,11 +33,13 @@ body,
     -moz-osx-font-smoothing: grayscale;
     background: var(--bg-primary);
     color: var(--text-primary);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
     width: 100%;
     position: relative;
 }
 
-body.theme-dark {
+.theme-dark {
     --bg-primary: #0f172a;
     --bg-secondary: #1e293b;
     --bg-card: #1e293b;
@@ -46,7 +53,7 @@ body.theme-dark {
 }
 
 
-body.theme-midnight {
+.theme-midnight {
     /* True AMOLED Black */
     --bg-primary: #000000;
     --bg-secondary: #000000;
@@ -61,7 +68,7 @@ body.theme-midnight {
 
 
 
-body.theme-custom {
+.theme-custom {
     --bg-primary: var(--custom-bg);
     --bg-secondary: var(--custom-secondary);
     --bg-card: var(--custom-card);
@@ -73,7 +80,7 @@ body.theme-custom {
     --border-color: var(--custom-border);
 }
 
-body.theme-dynamic {
+.theme-dynamic {
     --bg-primary: var(--m3-background);
     --bg-secondary: var(--m3-surfaceVariant);
     --bg-card: var(--m3-surface);
@@ -90,6 +97,7 @@ body.theme-dynamic {
     margin: 0;
     padding: 0;
 }
+
 
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;

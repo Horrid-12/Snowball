@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAppContext } from '../context/AppContext.jsx';
 import { useOnline } from '../context/OnlineContext';
@@ -177,7 +177,7 @@ const HeatmapPanel = ({ days, today, currentDisplayScore, getColor, compact = fa
                 minWidth: compact ? '700px' : '860px'
             }}>
                 {days.map((day, i) => {
-                    const score = day.date === today ? currentDisplayScore : day.score;
+                    const score = (day.date === today && currentDisplayScore !== undefined) ? currentDisplayScore : day.score;
                     return (
                         <div
                             key={i}
@@ -208,6 +208,81 @@ const HeatmapPanel = ({ days, today, currentDisplayScore, getColor, compact = fa
         </div>
     </>
 );
+
+const HabitHeatmapPanel = ({ habitLogs, globalHabits, days, today, compact = false }) => {
+    const [selectedHabitId, setSelectedHabitId] = useState(globalHabits?.[0]?.id ? String(globalHabits[0].id) : '');
+
+    useEffect(() => {
+        if (!selectedHabitId && globalHabits?.length > 0) {
+            setSelectedHabitId(String(globalHabits[0].id));
+        }
+    }, [globalHabits, selectedHabitId]);
+
+    const habitGrid = useMemo(() => {
+        if (!selectedHabitId) return days.map(d => ({ date: d.date, score: 0 }));
+        
+        const completedDates = new Set(
+            habitLogs
+                .filter(log => String(log.habit_id) === String(selectedHabitId))
+                .map(log => log.date)
+        );
+
+        const habit = globalHabits?.find(h => String(h.id) === String(selectedHabitId));
+        const isCompletedToday = habit?.completedToday || false;
+        
+        return days.map(d => {
+            if (d.date === today) {
+                return { date: d.date, score: isCompletedToday ? 100 : 0 };
+            }
+            return {
+                date: d.date,
+                score: completedDates.has(d.date) ? 100 : 0
+            };
+        });
+    }, [days, habitLogs, selectedHabitId, globalHabits, today]);
+
+    const getColor = (score) => {
+        const habit = globalHabits?.find(h => String(h.id) === String(selectedHabitId));
+        const color = habit?.color || 'var(--accent-color)';
+        if (score === 0) return 'rgba(128, 128, 128, 0.1)';
+        return color;
+    };
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
+            {globalHabits && globalHabits.length > 0 ? (
+                <>
+                    <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <select
+                            value={selectedHabitId}
+                            onChange={(e) => setSelectedHabitId(e.target.value)}
+                            style={{
+                                padding: '0.5rem',
+                                borderRadius: '0.5rem',
+                                border: '1px solid var(--border-color)',
+                                background: 'var(--bg-secondary)',
+                                color: 'var(--text-primary)',
+                                outline: 'none',
+                                fontSize: '0.875rem',
+                                width: '100%',
+                                maxWidth: '300px'
+                            }}
+                        >
+                            {globalHabits.map(h => (
+                                <option key={h.id} value={h.id}>{h.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <HeatmapPanel days={habitGrid} today={today} getColor={getColor} compact={compact} />
+                </>
+            ) : (
+                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    No habits found. Add some on the Habits tab!
+                </div>
+            )}
+        </div>
+    );
+};
 
 const StudyHeatmapPanel = ({ days, today, maxDuration, compact = false }) => {
     const getStudyColor = (duration) => {
@@ -431,10 +506,11 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
     const { heatmapRefreshKey, globalHabits } = useAppContext();
     const [activity, setActivity] = useState({});
     const [archivedTasks, setArchivedTasks] = useState([]);
+    const [habitLogs, setHabitLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
     const [activePanelIndex, setActivePanelIndex] = useState(0);
-    const [tagRange, setTagRange] = useState('today');
+    const [tagRange, setTagRange] = useState('weekly');
     const [tagColorMap, setTagColorMap] = useState(() => loadTagColors());
     const [studyRefreshKey, setStudyRefreshKey] = useState(0);
     const [studyNow, setStudyNow] = useState(() => Date.now());
@@ -446,6 +522,8 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
         targetDate: today,
         resetOffsetHours
     });
+
+    const fetchRetryRef = useRef(null);
 
     const fetchActivity = async () => {
         try {
@@ -460,10 +538,21 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
                 return;
             }
 
-            const [activityResponse, historyResponse] = await Promise.all([
+            const [activityResponse, historyResponse, habitHistoryResponse] = await Promise.all([
                 apiFetch('/api/activity/heatmap'),
-                apiFetch('/api/tasks/history')
+                apiFetch('/api/tasks/history'),
+                apiFetch('/api/habits/history')
             ]);
+
+            // If all responses are auth failures (401/403), retry after a delay
+            // This handles Android Capacitor where auth may not be ready on first mount
+            const allFailed = [activityResponse, historyResponse, habitHistoryResponse]
+                .every(r => r.status === 401 || r.status === 403);
+            if (allFailed) {
+                if (fetchRetryRef.current) clearTimeout(fetchRetryRef.current);
+                fetchRetryRef.current = setTimeout(() => fetchActivity(), 3000);
+                return;
+            }
 
             if (activityResponse.ok) {
                 const data = await activityResponse.json();
@@ -479,8 +568,15 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
                 const historyData = await historyResponse.json();
                 setArchivedTasks(Array.isArray(historyData) ? historyData : []);
             }
+            if (habitHistoryResponse && habitHistoryResponse.ok) {
+                const hLogs = await habitHistoryResponse.json();
+                setHabitLogs(Array.isArray(hLogs) ? hLogs : []);
+            }
         } catch (err) {
             console.error('Failed to fetch activity', err);
+            // Retry on network errors (common during Android cold start)
+            if (fetchRetryRef.current) clearTimeout(fetchRetryRef.current);
+            fetchRetryRef.current = setTimeout(() => fetchActivity(), 3000);
         } finally {
             setLoading(false);
         }
@@ -649,7 +745,14 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
         return 'var(--accent-color)';
     };
 
-    if (loading) return null;
+    if (loading) return (
+        <div className="heatmap-card card-container" style={cardStyle}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem' }}>
+                <div style={{ height: '14px', width: '140px', background: 'var(--bg-secondary)', borderRadius: '4px' }} />
+                <div style={{ height: '130px', background: 'var(--bg-secondary)', borderRadius: '8px', opacity: 0.5 }} />
+            </div>
+        </div>
+    );
 
     const panels = [
         {
@@ -666,6 +769,11 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
             key: 'study',
             title: 'Study Heatmap',
             content: <StudyHeatmapPanel days={studyHeatmap.days} today={today} maxDuration={studyHeatmap.maxDuration} compact />
+        },
+        {
+            key: 'habits',
+            title: 'Habits Heatmap',
+            content: <HabitHeatmapPanel habitLogs={habitLogs} globalHabits={globalHabits} days={days} today={today} compact />
         },
         {
             key: 'tags',

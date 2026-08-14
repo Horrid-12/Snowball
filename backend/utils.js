@@ -1,5 +1,30 @@
 import { supabase } from './db.js';
 
+const userOffsetCache = new Map();
+const OFFSET_CACHE_TTL = 5 * 60 * 1000;
+
+export const clearUserOffsetCache = (userId) => {
+    userOffsetCache.delete(userId);
+};
+
+const getUserOffset = async (userId) => {
+    const cached = userOffsetCache.get(userId);
+    if (cached && Date.now() - cached.cachedAt < OFFSET_CACHE_TTL) {
+        return cached.data;
+    }
+
+    const { data: user } = await supabase
+        .from('users')
+        .select('reset_offset_hours, timezone_offset_minutes')
+        .eq('id', userId)
+        .single();
+        
+    if (user) {
+        userOffsetCache.set(userId, { data: user, cachedAt: Date.now() });
+    }
+    return user;
+};
+
 /**
  * Returns the current date (YYYY-MM-DD) adjusted by the user's custom reset offset.
  * Example: If offset is 4 (4:00 AM reset), and it is currently 3:00 AM,
@@ -7,11 +32,7 @@ import { supabase } from './db.js';
  */
 export const getTodayWithOffset = async (userId) => {
     try {
-        const { data: user } = await supabase
-            .from('users')
-            .select('reset_offset_hours, timezone_offset_minutes')
-            .eq('id', userId)
-            .single();
+        const user = await getUserOffset(userId);
 
         const offset = user?.reset_offset_hours || 0;
         const tzOffset = user?.timezone_offset_minutes || 0; // client offset in minutes
@@ -32,20 +53,18 @@ export const getTodayWithOffset = async (userId) => {
  */
 export const getPastDateWithOffset = async (userId, daysAgo) => {
     try {
-        const { data: user } = await supabase
-            .from('users')
-            .select('reset_offset_hours, timezone_offset_minutes')
-            .eq('id', userId)
-            .single();
+        const user = await getUserOffset(userId);
 
         const offset = user?.reset_offset_hours || 0;
         const tzOffset = user?.timezone_offset_minutes || 0;
         
         const target = new Date();
-        const shifted = new Date(target.getTime() - (tzOffset * 60 * 1000) - (offset * 60 * 60 * 1000));
-        shifted.setDate(shifted.getDate() - daysAgo);
+        const shifted = new Date(target.getTime() - (tzOffset * 60 * 1000) - (offset * 60 * 1000) - (offset * 60 * 60 * 1000));
+        // Correction: shifted timezone calculation same as above
+        const fixedShifted = new Date(target.getTime() - (tzOffset * 60 * 1000) - (offset * 60 * 60 * 1000));
+        fixedShifted.setDate(fixedShifted.getDate() - daysAgo);
         
-        return shifted.toISOString().split('T')[0];
+        return fixedShifted.toISOString().split('T')[0];
     } catch (err) {
         const target = new Date();
         target.setDate(target.getDate() - daysAgo);

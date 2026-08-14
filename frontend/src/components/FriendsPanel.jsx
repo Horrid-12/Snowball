@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { Check, MessageCircle, Search, Send, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { apiFetch, getUserData } from '../utils/apiClient.js';
 import { getApiErrorMessage } from '../utils/api.js';
@@ -153,13 +153,23 @@ const FriendsPanel = ({ compact = false }) => {
         return `${friendsState.friends.length} friend${friendsState.friends.length === 1 ? '' : 's'}`;
     }, [friendsState.friends.length, loading, message, pendingCount]);
 
-    const loadFriends = useCallback(async ({ silent = false } = {}) => {
-        if (!silent) {
+    const fetchRetryRef = useRef(null);
+
+    const loadFriends = useCallback(async ({ silent = false, isRetry = false } = {}) => {
+        if (!silent && !isRetry) {
             setLoading(true);
         }
         try {
             const res = await apiFetch('/api/friends');
             const payload = await res.json().catch(() => null);
+
+            // Retry on auth failures during Android cold start
+            if (res.status === 401 || res.status === 403) {
+                if (fetchRetryRef.current) clearTimeout(fetchRetryRef.current);
+                fetchRetryRef.current = setTimeout(() => loadFriends({ silent, isRetry: true }), 3000);
+                return;
+            }
+
             if (!res.ok) throw new Error(getApiErrorMessage(payload, 'Failed to load friends'));
             setFriendsState({
                 friends: payload?.friends || [],
@@ -173,8 +183,11 @@ const FriendsPanel = ({ compact = false }) => {
             setMessage('');
         } catch (error) {
             setMessage(error.message || 'Failed to load friends');
+            // Also retry on network error during cold start
+            if (fetchRetryRef.current) clearTimeout(fetchRetryRef.current);
+            fetchRetryRef.current = setTimeout(() => loadFriends({ silent, isRetry: true }), 3000);
         } finally {
-            if (!silent) {
+            if (!silent && !isRetry) {
                 setLoading(false);
             }
         }

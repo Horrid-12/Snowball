@@ -60,12 +60,17 @@ router.get('/history', async (req, res, next) => {
         const habitMap = {};
         habits.forEach(h => habitMap[h.id] = h);
 
+        const todayStr = await getTodayWithOffset(req.user.id);
+        const todayDate = new Date(todayStr);
+        todayDate.setFullYear(todayDate.getFullYear() - 1);
+        const oneYearAgoStr = todayDate.toISOString().split('T')[0];
+
         const { data: logs, error } = await getDb(req)
             .from('habit_logs')
             .select('*')
             .in('habit_id', Object.keys(habitMap))
-            .order('date', { ascending: false })
-            .limit(100);
+            .gte('date', oneYearAgoStr)
+            .order('date', { ascending: false });
 
         if (error) throw error;
 
@@ -98,7 +103,7 @@ router.post('/', validate(schemas.habit), async (req, res, next) => {
             .single();
 
         if (error) throw error;
-        await recomputeDailyProductivity(req.user.id);
+        recomputeDailyProductivity(req.user.id).catch(err => console.error('Background recompute failed:', err));
         res.status(201).json(newHabit);
     } catch (err) {
         next(err);
@@ -131,13 +136,13 @@ router.post('/:id/toggle', async (req, res, next) => {
 
         if (existingLog) {
             await getDb(req).from('habit_logs').delete().eq('id', existingLog.id);
-            await recomputeDailyProductivity(req.user.id);
+            recomputeDailyProductivity(req.user.id).catch(err => console.error('Background recompute failed:', err));
             res.json({ completed: false });
         } else {
             await getDb(req).from('habit_logs').insert([{ habit_id: habitId, date: today }]);
             // Log for heatmap
             await logActivity(req.user.id, 'HABIT', habitId, 1.0);
-            await recomputeDailyProductivity(req.user.id);
+            recomputeDailyProductivity(req.user.id).catch(err => console.error('Background recompute failed:', err));
             res.json({ completed: true });
         }
     } catch (err) {
@@ -181,7 +186,7 @@ router.delete('/:id', async (req, res, next) => {
             .eq('user_id', req.user.id);
 
         if (error || count === 0) return res.status(404).json({ error: 'Habit not found' });
-        await recomputeDailyProductivity(req.user.id);
+        recomputeDailyProductivity(req.user.id).catch(err => console.error('Background recompute failed:', err));
         res.status(204).send();
     } catch (err) {
         next(err);
