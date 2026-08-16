@@ -1,8 +1,11 @@
 {
     "name":  "frontend",
     "private":  true,
-    "version":  "7.4.0",
+    "version":  "7.5.0",
     "type":  "module",
+    "engines":  {
+                    "node":  "\u003e=22"
+                },
     "scripts":  {
                     "dev":  "vite --host 127.0.0.1",
                     "build":  "vite build",

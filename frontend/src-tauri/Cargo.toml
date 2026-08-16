@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "7.4.0"
+version = "7.5.0"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -32,6 +32,8 @@ tauri-plugin-http = "2"
 
 [target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
 discord-rich-presence = "0.2"
+
+
 
 
 
