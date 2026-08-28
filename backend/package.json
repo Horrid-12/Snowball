@@ -10,7 +10,7 @@
     "backfill:productivity": "node backfill_daily_productivity.js"
   },
   "engines": {
-    "node": "20"
+    "node": ">=22"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",

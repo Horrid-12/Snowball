@@ -519,6 +519,8 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
                     saveTagColors(cloudTagColors);
                     setTagColors(cloudTagColors);
                     setKnownTags(Object.keys(cloudTagColors).sort((a, b) => a.localeCompare(b)));
+                    // Merge cloud tags with existing knownTags (which may include task-derived tags)
+                    setKnownTags(prev => [...new Set([...prev, ...Object.keys(cloudTagColors)])].sort((a, b) => a.localeCompare(b)));
                 }
                 window.dispatchEvent(new Event('snowball-tag-colors-changed'));
             } catch (error) {

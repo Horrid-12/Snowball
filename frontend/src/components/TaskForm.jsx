@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { API_URL } from '../config.js';
 import { Pin, Lock, Repeat, Calendar, Clock } from 'lucide-react';
 import { getTagColor, loadTagColors, normalizeHexColor, parseTags, saveTagColors } from '../utils/tagColors.js';
+import { getTagColor, loadTagColors, normalizeHexColor, parseTags, saveTagColors, syncTagColorsToServer } from '../utils/tagColors.js';
 import TagColorInput from './TagColorInput.jsx';
 
 const TaskForm = ({ onTaskAdded }) => {
@@ -58,6 +59,26 @@ const TaskForm = ({ onTaskAdded }) => {
             };
 
             await onTaskAdded(newTask);
+
+            // Auto-register any new tags into the tag color presets
+            const submittedTags = parseTags(formData.tags);
+            if (submittedTags.length > 0) {
+                const currentColors = loadTagColors();
+                let hasNewTags = false;
+                const nextMap = { ...currentColors };
+                for (const tag of submittedTags) {
+                    if (!nextMap[tag]) {
+                        nextMap[tag] = getTagColor(tag, currentColors);
+                        hasNewTags = true;
+                    }
+                }
+                if (hasNewTags) {
+                    setTagColors(nextMap);
+                    saveTagColors(nextMap);
+                    syncTagColorsToServer(nextMap);
+                    window.dispatchEvent(new Event('snowball-tag-colors-changed'));
+                }
+            }
 
             setFormData({
                 title: '',

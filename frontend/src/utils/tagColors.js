@@ -91,6 +91,20 @@ export const saveTagColors = (nextMap) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(nextMap));
 };
 
+/**
+ * Fire-and-forget sync of tag colors to the server via PUT /api/auth/me.
+ * Uses dynamic import to avoid a hard dependency on apiClient at module level.
+ */
+export const syncTagColorsToServer = (tagColorMap) => {
+    import('./apiClient.js').then(({ apiFetch }) => {
+        apiFetch('/api/auth/me', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag_colors: tagColorMap })
+        }).catch(() => {});
+    }).catch(() => {});
+};
+
 export const getDefaultTagColor = (tag) => {
     const palette = getActivePalette();
     const input = String(tag || '');
