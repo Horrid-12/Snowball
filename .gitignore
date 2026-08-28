@@ -96,6 +96,7 @@ npm-cache/
 ARCHITECTURE.md
 AGENTS.md
 Taskflow.md
+Decisions.md
 
 # Dependency vulnerability reports
 alerts.json
