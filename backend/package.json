@@ -31,12 +31,15 @@
     "nodemon": "^3.1.14"
   },
   "overrides": {
-    "ip-address": "10.1.1",
+    "ip-address": "10.7.0",
     "path-to-regexp": "0.1.13",
     "picomatch": "2.3.2",
     "qs": "6.15.2",
-    "undici": "7.24.0",
-    "ws": "8.20.1"
+    "undici": "7.29.0",
+    "ws": "8.21.3",
+    "tar": "7.5.22",
+    "minimatch": "10.2.6",
+    "@tootallnate/once": "3.0.1"
   },
   "keywords": [],
   "author": "",

@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { API_URL } from '../config.js';
 import { Pin, Lock, Repeat, Calendar, Clock } from 'lucide-react';
-import { getTagColor, loadTagColors, normalizeHexColor, parseTags, saveTagColors } from '../utils/tagColors.js';
 import { getTagColor, loadTagColors, normalizeHexColor, parseTags, saveTagColors, syncTagColorsToServer } from '../utils/tagColors.js';
 import TagColorInput from './TagColorInput.jsx';
 

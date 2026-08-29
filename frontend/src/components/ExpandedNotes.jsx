@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import { Markdown } from 'tiptap-markdown';
 import Image from '@tiptap/extension-image';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
@@ -110,6 +111,11 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
     const editor = useEditor({
         extensions: [
             StarterKit,
+            Markdown.configure({
+                html: true,
+                transformPastedText: true,
+                transformCopiedText: true,
+            }),
             Image.configure({ inline: true, allowBase64: true }),
             Underline,
             Link.configure({ openOnClick: false }),
@@ -845,7 +851,7 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
     };
 
     const exportAsMd = () => {
-        let text = editor.getText(); // Basic for now
+        let text = editor.storage.markdown.getMarkdown();
         if (!text) return alert("Note is empty!");
         const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
         downloadFile(blob, `${notes.find(n => n.id === activeNoteId)?.title || 'note'}.md`);
@@ -920,7 +926,11 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     let content = event.target.result;
-                    editor.commands.setContent(content.replace(/\n/g, '<br>'));
+                    if (type === 'md') {
+                        editor.commands.setContent(content);
+                    } else {
+                        editor.commands.setContent(content.replace(/\n/g, '<br>'));
+                    }
                 };
                 reader.readAsText(file);
             }

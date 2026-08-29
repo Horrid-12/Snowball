@@ -159,5 +159,11 @@ export const schemas = {
         started_at: z.string().datetime(),
         ended_at: z.string().datetime(),
         duration_ms: z.number().int().nonnegative()
+    }),
+    studySessionUpdate: z.object({
+        subject: z.string().trim().min(1).max(255).optional(),
+        started_at: z.string().datetime().optional(),
+        ended_at: z.string().datetime().optional(),
+        duration_ms: z.number().int().nonnegative().optional()
     })
 };

@@ -87,4 +87,57 @@ router.delete('/sessions', requireAuth, async (req, res, next) => {
     }
 });
 
+// Update a single study session
+router.put('/sessions/:id', requireAuth, validate(schemas.studySessionUpdate), async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const updates = req.validatedBody;
+
+        if (Object.keys(updates).length === 0) {
+            return res.status(400).json({ error: 'No fields to update' });
+        }
+
+        const { data, error } = await supabase
+            .from('study_sessions')
+            .update(updates)
+            .eq('id', id)
+            .eq('user_id', req.user.id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        if (!data) return res.status(404).json({ error: 'Session not found' });
+
+        res.json({
+            id: data.id,
+            subject: data.subject,
+            startedAt: data.started_at,
+            endedAt: data.ended_at,
+            durationMs: data.duration_ms
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// Delete a single study session by ID
+router.delete('/sessions/:id', requireAuth, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        const { error } = await supabase
+            .from('study_sessions')
+            .delete()
+            .eq('id', id)
+            .eq('user_id', req.user.id);
+
+        if (error) throw error;
+
+        res.json({ success: true });
+    } catch (err) {
+        next(err);
+    }
+});
+
 export default router;
+
