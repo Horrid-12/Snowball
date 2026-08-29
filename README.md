@@ -49,7 +49,7 @@ Snowball is built on a **Local-First** philosophy. The application prioritizes i
 
 ### Tech Stack
 
-- **Frontend**: React 18, Vite, Framer Motion, Lucide-React
+- **Frontend**: React 19, Vite, Framer Motion, Lucide-React
 - **Local Storage**: Dexie.js (IndexedDB)
 - **Backend**: Node.js, Express
 - **Database & Auth**: Supabase (PostgreSQL)
@@ -59,9 +59,9 @@ Snowball is built on a **Local-First** philosophy. The application prioritizes i
 
 ### 🐛 Known Bugs
 
-* Nothing Atm
+- None at the moment
 
-Head Over to Releases and Download Suitable Platfrom
+Head over to [Releases](https://github.com/Horrid-12/Snowball/releases) and download the build for your platform.
 
 ## 📈 Status
 
