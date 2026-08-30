@@ -1,7 +1,7 @@
 {
     "$schema":  "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName":  "Snowball",
-    "version":  "7.6.0",
+    "version":  "7.6.1",
     "identifier":  "com.howwid.Snowball",
     "build":  {
                   "frontendDist":  "../dist",
