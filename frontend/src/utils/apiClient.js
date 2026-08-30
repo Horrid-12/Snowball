@@ -5,16 +5,19 @@ import { API_URL, isTauriDesktop } from '../config.js';
 // the token is stored in IndexedDB via the init/save helpers below.
 let _authToken = null;
 let _userData = null;
+let _authInitPromise = null;
 
 const SESSION_FLAG_KEY = 'snowball_session_active';
 
 export const setAuthToken = (token) => {
     _authToken = token;
+    _authInitPromise = Promise.resolve(!!token);
     if (token) saveTokenToDB(token);
 };
 export const getAuthToken = () => _authToken;
 export const clearAuthToken = () => {
     _authToken = null;
+    _authInitPromise = Promise.resolve(false);
     removeTokenFromDB();
 };
 
@@ -83,6 +86,7 @@ export const clearSession = () => {
     try { localStorage.removeItem(SESSION_FLAG_KEY); } catch { /* noop */ }
     _authToken = null;
     _userData = null;
+    _authInitPromise = Promise.resolve(false);
     removeTokenFromDB();
 };
 
@@ -99,13 +103,18 @@ export const hasPersistedSession = () => {
     } catch { return false; }
 };
 
-// Called once on app startup to restore the Bearer token from IndexedDB
-export const initAuthFromStorage = async () => {
-    const token = await loadTokenFromDB();
-    if (token) {
-        _authToken = token;
+// Called once on app startup (or on demand) to restore the Bearer token from IndexedDB
+export const initAuthFromStorage = () => {
+    if (!_authInitPromise) {
+        _authInitPromise = (async () => {
+            const token = await loadTokenFromDB();
+            if (token) {
+                _authToken = token;
+            }
+            return !!token;
+        })();
     }
-    return !!token;
+    return _authInitPromise;
 };
 
 const toUrl = (input) => {
@@ -131,6 +140,11 @@ const getFetcher = async () => {
 };
 
 export const apiFetch = async (input, init = {}) => {
+    // If auth token not in memory yet but session is active, await storage restoration first
+    if (!_authToken && hasPersistedSession()) {
+        await initAuthFromStorage();
+    }
+
     const headers = new Headers(init.headers || {});
     headers.set('X-Requested-With', 'XMLHttpRequest');
 

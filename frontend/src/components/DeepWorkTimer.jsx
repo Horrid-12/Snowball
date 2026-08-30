@@ -8,6 +8,7 @@ import { nativeConfirm } from '../utils/confirm.js';
 const SESSIONS_KEY = 'snowball_study_timer_sessions';
 const ACTIVE_KEY = 'snowball_study_timer_active';
 const EXPANDED_KEY = 'snowball_study_timer_expanded';
+const CUSTOM_SUBJECTS_KEY = 'snowball_study_custom_subjects';
 const MAX_CONCURRENT_TIMERS = 3;
 
 const stableStringify = (value) => JSON.stringify(value || null);
@@ -20,7 +21,6 @@ const normalizeSessions = (value) => (
 
 const normalizeActiveSessions = (value) => {
     if (!Array.isArray(value)) {
-        // Migration: single activeSession → array
         if (value?.subject && value?.startedAt) {
             return [{ id: `active_${Date.now()}`, subject: value.subject, startedAt: value.startedAt }];
         }
@@ -52,26 +52,19 @@ const chooseActiveSessions = (localActive, remoteActive, remoteHasState) => {
 const buildTimerState = (sessions, activeSessions) => ({
     sessions: normalizeSessions(sessions),
     activeSessions: normalizeActiveSessions(activeSessions),
-    // Keep backward compat: set activeSession to first active or null
     activeSession: activeSessions?.length > 0 ? activeSessions[0] : null,
     updatedAt: new Date().toISOString()
 });
 
 const safeJson = (value, fallback) => {
-    try {
-        return value ? JSON.parse(value) : fallback;
-    } catch (_error) {
-        return fallback;
-    }
+    try { return value ? JSON.parse(value) : fallback; } catch (_e) { return fallback; }
 };
 
 const getStudyDayStart = (date = new Date(), offsetHours = 0) => {
     const start = new Date(date);
     const normalizedOffset = Number.isFinite(Number(offsetHours)) ? Number(offsetHours) : 0;
     start.setHours(normalizedOffset, 0, 0, 0);
-    if (date.getTime() < start.getTime()) {
-        start.setDate(start.getDate() - 1);
-    }
+    if (date.getTime() < start.getTime()) start.setDate(start.getDate() - 1);
     return start;
 };
 
@@ -116,9 +109,7 @@ const formatDuration = (durationMs) => {
 };
 
 const buildSubjectsFromTasks = (tasks = []) => {
-    const subjects = tasks
-        .flatMap((task) => parseTags(task?.tags || ''))
-        .filter(Boolean);
+    const subjects = tasks.flatMap((task) => parseTags(task?.tags || '')).filter(Boolean);
     return [...new Set(subjects)].sort((a, b) => a.localeCompare(b));
 };
 
@@ -128,6 +119,8 @@ const formatDateTimeLocal = (isoString) => {
     const pad = (n) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
+
+// --- SessionEditorModal ---
 
 const SessionEditorModal = ({ sessions, dayStart, dayEnd, subjects, tagColors, onClose, onDelete, onUpdate }) => {
     const daySessions = sessions.filter((s) => getSessionDurationForDay(s, dayStart, dayEnd) > 0);
@@ -208,8 +201,8 @@ const SessionEditorModal = ({ sessions, dayStart, dayEnd, subjects, tagColors, o
                                             }}>
                                             {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
                                         </select>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                                            <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', overflow: 'hidden' }}>
+                                            <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', minWidth: 0 }}>
                                                 Start
                                                 <input type="datetime-local" value={editForm.startedAt}
                                                     onChange={(e) => setEditForm((p) => ({ ...p, startedAt: e.target.value }))}
@@ -217,10 +210,11 @@ const SessionEditorModal = ({ sessions, dayStart, dayEnd, subjects, tagColors, o
                                                         width: '100%', padding: '0.45rem', borderRadius: '0.45rem',
                                                         border: '1px solid var(--border-color)',
                                                         background: 'var(--bg-primary)', color: 'var(--text-primary)',
-                                                        fontSize: '0.8rem', marginTop: '0.2rem'
+                                                        fontSize: '0.8rem', marginTop: '0.2rem',
+                                                        boxSizing: 'border-box', minWidth: 0
                                                     }} />
                                             </label>
-                                            <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                                            <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', minWidth: 0 }}>
                                                 End
                                                 <input type="datetime-local" value={editForm.endedAt}
                                                     onChange={(e) => setEditForm((p) => ({ ...p, endedAt: e.target.value }))}
@@ -228,7 +222,8 @@ const SessionEditorModal = ({ sessions, dayStart, dayEnd, subjects, tagColors, o
                                                         width: '100%', padding: '0.45rem', borderRadius: '0.45rem',
                                                         border: '1px solid var(--border-color)',
                                                         background: 'var(--bg-primary)', color: 'var(--text-primary)',
-                                                        fontSize: '0.8rem', marginTop: '0.2rem'
+                                                        fontSize: '0.8rem', marginTop: '0.2rem',
+                                                        boxSizing: 'border-box', minWidth: 0
                                                     }} />
                                             </label>
                                         </div>
@@ -287,6 +282,8 @@ const SessionEditorModal = ({ sessions, dayStart, dayEnd, subjects, tagColors, o
     );
 };
 
+// --- AddSessionForm ---
+
 const AddSessionForm = ({ subjects, onAdd, onCancel }) => {
     const [subject, setSubject] = useState(subjects[0] || 'Study');
     const now = formatDateTimeLocal(new Date().toISOString());
@@ -321,25 +318,27 @@ const AddSessionForm = ({ subjects, onAdd, onCancel }) => {
             }}>
                 {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', overflow: 'hidden' }}>
+                <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', minWidth: 0 }}>
                     Start
                     <input type="datetime-local" value={startedAt} onChange={(e) => setStartedAt(e.target.value)}
                         style={{
                             width: '100%', padding: '0.45rem', borderRadius: '0.45rem',
                             border: '1px solid var(--border-color)',
                             background: 'var(--bg-primary)', color: 'var(--text-primary)',
-                            fontSize: '0.8rem', marginTop: '0.2rem'
+                            fontSize: '0.8rem', marginTop: '0.2rem',
+                            boxSizing: 'border-box', minWidth: 0
                         }} />
                 </label>
-                <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', minWidth: 0 }}>
                     End
                     <input type="datetime-local" value={endedAt} onChange={(e) => setEndedAt(e.target.value)}
                         style={{
                             width: '100%', padding: '0.45rem', borderRadius: '0.45rem',
                             border: '1px solid var(--border-color)',
                             background: 'var(--bg-primary)', color: 'var(--text-primary)',
-                            fontSize: '0.8rem', marginTop: '0.2rem'
+                            fontSize: '0.8rem', marginTop: '0.2rem',
+                            boxSizing: 'border-box', minWidth: 0
                         }} />
                 </label>
             </div>
@@ -358,6 +357,8 @@ const AddSessionForm = ({ subjects, onAdd, onCancel }) => {
         </div>
     );
 };
+
+// --- DeepWorkTimer ---
 
 const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
     const [now, setNow] = useState(Date.now());
@@ -379,18 +380,24 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         const saved = safeJson(localStorage.getItem(ACTIVE_KEY), null);
         return normalizeActiveSessions(saved);
     });
+    const [customSubjects, setCustomSubjects] = useState(() => {
+        return safeJson(localStorage.getItem(CUSTOM_SUBJECTS_KEY), []);
+    });
     const [showAddForm, setShowAddForm] = useState(false);
     const [showSessionEditor, setShowSessionEditor] = useState(false);
+    const [showAddSubject, setShowAddSubject] = useState(false);
+    const [newSubjectName, setNewSubjectName] = useState('');
 
     const storedSubjects = useMemo(() => Object.keys(tagColors), [tagColors]);
     const taskSubjects = useMemo(() => buildSubjectsFromTasks(tasks), [tasks]);
     const subjects = useMemo(() => {
-        const next = [...new Set([...taskSubjects, ...storedSubjects])].sort((a, b) => a.localeCompare(b));
+        const next = [...new Set([...taskSubjects, ...storedSubjects, ...customSubjects])].sort((a, b) => a.localeCompare(b));
         activeSessions.forEach((s) => {
             if (s?.subject && !next.includes(s.subject)) next.unshift(s.subject);
         });
         return next.length > 0 ? next : ['Study'];
-    }, [activeSessions, storedSubjects, taskSubjects]);
+    }, [activeSessions, customSubjects, storedSubjects, taskSubjects]);
+
     const [selectedSubject, setSelectedSubject] = useState(() => subjects[0] || 'Study');
 
     useEffect(() => {
@@ -408,6 +415,10 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
     useEffect(() => {
         localStorage.setItem(EXPANDED_KEY, JSON.stringify(isExpanded));
     }, [isExpanded]);
+
+    useEffect(() => {
+        localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(customSubjects));
+    }, [customSubjects]);
 
     useEffect(() => {
         localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions.slice(-500)));
@@ -469,9 +480,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         if (!hasLoadedRemoteRef.current || isApplyingRemoteRef.current) return;
 
         const nextState = buildTimerState([], activeSessions);
-        const serialized = stableStringify({
-            activeSessions: nextState.activeSessions
-        });
+        const serialized = stableStringify({ activeSessions: nextState.activeSessions });
         if (serialized === lastSyncedStateRef.current) return;
 
         if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
@@ -485,9 +494,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                     body: JSON.stringify({ study_timer_state: nextState })
                 });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                if (syncReqSeqRef.current === localSeq) {
-                    lastSyncedStateRef.current = serialized;
-                }
+                if (syncReqSeqRef.current === localSeq) lastSyncedStateRef.current = serialized;
             } catch (error) {
                 console.warn('Failed to sync study timer state', error);
                 if (syncReqSeqRef.current === localSeq) {
@@ -496,9 +503,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
             }
         }, 150);
 
-        return () => {
-            if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
-        };
+        return () => { if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current); };
     }, [activeSessions]);
 
     useEffect(() => {
@@ -515,9 +520,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
 
         activeSessions.forEach((active) => {
             const startedAt = new Date(active.startedAt);
-            if (startedAt.getTime() < dayStart.getTime()) {
-                needsSplit.push(active);
-            }
+            if (startedAt.getTime() < dayStart.getTime()) needsSplit.push(active);
         });
 
         if (needsSplit.length === 0) return;
@@ -542,10 +545,11 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
             }
             return active;
         }));
-    }, [activeSessions, now, resetOffsetHours]);
+    }, [activeSessions, now, resetOffsetHours]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const dayStart = useMemo(() => getStudyDayStart(new Date(now), resetOffsetHours), [now, resetOffsetHours]);
     const dayEnd = useMemo(() => getNextStudyDayStart(new Date(now), resetOffsetHours), [now, resetOffsetHours]);
+    // eslint-disable-next-line no-unused-vars
     const dayKey = useMemo(() => getDayKey(new Date(now), resetOffsetHours), [now, resetOffsetHours]);
 
     const totals = useMemo(() => {
@@ -625,7 +629,6 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
 
     const startTimer = () => {
         if (activeSessions.length >= MAX_CONCURRENT_TIMERS) return;
-        // Don't start duplicate for same subject
         if (activeSessions.some((s) => s.subject === selectedSubject)) return;
         setActiveSessions((prev) => [...prev, {
             id: `active_${Date.now()}`,
@@ -651,14 +654,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
             });
             logMomentum(durationMs);
         }
-
         setActiveSessions((prev) => prev.filter((s) => s.id !== activeId));
-    };
-
-    const stopAllTimers = async () => {
-        for (const active of activeSessions) {
-            await stopTimer(active.id);
-        }
     };
 
     const resetToday = async () => {
@@ -666,17 +662,13 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         if (!confirmed) return;
 
         setActiveSessions([]);
-        setSessions((prev) => prev.filter((session) => (
-            getSessionDurationForDay(session, dayStart, dayEnd) <= 0
-        )));
+        setSessions((prev) => prev.filter((session) => getSessionDurationForDay(session, dayStart, dayEnd) <= 0));
 
         const fromISO = dayStart.toISOString();
         const toISO = dayEnd.toISOString();
         try {
             const [delRes, stateRes] = await Promise.all([
-                apiFetch(`/api/timer/sessions?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`, {
-                    method: 'DELETE'
-                }),
+                apiFetch(`/api/timer/sessions?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`, { method: 'DELETE' }),
                 apiFetch('/api/auth/me', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
@@ -693,11 +685,21 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
     };
 
     const handleAddManualSession = async (sessionData) => {
-        await addCompletedSession({
-            id: `manual_${Date.now()}`,
-            ...sessionData
-        });
+        await addCompletedSession({ id: `manual_${Date.now()}`, ...sessionData });
         setShowAddForm(false);
+    };
+
+    const handleAddSubject = () => {
+        const name = newSubjectName.trim();
+        if (!name) return;
+        if (subjects.includes(name)) {
+            setSelectedSubject(name);
+        } else {
+            setCustomSubjects((prev) => [...prev, name]);
+            setSelectedSubject(name);
+        }
+        setNewSubjectName('');
+        setShowAddSubject(false);
     };
 
     const handleDeleteSession = async (sessionId) => {
@@ -745,26 +747,20 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
             background: 'var(--bg-secondary)',
             borderRadius: 'var(--radius)',
             border: '1px solid var(--border-color)',
-            display: 'flex',
-            flexDirection: 'column',
-            position: 'relative',
-            boxSizing: 'border-box',
-            width: '100%',
-            overflow: 'hidden'
+            display: 'flex', flexDirection: 'column',
+            position: 'relative', boxSizing: 'border-box',
+            width: '100%', overflow: 'hidden'
         }}>
+            {/* Header */}
             <div
                 onClick={(event) => {
                     if (event.target.closest('button, select')) return;
                     setIsExpanded(!isExpanded);
                 }}
                 style={{
-                    padding: '0.75rem 1rem',
-                    background: 'var(--bg-secondary)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    cursor: 'pointer',
-                    borderBottom: isExpanded ? '1px solid var(--border-color)' : 'none'
+                    padding: '0.75rem 1rem', background: 'var(--bg-secondary)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    cursor: 'pointer', borderBottom: isExpanded ? '1px solid var(--border-color)' : 'none'
                 }}
             >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', minWidth: 0 }}>
@@ -791,7 +787,9 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
 
             {isExpanded && (
                 <div style={{ padding: '0.9rem 1rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'center' }}>
+
+                    {/* Subject selector row */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0.5rem', alignItems: 'center' }}>
                         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', minWidth: 0 }}>
                             <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                                 Subject
@@ -800,15 +798,10 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                                 value={selectedSubject}
                                 onChange={(event) => setSelectedSubject(event.target.value)}
                                 style={{
-                                    width: '100%',
-                                    minWidth: 0,
-                                    padding: '0.65rem 0.7rem',
-                                    borderRadius: '0.55rem',
-                                    border: '1px solid var(--border-color)',
-                                    background: 'var(--bg-card)',
-                                    color: 'var(--text-primary)',
-                                    fontSize: '0.88rem',
-                                    fontWeight: 600
+                                    width: '100%', minWidth: 0, padding: '0.65rem 0.7rem',
+                                    borderRadius: '0.55rem', border: '1px solid var(--border-color)',
+                                    background: 'var(--bg-card)', color: 'var(--text-primary)',
+                                    fontSize: '0.88rem', fontWeight: 600
                                 }}
                             >
                                 {subjects.map((subject) => (
@@ -817,23 +810,33 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                             </select>
                         </label>
 
+                        {/* Add subject button */}
+                        <button
+                            onClick={() => { setShowAddSubject(!showAddSubject); setNewSubjectName(''); }}
+                            style={{
+                                alignSelf: 'end', width: '40px', height: '40px',
+                                borderRadius: '0.55rem', border: '1px solid var(--border-color)',
+                                background: showAddSubject ? 'var(--accent-color)' : 'var(--bg-card)',
+                                color: showAddSubject ? '#fff' : 'var(--text-secondary)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                            }}
+                            title="Add new subject"
+                        >
+                            <Plus size={18} />
+                        </button>
+
+                        {/* Start timer button */}
                         <button
                             onClick={canStartNew ? startTimer : undefined}
                             disabled={!canStartNew}
                             style={{
-                                alignSelf: 'end',
-                                width: '48px',
-                                height: '48px',
-                                borderRadius: '999px',
-                                border: '1px solid var(--accent-color)',
+                                alignSelf: 'end', width: '48px', height: '48px',
+                                borderRadius: '999px', border: '1px solid var(--accent-color)',
                                 background: canStartNew ? 'var(--accent-color)' : 'var(--bg-card)',
                                 color: canStartNew ? '#ffffff' : 'var(--text-secondary)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 cursor: canStartNew ? 'pointer' : 'not-allowed',
-                                boxShadow: '0 8px 18px rgba(0,0,0,0.16)',
-                                opacity: canStartNew ? 1 : 0.5
+                                boxShadow: '0 8px 18px rgba(0,0,0,0.16)', opacity: canStartNew ? 1 : 0.5
                             }}
                             title={
                                 activeSessions.length >= MAX_CONCURRENT_TIMERS
@@ -847,6 +850,35 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                         </button>
                     </div>
 
+                    {/* Add subject inline input */}
+                    {showAddSubject && (
+                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                            <input
+                                type="text"
+                                value={newSubjectName}
+                                onChange={(e) => setNewSubjectName(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') handleAddSubject(); if (e.key === 'Escape') setShowAddSubject(false); }}
+                                placeholder="New subject name..."
+                                autoFocus
+                                style={{
+                                    flex: 1, minWidth: 0, padding: '0.5rem 0.65rem', borderRadius: '0.45rem',
+                                    border: '1px solid var(--border-color)',
+                                    background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.82rem'
+                                }}
+                            />
+                            <button onClick={handleAddSubject} style={{
+                                padding: '0.45rem 0.6rem', borderRadius: '0.45rem',
+                                border: 'none', background: 'var(--accent-color)',
+                                color: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600
+                            }}>Add</button>
+                            <button onClick={() => setShowAddSubject(false)} style={{
+                                padding: '0.45rem 0.6rem', borderRadius: '0.45rem',
+                                border: '1px solid var(--border-color)', background: 'transparent',
+                                color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.78rem'
+                            }}>Cancel</button>
+                        </div>
+                    )}
+
                     {/* Active timer rows */}
                     {activeSessions.length > 0 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
@@ -857,11 +889,10 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                                     <div key={active.id} style={{
                                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                                         padding: '0.6rem 0.75rem', borderRadius: '0.6rem',
-                                        border: '1px solid var(--accent-color)',
-                                        background: 'var(--bg-card)'
+                                        border: '1px solid var(--accent-color)', background: 'var(--bg-card)'
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', minWidth: 0 }}>
-                                            <span style={{ width: '8px', height: '8px', borderRadius: '999px', background: color, flexShrink: 0, animation: 'pulse 2s infinite' }} />
+                                            <span style={{ width: '8px', height: '8px', borderRadius: '999px', background: color, flexShrink: 0 }} />
                                             <span style={{ fontSize: '0.82rem', fontWeight: 650, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                 {active.subject}
                                             </span>
@@ -876,8 +907,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                                                     width: '32px', height: '32px', borderRadius: '999px',
                                                     border: '1px solid var(--accent-color)',
                                                     background: 'var(--bg-card)', color: 'var(--accent-color)',
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    cursor: 'pointer'
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
                                                 }}
                                                 title="Stop this timer"
                                             >
@@ -890,17 +920,9 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                         </div>
                     )}
 
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 1fr',
-                        gap: '0.65rem'
-                    }}>
-                        <div style={{
-                            padding: '0.75rem',
-                            borderRadius: '0.75rem',
-                            background: 'var(--bg-card)',
-                            border: '1px solid var(--border-color)'
-                        }}>
+                    {/* Today / Active stat cards */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
+                        <div style={{ padding: '0.75rem', borderRadius: '0.75rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700, marginBottom: '0.35rem' }}>
                                 <Clock size={13} /> Today
                             </div>
@@ -908,12 +930,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                                 {formatClock(totals.total)}
                             </div>
                         </div>
-                        <div style={{
-                            padding: '0.75rem',
-                            borderRadius: '0.75rem',
-                            background: 'var(--bg-card)',
-                            border: '1px solid var(--border-color)'
-                        }}>
+                        <div style={{ padding: '0.75rem', borderRadius: '0.75rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
                             <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700, marginBottom: '0.35rem' }}>
                                 Active ({activeSessions.length})
                             </div>
@@ -923,6 +940,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                         </div>
                     </div>
 
+                    {/* Subject totals */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
                             <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -983,18 +1001,10 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                     <button
                         onClick={resetToday}
                         style={{
-                            alignSelf: 'flex-start',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.35rem',
-                            padding: '0.45rem 0.65rem',
-                            borderRadius: '0.55rem',
-                            border: '1px solid var(--border-color)',
-                            background: 'transparent',
-                            color: 'var(--text-secondary)',
-                            cursor: 'pointer',
-                            fontSize: '0.78rem',
-                            fontWeight: 650
+                            alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                            padding: '0.45rem 0.65rem', borderRadius: '0.55rem',
+                            border: '1px solid var(--border-color)', background: 'transparent',
+                            color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 650
                         }}
                     >
                         <RotateCcw size={14} />

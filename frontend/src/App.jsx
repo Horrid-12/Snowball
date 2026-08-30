@@ -639,6 +639,9 @@ function App() {
 
                             // Initial check for task reset
                             checkAndResetTasks(data.reset_offset_hours || 0);
+
+                            // Notify contexts and widgets to fetch authenticated user data
+                            window.dispatchEvent(new CustomEvent('snowball-refresh-required'));
                         }
                     })
                     .catch(async (err) => {
@@ -1007,6 +1010,7 @@ function App() {
         setToken(true);
         await db.profile.put({ id: 'me', ...newUser });
         syncService.triggerSync();
+        window.dispatchEvent(new CustomEvent('snowball-refresh-required'));
     }, []);
 
     const handleUpdateUser = useCallback((updatedUser) => {
