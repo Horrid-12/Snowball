@@ -1479,7 +1479,7 @@ function App() {
                                     borderRadius: '50%',
                                     width: isMobile ? '36px' : '40px',
                                     height: isMobile ? '36px' : '40px',
-                                    display: 'flex',
+                                    display: (isMobile || isNativeAndroid) ? 'none' : 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     cursor: 'pointer',

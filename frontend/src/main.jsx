@@ -37,6 +37,21 @@ if (isNativeApp) {
     });
 }
 
+// Auto-reload on dynamic import / chunk load failures caused by new deployments
+window.addEventListener('vite:preloadError', (event) => {
+    event.preventDefault();
+    const hasReloaded = sessionStorage.getItem('vite_preload_retry');
+    if (!hasReloaded) {
+        sessionStorage.setItem('vite_preload_retry', 'true');
+        window.location.reload();
+    }
+});
+
+window.addEventListener('load', () => {
+    sessionStorage.removeItem('vite_preload_retry');
+    sessionStorage.removeItem('chunk_error_reload');
+});
+
 ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
         <ErrorBoundary>

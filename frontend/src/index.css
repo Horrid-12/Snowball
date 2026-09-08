@@ -283,6 +283,10 @@ body {
     header .hi-user {
         margin: 0 auto;
     }
+
+    header .settings-btn {
+        display: none !important;
+    }
 }
 
 /* Settings Modal Grid Layout */

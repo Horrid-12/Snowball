@@ -41,18 +41,26 @@ const mergeSessions = (localSessions = [], remoteSessions = []) => {
         .slice(-500);
 };
 
-const chooseActiveSessions = (localActive, remoteActive, remoteHasState) => {
+const chooseActiveSessions = (localActive, remoteActive, remoteHasState, remoteUpdatedAt) => {
     const local = normalizeActiveSessions(localActive);
     const remote = normalizeActiveSessions(remoteActive);
     if (remoteHasState && remote.length === 0 && local.length === 0) return [];
     if (remoteHasState && remote.length > 0) return remote;
+    if (remoteHasState && remote.length === 0 && local.length > 0) {
+        // Remote explicitly has no active sessions (timers were stopped/paused on
+        // another device).  Only keep local sessions that were started AFTER the
+        // remote state was last updated — these are genuinely new local timers.
+        const remoteTime = remoteUpdatedAt ? new Date(remoteUpdatedAt).getTime() : 0;
+        return local.filter((s) => new Date(s.startedAt).getTime() > remoteTime);
+    }
     return local;
 };
 
-const buildTimerState = (sessions, activeSessions) => ({
+const buildTimerState = (sessions, activeSessions, customSubjects) => ({
     sessions: normalizeSessions(sessions),
     activeSessions: normalizeActiveSessions(activeSessions),
     activeSession: activeSessions?.length > 0 ? activeSessions[0] : null,
+    customSubjects: Array.isArray(customSubjects) ? customSubjects : [],
     updatedAt: new Date().toISOString()
 });
 
@@ -461,7 +469,12 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
 
                 isApplyingRemoteRef.current = true;
                 setSessions(remoteSessions.length > 0 ? remoteSessions : []);
-                setActiveSessions((currentActive) => chooseActiveSessions(currentActive, remoteActive, remoteHasState));
+                setActiveSessions((currentActive) => chooseActiveSessions(currentActive, remoteActive, remoteHasState, remoteState.updatedAt));
+                // Merge remote custom subjects with local ones so they sync across devices
+                const remoteCustom = Array.isArray(remoteState.customSubjects) ? remoteState.customSubjects : [];
+                if (remoteCustom.length > 0) {
+                    setCustomSubjects((prev) => [...new Set([...prev, ...remoteCustom])]);
+                }
             } catch (error) {
                 console.warn('Failed to load synced study timer state', error);
             } finally {
@@ -479,8 +492,8 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
     useEffect(() => {
         if (!hasLoadedRemoteRef.current || isApplyingRemoteRef.current) return;
 
-        const nextState = buildTimerState([], activeSessions);
-        const serialized = stableStringify({ activeSessions: nextState.activeSessions });
+        const nextState = buildTimerState([], activeSessions, customSubjects);
+        const serialized = stableStringify({ activeSessions: nextState.activeSessions, customSubjects: nextState.customSubjects });
         if (serialized === lastSyncedStateRef.current) return;
 
         if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
@@ -504,7 +517,41 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         }, 150);
 
         return () => { if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current); };
-    }, [activeSessions]);
+    }, [activeSessions, customSubjects]);
+
+    // Re-sync from server when the tab regains visibility (handles cross-device
+    // deletes, pauses, etc. that happened while the tab was in the background).
+    useEffect(() => {
+        const handleVisibility = async () => {
+            if (document.visibilityState !== 'visible' || !hasLoadedRemoteRef.current) return;
+            try {
+                const [profileRes, sessionsRes] = await Promise.all([
+                    apiFetch('/api/auth/me'),
+                    apiFetch('/api/timer/sessions')
+                ]);
+                if (!profileRes.ok || !sessionsRes.ok) return;
+                const profile = await profileRes.json();
+                const remoteState = profile?.study_timer_state || {};
+                const remoteActive = remoteState.activeSessions || (remoteState.activeSession ? [remoteState.activeSession] : []);
+                const remoteHasState = profile?.study_timer_state != null;
+
+                const remoteSessions = normalizeSessions(await sessionsRes.json());
+
+                isApplyingRemoteRef.current = true;
+                setSessions(remoteSessions.length > 0 ? remoteSessions : []);
+                setActiveSessions((currentActive) => chooseActiveSessions(currentActive, remoteActive, remoteHasState, remoteState.updatedAt));
+                const remoteCustom = Array.isArray(remoteState.customSubjects) ? remoteState.customSubjects : [];
+                if (remoteCustom.length > 0) {
+                    setCustomSubjects((prev) => [...new Set([...prev, ...remoteCustom])]);
+                }
+                window.setTimeout(() => { isApplyingRemoteRef.current = false; }, 0);
+            } catch (err) {
+                console.warn('Failed to re-sync study timer on visibility change', err);
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+        return () => document.removeEventListener('visibilitychange', handleVisibility);
+    }, []);
 
     useEffect(() => {
         const interval = window.setInterval(() => setNow(Date.now()), 1000);
@@ -707,9 +754,11 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         if (!confirmed) return;
         setSessions((prev) => prev.filter((s) => s.id !== sessionId));
         try {
-            await apiFetch(`/api/timer/sessions/${sessionId}`, { method: 'DELETE' });
+            const res = await apiFetch(`/api/timer/sessions/${sessionId}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error(`DELETE ${res.status}`);
         } catch (error) {
-            console.warn('Failed to delete session remotely', error);
+            console.warn('Failed to delete session remotely, queueing for later', error);
+            await queueMutation('timer_session_delete', 'DELETE', `/api/timer/sessions/${sessionId}`, {});
         }
     };
 
@@ -735,7 +784,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         }
     };
 
-    const topSubjects = subjects
+    const topSubjects = [...new Set([...subjects, ...Object.keys(totals.bySubject)])]
         .map((subject) => ({ subject, duration: totals.bySubject[subject] || 0 }))
         .filter((entry) => entry.duration > 0 || entry.subject === selectedSubject || activeSessions.some((s) => s.subject === entry.subject))
         .sort((a, b) => b.duration - a.duration);
