@@ -49,24 +49,24 @@ Snowball is built on a **Local-First** philosophy. The application prioritizes i
 
 ### Tech Stack
 
-- **Frontend**: React 19, Vite, Framer Motion, Lucide-React
+- **Frontend**: React 19, Vite, Framer Motion, Lucide-React, Tiptap (rich text editor)
 - **Local Storage**: Dexie.js (IndexedDB)
-- **Backend**: Node.js, Express
+- **Backend**: Node.js, Express, Zod (validation)
 - **Database & Auth**: Supabase (PostgreSQL)
 - **Desktop**: Tauri (Rust)
 - **Mobile**: Capacitor (Android)
 - **Hosting**: Vercel
 
-### 🐛 Known Bugs
+## 🐛 Known Bugs
 
-- None at the moment
-
-Head over to [Releases](https://github.com/Horrid-12/Snowball/releases) and download the build for your platform.
+See [Issues](https://github.com/Horrid-12/Snowball/issues) for current bugs and feature requests.
 
 ## 📈 Status
 
 **Current Stage: Active Development**
-Snowball is in Development. Features are added and refined frequently. Contributions and feedback are welcome.
+Features are added and refined frequently. Contributions and feedback are welcome.
+
+Head over to [Releases](https://github.com/Horrid-12/Snowball/releases) and download the build for your platform.
 
 ## 📄 License
 
