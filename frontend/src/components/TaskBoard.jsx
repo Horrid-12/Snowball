@@ -5,6 +5,26 @@ import { Reorder, useDragControls } from 'framer-motion';
 import { getTagColor, loadTagColors, normalizeHexColor, parseTags, saveTagColors } from '../utils/tagColors.js';
 import TagColorInput from './TagColorInput.jsx';
 
+const getNextOccurrence = (dateStr, recurring) => {
+    if (!dateStr || !recurring || recurring === 'none') return '';
+    const parts = dateStr.split('T')[0].split('-');
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    if (isNaN(d.getTime())) return '';
+    if (recurring === 'daily') {
+        d.setDate(d.getDate() + 1);
+    } else if (recurring === 'weekly') {
+        d.setDate(d.getDate() + 7);
+    } else if (recurring === 'monthly') {
+        d.setMonth(d.getMonth() + 1);
+    } else if (recurring.startsWith('custom:')) {
+        const n = parseInt(recurring.split(':')[1]) || 1;
+        d.setDate(d.getDate() + n);
+    } else {
+        return '';
+    }
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
 const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, onReorder }) => {
     const [selectedTag, setSelectedTag] = useState('');
     const [tagColors, setTagColors] = useState(() => loadTagColors());
@@ -61,9 +81,16 @@ const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, o
         );
     }
 
-    const allTags = Array.from(new Set(
-        tasks.flatMap(t => (t.tags || '').split(',').map(tag => tag.trim()).filter(Boolean))
-    )).sort();
+    const extractedTags = tasks.flatMap(t => (t.tags || '').split(',').map(tag => tag.trim()).filter(Boolean));
+    const tagCounts = {};
+    extractedTags.forEach(tag => {
+        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+    });
+    
+    const allTags = Array.from(new Set(extractedTags)).sort((a, b) => {
+        if (tagCounts[b] !== tagCounts[a]) return tagCounts[b] - tagCounts[a];
+        return a.localeCompare(b);
+    });
 
     const filteredTasks = selectedTag
         ? tasks.filter(t => (t.tags || '').split(',').map(tag => tag.trim()).includes(selectedTag))
@@ -254,6 +281,7 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
     const parsedTags = parseTags(localTags);
     const showDetails = !compactMode || isCompactExpanded;
     const dueLabel = [localDate, localTime].filter(Boolean).join(' ');
+    const nextOccLabel = localRecurring !== 'none' ? getNextOccurrence(localDate, localRecurring) : '';
 
     const handleTagColorChange = (tag, color) => {
         const nextMap = {
@@ -359,7 +387,22 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                                             </span>
                                             {localIsPinned && <Pin size={12} style={{ color: 'var(--accent-color)' }} />}
                                             {localIsSticky && <Lock size={12} style={{ color: 'var(--accent-color)' }} />}
-                                            {localRecurring !== 'none' && <Repeat size={12} style={{ color: 'var(--accent-color)' }} />}
+                                            {localRecurring !== 'none' && (
+                                                <span style={{
+                                                    fontSize: '0.6rem',
+                                                    padding: '0.15rem 0.35rem',
+                                                    borderRadius: '999px',
+                                                    background: 'var(--accent-color)',
+                                                    color: '#fff',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.2rem',
+                                                    fontWeight: '600'
+                                                }}>
+                                                    <Repeat size={10} />
+                                                    {nextOccLabel ? `Next: ${nextOccLabel}` : localRecurring === 'daily' ? 'D' : localRecurring === 'weekly' ? 'W' : localRecurring === 'monthly' ? 'M' : localRecurring.split(':')[1]}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-secondary)' }}>
@@ -456,7 +499,8 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                         <Repeat size={compactMode ? 14 : 16} />
                         {localRecurring !== 'none' && (
                             <span style={{ fontSize: '0.6rem', fontWeight: 'bold' }}>
-                                {localRecurring === 'daily' ? 'D' : localRecurring === 'weekly' ? 'W' : localRecurring === 'monthly' ? 'M' : localRecurring?.startsWith('custom:') ? localRecurring.split(':')[1] : ''}
+                                {localRecurring === 'daily' ? 'D' : localRecurring === 'weekly' ? 'W' : localRecurring === 'monthly' ? 'M' : localRecurring?.startsWith('custom:') ? `${localRecurring.split(':')[1]}d` : ''}
+                                {nextOccLabel ? ` · ${nextOccLabel}` : ''}
                             </span>
                         )}
                     </button>

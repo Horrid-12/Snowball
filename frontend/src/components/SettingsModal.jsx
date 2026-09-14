@@ -4,6 +4,7 @@ import { Device } from '@capacitor/device';
 import { apiFetch } from '../utils/apiClient.js';
 import { notificationService } from '../services/NotificationService.js';
 import { desktopUpdateService } from '../services/DesktopUpdateService.js';
+import { discordPresenceService } from '../services/DiscordPresenceService.js';
 import { db } from '../db/db.js';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -110,6 +111,10 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
         url: '',
         error: ''
     });
+    const [discordRpcEnabled, setDiscordRpcEnabled] = useState(() => {
+        const stored = typeof window !== 'undefined' ? window.localStorage.getItem('snowball_discord_presence_enabled') : null;
+        return stored !== 'false';
+    });
 
     const scrollContainerRef = useRef(null);
     const isScrollingToRef = useRef(false);
@@ -198,7 +203,12 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
                 }
 
                 const storedTags = Object.keys(cloudTagColors);
-                setKnownTags([...new Set([...taskTags, ...storedTags])].sort((a, b) => a.localeCompare(b)));
+                const counts = {};
+                taskTags.forEach(t => counts[t] = (counts[t] || 0) + 1);
+                setKnownTags([...new Set([...taskTags, ...storedTags])].sort((a, b) => {
+                    if (counts[b] !== counts[a]) return (counts[b] || 0) - (counts[a] || 0);
+                    return a.localeCompare(b);
+                }));
             } catch (error) {
                 console.warn('Failed to load tag colors for settings', error);
             }
@@ -1304,6 +1314,38 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
                                     Use this if the published desktop app keeps loading stale local state from an older release.
                                 </div>
                             </div>
+
+                            {/* Discord Rich Presence — desktop only */}
+                            {isTauriDesktop && (
+                                <div>
+                                    <h3 style={{ fontSize: '1rem', marginBottom: '1rem', fontWeight: '600' }}>Discord Rich Presence</h3>
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                                        Show your current activity (tasks remaining, score, notes) as Discord Rich Presence status.
+                                    </p>
+                                    <button
+                                        onClick={() => {
+                                            const next = !discordRpcEnabled;
+                                            setDiscordRpcEnabled(next);
+                                            window.localStorage.setItem('snowball_discord_presence_enabled', String(next));
+                                            if (!next) {
+                                                void discordPresenceService.clear();
+                                            }
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            padding: '0.75rem',
+                                            borderRadius: '0.75rem',
+                                            background: discordRpcEnabled ? 'var(--accent-color)' : 'var(--bg-secondary)',
+                                            color: discordRpcEnabled ? '#fff' : 'var(--text-primary)',
+                                            border: `1px solid ${discordRpcEnabled ? 'var(--accent-color)' : 'var(--border-color)'}`,
+                                            fontWeight: '600',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        {discordRpcEnabled ? 'Discord Presence Enabled' : 'Enable Discord Presence'}
+                                    </button>
+                                </div>
+                            )}
 
                             {/* Spotify Credentials */}
                             <div>

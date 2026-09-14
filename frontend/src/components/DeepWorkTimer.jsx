@@ -117,8 +117,7 @@ const formatDuration = (durationMs) => {
 };
 
 const buildSubjectsFromTasks = (tasks = []) => {
-    const subjects = tasks.flatMap((task) => parseTags(task?.tags || '')).filter(Boolean);
-    return [...new Set(subjects)].sort((a, b) => a.localeCompare(b));
+    return tasks.flatMap((task) => parseTags(task?.tags || '')).filter(Boolean);
 };
 
 const formatDateTimeLocal = (isoString) => {
@@ -399,14 +398,25 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
     const storedSubjects = useMemo(() => Object.keys(tagColors), [tagColors]);
     const taskSubjects = useMemo(() => buildSubjectsFromTasks(tasks), [tasks]);
     const subjects = useMemo(() => {
-        const next = [...new Set([...taskSubjects, ...storedSubjects, ...customSubjects])].sort((a, b) => a.localeCompare(b));
+        const counts = {};
+        taskSubjects.forEach(s => counts[s] = (counts[s] || 0) + 1);
+        
+        const next = [...new Set([...taskSubjects, ...storedSubjects, ...customSubjects])].sort((a, b) => {
+            if (counts[b] !== counts[a]) return (counts[b] || 0) - (counts[a] || 0);
+            return a.localeCompare(b);
+        });
+        
         activeSessions.forEach((s) => {
             if (s?.subject && !next.includes(s.subject)) next.unshift(s.subject);
         });
         return next.length > 0 ? next : ['Study'];
     }, [activeSessions, customSubjects, storedSubjects, taskSubjects]);
 
-    const [selectedSubject, setSelectedSubject] = useState(() => subjects[0] || 'Study');
+    const [selectedSubject, setSelectedSubject] = useState(() => {
+        const lastUsed = typeof window !== 'undefined' ? window.localStorage.getItem('snowball_last_used_subject') : null;
+        if (lastUsed && subjects.includes(lastUsed)) return lastUsed;
+        return subjects[0] || 'Study';
+    });
 
     useEffect(() => {
         if (!subjects.includes(selectedSubject)) {
@@ -845,7 +855,10 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                             </span>
                             <select
                                 value={selectedSubject}
-                                onChange={(event) => setSelectedSubject(event.target.value)}
+                                onChange={(event) => {
+                                    setSelectedSubject(event.target.value);
+                                    window.localStorage.setItem('snowball_last_used_subject', event.target.value);
+                                }}
                                 style={{
                                     width: '100%', minWidth: 0, padding: '0.65rem 0.7rem',
                                     borderRadius: '0.55rem', border: '1px solid var(--border-color)',
