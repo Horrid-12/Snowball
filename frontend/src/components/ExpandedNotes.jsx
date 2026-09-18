@@ -794,9 +794,13 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
     };
 
     const setLink = () => {
-        const url = window.prompt('Enter URL:');
-        if (url) {
-            editor.chain().focus().setLink({ href: url }).run();
+        try {
+            const url = window.prompt('Enter URL:');
+            if (url) {
+                editor.chain().focus().setLink({ href: url }).run();
+            }
+        } catch (e) {
+            console.warn('prompt() not supported in this environment', e);
         }
     };
 

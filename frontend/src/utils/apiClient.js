@@ -176,8 +176,11 @@ export const apiFetch = async (input, init = {}) => {
         const fetcher = await getFetcher();
         return await fetcher(url, requestInit);
     } catch (err) {
-        const errMsg = typeof err === 'string' ? err : (err.message || err.toString?.() || 'Unknown error');
-        console.error(`[apiFetch] ${reqMethod} ${url} failed:`, errMsg);
+        const isAbort = err?.name === 'AbortError' || /aborted/i.test(err?.message || '');
+        if (!isAbort) {
+            const errMsg = typeof err === 'string' ? err : (err.message || err.toString?.() || 'Unknown error');
+            console.error(`[apiFetch] ${reqMethod} ${url} failed:`, errMsg);
+        }
         throw err;
     }
 };

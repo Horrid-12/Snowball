@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Settings, X, Edit2, Trash2 } from 'lucide-react';
+import { Settings, X, Edit2, Trash2, Check } from 'lucide-react';
 import { Device } from '@capacitor/device';
 import { apiFetch } from '../utils/apiClient.js';
 import { notificationService } from '../services/NotificationService.js';
@@ -14,6 +14,7 @@ import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { PROFILE_ICON_PRESETS, ProfileIcon } from '../utils/profileIcons.jsx';
 import { getTagColor, loadTagColors, normalizeHexColor, parseTags, saveTagColors } from '../utils/tagColors.js';
 import TagColorInput from './TagColorInput.jsx';
+import { nativeConfirm } from '../utils/confirm.js';
 
 import { isTauriDesktop } from '../config.js';
 const isDevBuild = Boolean(import.meta.env.DEV);
@@ -74,6 +75,8 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
     const [tagColors, setTagColors] = useState(() => loadTagColors());
     const [knownTags, setKnownTags] = useState([]);
     const [newTagName, setNewTagName] = useState('');
+    const [editingTag, setEditingTag] = useState(null);
+    const [editingTagValue, setEditingTagValue] = useState('');
     const [saveState, setSaveState] = useState('idle');
     const [saveMessage, setSaveMessage] = useState('');
     const [platform, setPlatform] = useState('web');
@@ -560,7 +563,8 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
     };
 
     const handleTagDelete = async (tagToDelete) => {
-        if (!window.confirm(`Are you sure you want to delete the tag "${tagToDelete}"? This will remove the tag from all tasks.`)) return;
+        const confirmed = await nativeConfirm(`Are you sure you want to delete the tag "${tagToDelete}"? This will remove the tag from all tasks.`);
+        if (!confirmed) return;
 
         // Update tagColors
         const nextMap = { ...tagColors };
@@ -594,12 +598,17 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
         }
     };
 
-    const handleTagRename = async (oldTag) => {
-        const newTagRaw = window.prompt(`Rename tag "${oldTag}" to:`, oldTag);
-        if (!newTagRaw) return;
+    const handleTagRename = async (oldTag, newTagRaw) => {
+        if (!newTagRaw) {
+            setEditingTag(null);
+            return;
+        }
         
         const newTag = newTagRaw.trim();
-        if (!newTag || newTag === oldTag) return;
+        if (!newTag || newTag === oldTag) {
+            setEditingTag(null);
+            return;
+        }
 
         // Update tagColors
         const nextMap = { ...tagColors };
@@ -611,6 +620,8 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
         window.dispatchEvent(new Event('snowball-tag-colors-changed'));
         if (onUpdateUser) onUpdateUser({ tag_colors: nextMap });
         await syncTagColorsSilent(nextMap);
+
+        setEditingTag(null);
 
         // Bulk rename tag on server
         try {
@@ -660,7 +671,7 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
     };
 
     const handleResetLocalData = async () => {
-        const confirmed = window.confirm(
+        const confirmed = await nativeConfirm(
             'Reset Snowball local desktop data on this device? This clears cached tasks, notes, settings, and saved local UI state, then reloads the app.'
         );
 
@@ -1174,7 +1185,7 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
                                                 border: '1px solid var(--border-color)'
                                             }}
                                         >
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0, flex: 1 }}>
                                                 <span style={{
                                                     width: '12px',
                                                     height: '12px',
@@ -1183,30 +1194,92 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
                                                     border: '1px solid var(--border-color)',
                                                     flexShrink: 0
                                                 }} />
-                                                <span style={{
-                                                    minWidth: 0,
-                                                    overflow: 'hidden',
-                                                    textOverflow: 'ellipsis',
-                                                    whiteSpace: 'nowrap',
-                                                    fontSize: '0.82rem',
-                                                    color: 'var(--text-primary)',
-                                                    fontWeight: 600
-                                                }}>
-                                                    {tag}
-                                                </span>
+                                                {editingTag === tag ? (
+                                                    <input
+                                                        type="text"
+                                                        value={editingTagValue}
+                                                        onChange={(e) => setEditingTagValue(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') handleTagRename(tag, editingTagValue);
+                                                            if (e.key === 'Escape') setEditingTag(null);
+                                                        }}
+                                                        autoFocus
+                                                        style={{
+                                                            minWidth: 0,
+                                                            width: '100%',
+                                                            maxWidth: '180px',
+                                                            background: 'var(--bg-primary)',
+                                                            border: '1px solid var(--accent-color)',
+                                                            borderRadius: '0.375rem',
+                                                            color: 'var(--text-primary)',
+                                                            padding: '0.2rem 0.45rem',
+                                                            fontSize: '0.82rem',
+                                                            fontWeight: 600,
+                                                            outline: 'none'
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <span style={{
+                                                        minWidth: 0,
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                        whiteSpace: 'nowrap',
+                                                        fontSize: '0.82rem',
+                                                        color: 'var(--text-primary)',
+                                                        fontWeight: 600
+                                                    }}>
+                                                        {tag}
+                                                    </span>
+                                                )}
                                             </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                <TagColorInput
-                                                    value={getTagColor(tag, tagColors)}
-                                                    onChange={(color) => handleTagColorChange(tag, color)}
-                                                    style={{ width: '80px', fontSize: '0.75rem' }}
-                                                />
-                                                <button onClick={() => handleTagRename(tag)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }} title="Rename Tag">
-                                                    <Edit2 size={16} />
-                                                </button>
-                                                <button onClick={() => handleTagDelete(tag)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger-color)', display: 'flex', alignItems: 'center' }} title="Delete Tag">
-                                                    <Trash2 size={16} />
-                                                </button>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                                                {editingTag === tag ? (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleTagRename(tag, editingTagValue)}
+                                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent-color)', display: 'flex', alignItems: 'center', padding: '4px' }}
+                                                            title="Save Rename"
+                                                        >
+                                                            <Check size={16} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setEditingTag(null)}
+                                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', padding: '4px' }}
+                                                            title="Cancel"
+                                                        >
+                                                            <X size={16} />
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <TagColorInput
+                                                            value={getTagColor(tag, tagColors)}
+                                                            onChange={(color) => handleTagColorChange(tag, color)}
+                                                            style={{ width: '80px', fontSize: '0.75rem' }}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setEditingTag(tag);
+                                                                setEditingTagValue(tag);
+                                                            }}
+                                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }}
+                                                            title="Rename Tag"
+                                                        >
+                                                            <Edit2 size={16} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleTagDelete(tag)}
+                                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger-color)', display: 'flex', alignItems: 'center' }}
+                                                            title="Delete Tag"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
                                     ))}

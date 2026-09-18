@@ -83,11 +83,24 @@ app.use((req, res, next) => {
         res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     }
 
+    // Prevent caching of sensitive API responses across all layers (browser, proxy, CDN)
+    if (req.url.startsWith('/api/') || req.path?.startsWith('/api/')) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+    }
+
     next();
 });
 
 app.use(cors({
     origin(origin, callback) {
+        // Block literal "null" origin (e.g. sandboxed iframes, local file origins attempting cross-origin CSRF)
+        if (origin === 'null') {
+            console.error('[CORS] Blocked null origin');
+            return callback(new Error('CORS blocked for origin: null'));
+        }
+
         // Log origin for debugging if it's missing or non-standard 🔎
         if (!origin || !allowedOrigins.has(origin)) {
             console.log(`[CORS] Incoming origin: ${origin || 'NULL'}`);

@@ -54,6 +54,19 @@ export const validate = (schema) => (req, res, next) => {
     next();
 };
 
+const boundedJson = (maxBytes = 50_000) =>
+    z.any().optional().nullable().refine(
+        (val) => {
+            if (val === undefined || val === null) return true;
+            try {
+                return JSON.stringify(val).length <= maxBytes;
+            } catch {
+                return false;
+            }
+        },
+        { message: `Value must be at most ${maxBytes} bytes when serialized` }
+    );
+
 export const schemas = {
     register: z.object({
         username: z.string().trim().min(1, 'Username is required').max(50, 'Username must be at most 50 characters'),
@@ -84,7 +97,7 @@ export const schemas = {
         hours_taken: z.number().optional(),
         due_date: z.string().optional().nullable(),
         completed_at: z.string().optional().nullable(),
-        timer_state: z.record(z.any()).optional().nullable()
+        timer_state: boundedJson(20_000)
     }),
     taskUpdate: z.object({
         title: z.string().trim().min(1).max(255).optional(),
@@ -103,7 +116,7 @@ export const schemas = {
         hours_taken: z.number().optional(),
         due_date: z.string().optional().nullable(),
         completed_at: z.string().optional().nullable(),
-        timer_state: z.record(z.any()).optional().nullable()
+        timer_state: boundedJson(20_000)
     }),
     habit: z.object({
         name: z.string().trim().min(1, 'Name is required').max(100, 'Name must be at most 100 characters'),
@@ -149,10 +162,10 @@ export const schemas = {
         reset_offset_hours: z.number().optional(),
         timezone_offset_minutes: z.number().optional(),
         penalty_buffer_hours: z.number().optional(),
-        appearance_settings: z.any().optional(),
+        appearance_settings: boundedJson(50_000),
         profile_icon: z.string().optional(),
-        tag_colors: z.any().optional(),
-        study_timer_state: z.any().optional()
+        tag_colors: boundedJson(50_000),
+        study_timer_state: boundedJson(100_000)
     }),
     studySession: z.object({
         subject: z.string().trim().min(1, 'Subject is required').max(255),

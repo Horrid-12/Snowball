@@ -304,10 +304,15 @@ const TaskForm = ({ onTaskAdded }) => {
                             else if (prev.recurring === 'daily') newVal = 'weekly';
                             else if (prev.recurring === 'weekly') newVal = 'monthly';
                             else if (prev.recurring === 'monthly') {
-                                const days = window.prompt("Enter integer days for custom recurrence (e.g., 5 for every 5 days):", "5");
-                                if (days && !isNaN(parseInt(days))) {
-                                    newVal = `custom:${parseInt(days)}`;
-                                } else {
+                                try {
+                                    const days = window.prompt("Enter integer days for custom recurrence (e.g., 5 for every 5 days):", "5");
+                                    if (days && !isNaN(parseInt(days))) {
+                                        newVal = `custom:${parseInt(days)}`;
+                                    } else {
+                                        newVal = 'none';
+                                    }
+                                } catch (e) {
+                                    console.warn('prompt() not supported in this environment', e);
                                     newVal = 'none';
                                 }
                             } else newVal = 'none';

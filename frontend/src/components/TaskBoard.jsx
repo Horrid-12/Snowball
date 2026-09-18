@@ -482,10 +482,15 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                             else if (localRecurring === 'daily') newVal = 'weekly';
                             else if (localRecurring === 'weekly') newVal = 'monthly';
                             else if (localRecurring === 'monthly') {
-                                const days = window.prompt("Enter integer days for custom recurrence (e.g., 5 for every 5 days):", "5");
-                                if (days && !isNaN(parseInt(days))) {
-                                    newVal = `custom:${parseInt(days)}`;
-                                } else {
+                                try {
+                                    const days = window.prompt("Enter integer days for custom recurrence (e.g., 5 for every 5 days):", "5");
+                                    if (days && !isNaN(parseInt(days))) {
+                                        newVal = `custom:${parseInt(days)}`;
+                                    } else {
+                                        newVal = 'none';
+                                    }
+                                } catch (e) {
+                                    console.warn('prompt() not supported in this environment', e);
                                     newVal = 'none';
                                 }
                             } else newVal = 'none';

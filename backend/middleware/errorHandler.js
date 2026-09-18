@@ -12,17 +12,25 @@
 // eslint-disable-next-line no-unused-vars
 export function errorHandler(err, _req, res, _next) {
     const statusCode = err.statusCode || 500;
-    const message = err.message || 'Internal Server Error';
+    const isServerError = statusCode >= 500;
+    const isProduction = process.env.NODE_ENV === 'production';
 
-    // Log full error in development
-    if (process.env.NODE_ENV !== 'production') {
+    // Log error on server side
+    if (!isProduction) {
         console.error('[Error]', err.stack || err);
+    } else if (isServerError) {
+        console.error('[ServerError]', err.message || err);
     }
+
+    // In production, mask internal 5xx error messages to prevent leaking system/db details
+    const message = (isServerError && isProduction)
+        ? 'Internal Server Error'
+        : (err.message || 'Internal Server Error');
 
     res.status(statusCode).json({
         error: {
             message,
-            ...(process.env.NODE_ENV !== 'production' && { stack: err.stack }),
+            ...(!isProduction && { stack: err.stack }),
         },
     });
 }
