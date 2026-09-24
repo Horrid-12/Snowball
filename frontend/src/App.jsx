@@ -7,7 +7,7 @@ import AuthModal from './components/AuthModal.jsx';
 import ThemeManager from './components/ThemeManager.jsx';
 import BottomNav from './components/BottomNav.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
-import { Settings as SettingsIcon, History as HistoryIcon, Calculator as CalculatorIcon, Plus, BarChart3, ChevronDown, ChevronUp, Users } from 'lucide-react';
+import { Settings as SettingsIcon, History as HistoryIcon, Calculator as CalculatorIcon, Plus, BarChart3, ChevronDown, ChevronUp, Users, CalendarDays } from 'lucide-react';
 import appPackage from '../package.json';
 import { useAppContext } from './context/AppContext.jsx';
 import { useOnline } from './context/OnlineContext.jsx';
@@ -39,6 +39,7 @@ const HistoryVault = React.lazy(() => import('./components/HistoryVault.jsx'));
 const CalculatorWidget = React.lazy(() => import('./components/CalculatorWidget.jsx'));
 const TaskComposerPanel = React.lazy(() => import('./components/TaskComposerPanel.jsx'));
 const FriendsPanel = React.lazy(() => import('./components/FriendsPanel.jsx'));
+const Calendar = React.lazy(() => import('./components/Calendar.jsx'));
 
 const DynamicColorPlugin = registerPlugin('DynamicColor');
 
@@ -146,6 +147,7 @@ function App() {
     const [showSettings, setShowSettings] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
     const [showCalculator, setShowCalculator] = useState(false);
+    const [showCalendar, setShowCalendar] = useState(false);
     const [showTaskComposer, setShowTaskComposer] = useState(false);
     const [showFriends, setShowFriends] = useState(false);
     const [showMediaHub, setShowMediaHub] = useState(() => {
@@ -987,6 +989,7 @@ function App() {
             db.noteSecrets.clear(),
             db.stats.clear(),
             db.profile.clear(),
+            db.calendarEvents.clear(),
         ]);
     }, []);
 
@@ -1062,8 +1065,12 @@ function App() {
             setShowFriends(false);
             return true;
         }
+        if (showCalendar) {
+            setShowCalendar(false);
+            return true;
+        }
         return false;
-    }, [showSettings, showHistory, showCalculator, showTaskComposer, showFriends]);
+    }, [showSettings, showHistory, showCalculator, showTaskComposer, showFriends, showCalendar]);
 
     const handleInAppBack = useCallback(() => {
         if (closeTransientUi()) {
@@ -1087,13 +1094,15 @@ function App() {
                 ? 'history'
                 : showCalculator
                     ? 'calculator'
-                    : showTaskComposer
-                        ? 'composer'
-                        : showFriends
-                            ? 'friends-panel'
-                            : isMobile
-                                ? activeTab
-                                : 'dashboard';
+                    : showCalendar
+                        ? 'calendar'
+                        : showTaskComposer
+                            ? 'composer'
+                            : showFriends
+                                ? 'friends-panel'
+                                : isMobile
+                                    ? activeTab
+                                    : 'dashboard';
 
         if (!window.history.state?.snowballRoute) {
             window.history.replaceState({ snowballRoute: 'dashboard' }, '', window.location.pathname);
@@ -1104,7 +1113,7 @@ function App() {
         }
 
         lastAndroidRouteRef.current = routeKey;
-    }, [isNativeAndroid, showSettings, showHistory, showCalculator, showTaskComposer, showFriends, isMobile, activeTab]);
+    }, [isNativeAndroid, showSettings, showHistory, showCalculator, showCalendar, showTaskComposer, showFriends, isMobile, activeTab]);
 
     useEffect(() => {
         if (!isNativeAndroid) return;
@@ -1447,6 +1456,14 @@ function App() {
                                 <BarChart3 size={18} />
                             </button>
                             <button
+                                onClick={() => setShowCalendar(true)}
+                                className="header-icon-btn"
+                                title="Calendar"
+                                style={{ color: 'var(--text-primary)', padding: isMobile ? '5px' : '0', display: 'flex', alignItems: 'center' }}
+                            >
+                                <CalendarDays size={isMobile ? 20 : 18} />
+                            </button>
+                            <button
                                 onClick={() => setShowCalculator(true)}
                                 className="header-icon-btn"
                                 title="Calculator"
@@ -1494,6 +1511,41 @@ function App() {
                 </div>
             </header>
 
+                {showCalendar && user && (
+                    <div style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 1000,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: isMobile ? '1rem 0.5rem' : '2rem',
+                        backdropFilter: 'blur(4px)'
+                    }}>
+                        <div style={{
+                            width: '100%', maxWidth: '800px',
+                            maxHeight: isMobile ? '95vh' : '90vh',
+                            display: 'flex', flexDirection: 'column',
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
+                                <button
+                                    onClick={() => setShowCalendar(false)}
+                                    style={{
+                                        background: 'var(--bg-card)', border: '1px solid var(--border-color)',
+                                        borderRadius: '50%', width: '36px', height: '36px',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        cursor: 'pointer', color: 'var(--text-secondary)',
+                                        boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                                    }}
+                                >
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
+                            </div>
+                            <Suspense fallback={<LoadingFallback height="400px" />}>
+                                <div style={{ overflowY: 'auto', borderRadius: '1rem' }}>
+                                    <Calendar />
+                                </div>
+                            </Suspense>
+                        </div>
+                    </div>
+                )}
             <main className="main-content" style={{
                 display: user ? 'grid' : 'block',
                 gridTemplateColumns: (user && (showSidebar || showFriends) && !isMobile) ? 'minmax(0, 1fr) 300px' : 'minmax(0, 1fr)',
@@ -1676,6 +1728,7 @@ function App() {
                                         </ErrorBoundary>
                                     </div>
                                 )}
+
                             </div>
                         ) : (
                             <>

@@ -24,6 +24,19 @@ db.version(4).stores({
     noteSecrets: 'id, type, createdAt'
 });
 
+db.version(5).stores({
+    tasks: 'id, isSticky, isCompleted, createdAt',
+    habits: 'id, name, score',
+    stats: 'id',
+    profile: 'id',
+    notes: 'id, title, updatedAt',
+    heatmap: 'id',
+    outbox: '++id, type, method, url, body, timestamp',
+    noteTombstones: 'id, deletedAt',
+    noteSecrets: 'id, type, createdAt',
+    calendarEvents: 'id, event_date'
+});
+
 // Helper to add mutation to outbox
 export const queueMutation = async (type, method, url, body) => {
     return await db.outbox.add({
