@@ -92,6 +92,114 @@ const GoogleEventRow = memo(({ ev, isImported, isSelected, onToggle, rruleLabel 
     </div>
 ));
 
+// Memoized month-grid cell: clicking a day (selectedDate change) re-renders only the
+// previously-selected and newly-selected cells instead of the whole 42-cell grid.
+const CalendarCell = memo(({ dateStr, day, currentMonth, isToday, isSelected, dayEvents, onSelect, getEventColor }) => {
+    const recurringEvents = dayEvents.filter(ev => /FREQ=/.test(String(ev.recurrence_rule || '')));
+    const ddayEvents = dayEvents.filter(e => e.is_dday && e.dday_target_date);
+
+    return (
+        <div
+            onClick={() => onSelect(new Date(`${dateStr}T00:00:00`))}
+            style={{
+                minHeight: '80px',
+                minWidth: 0,
+                padding: '4px',
+                borderRadius: '0.5rem',
+                border: isSelected ? '2px solid var(--accent-color)' : '1px solid var(--border-color)',
+                backgroundColor: isSelected
+                    ? 'color-mix(in srgb, var(--accent-color) 12%, var(--bg-card))'
+                    : (currentMonth ? 'var(--bg-primary)' : 'var(--bg-secondary)'),
+                boxShadow: isSelected ? '0 0 0 1px var(--accent-color)' : 'none',
+                opacity: currentMonth ? 1 : 0.55,
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px',
+                boxSizing: 'border-box'
+            }}
+        >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{
+                    width: '24px',
+                    height: '24px',
+                    minWidth: '24px',
+                    minHeight: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '50%',
+                    backgroundColor: isSelected
+                        ? 'var(--accent-color)'
+                        : (isToday ? 'rgba(var(--accent-rgb), 0.2)' : 'transparent'),
+                    color: isSelected
+                        ? '#ffffff'
+                        : (isToday ? 'var(--accent-color)' : 'var(--text-primary)'),
+                    fontSize: '0.85rem',
+                    fontWeight: (isSelected || isToday) ? 700 : 500,
+                    border: (isToday && !isSelected) ? '1.5px solid var(--accent-color)' : 'none',
+                    boxSizing: 'border-box'
+                }}>
+                    {day}
+                </span>
+                {isToday && (
+                    <span style={{
+                        fontSize: '0.65rem',
+                        fontWeight: 700,
+                        color: isSelected ? 'var(--accent-color)' : 'var(--text-secondary)',
+                        letterSpacing: '0.3px',
+                        marginRight: '2px'
+                    }}>
+                        Today
+                    </span>
+                )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px', flex: 1, overflow: 'hidden' }}>
+                {dayEvents.slice(0, 3).map((ev, i) => (
+                    <div key={i} style={{
+                        fontSize: '0.7rem',
+                        backgroundColor: getEventColor(ev),
+                        color: '#fff',
+                        padding: '2px 4px',
+                        borderRadius: '4px',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                    }}>
+                        {recurringEvents.includes(ev) ? '\u21BB ' : ''}{ev.title}
+                    </div>
+                ))}
+                {dayEvents.length > 3 && (
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', paddingLeft: '2px' }}>
+                        +{dayEvents.length - 3} more
+                    </div>
+                )}
+            </div>
+            {ddayEvents.length > 0 && (
+                <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
+                    {ddayEvents.slice(0, 2).map((ev, i) => {
+                        const dText = getDDayText(ev.dday_target_date);
+                        const isDDay = dText === 'D-DAY!';
+                        return (
+                            <span key={`dday-${i}`} style={{
+                                background: isDDay ? 'rgba(239, 68, 68, 0.15)' : 'rgba(var(--accent-rgb), 0.15)',
+                                color: isDDay ? '#ef4444' : 'var(--accent-color)',
+                                fontSize: '0.65rem',
+                                fontWeight: 800,
+                                borderRadius: '999px',
+                                padding: '1px 6px',
+                                whiteSpace: 'nowrap'
+                            }}>
+                                {dText}
+                            </span>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+});
+
 // Does this event occupy the given calendar day (YYYY-MM-DD)?
 // Handles single/multi-day spans AND recurring events (DAILY/WEEKLY/MONTHLY/YEARLY
 // with optional INTERVAL). For recurring events the optional end_date caps the series.
@@ -772,10 +880,13 @@ const Calendar = () => {
         const cells = gridDates.map(date => ({
             day: date.getDate(),
             currentMonth: date.getMonth() === month,
-            date
+            date,
+            dateStr: formatDateStr(date)
         }));
 
         const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const todayStr = formatDateStr(new Date());
+        const selectedStr = formatDateStr(selectedDate);
 
         return (
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
@@ -787,114 +898,19 @@ const Calendar = () => {
                     ))}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '4px' }}>
-                    {cells.map((cell, idx) => {
-                        const isToday = formatDateStr(cell.date) === formatDateStr(new Date());
-                        const isSelected = formatDateStr(cell.date) === formatDateStr(selectedDate);
-                        const dayEvents = getEventsForDate(cell.date);
-                        const recurringEvents = dayEvents.filter(ev => /FREQ=/.test(String(ev.recurrence_rule || '')));
-
-                        return (
-                            <div
-                                key={idx}
-                                onClick={() => setSelectedDate(cell.date)}
-                                style={{
-                                    minHeight: '80px',
-                                    minWidth: 0,
-                                    padding: '4px',
-                                    borderRadius: '0.5rem',
-                                    border: isSelected ? '2px solid var(--accent-color)' : '1px solid var(--border-color)',
-                                    backgroundColor: isSelected
-                                        ? 'color-mix(in srgb, var(--accent-color) 12%, var(--bg-card))'
-                                        : (cell.currentMonth ? 'var(--bg-primary)' : 'var(--bg-secondary)'),
-                                    boxShadow: isSelected ? '0 0 0 1px var(--accent-color)' : 'none',
-                                    opacity: cell.currentMonth ? 1 : 0.55,
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '2px',
-                                    boxSizing: 'border-box'
-                                }}
-                            >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{
-                                        width: '24px',
-                                        height: '24px',
-                                        minWidth: '24px',
-                                        minHeight: '24px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        borderRadius: '50%',
-                                        backgroundColor: isSelected
-                                            ? 'var(--accent-color)'
-                                            : (isToday ? 'rgba(var(--accent-rgb), 0.2)' : 'transparent'),
-                                        color: isSelected
-                                            ? '#ffffff'
-                                            : (isToday ? 'var(--accent-color)' : 'var(--text-primary)'),
-                                        fontSize: '0.85rem',
-                                        fontWeight: (isSelected || isToday) ? 700 : 500,
-                                        border: (isToday && !isSelected) ? '1.5px solid var(--accent-color)' : 'none',
-                                        boxSizing: 'border-box'
-                                    }}>
-                                        {cell.day}
-                                    </span>
-                                    {isToday && (
-                                        <span style={{
-                                            fontSize: '0.65rem',
-                                            fontWeight: 700,
-                                            color: isSelected ? 'var(--accent-color)' : 'var(--text-secondary)',
-                                            letterSpacing: '0.3px',
-                                            marginRight: '2px'
-                                        }}>
-                                            Today
-                                        </span>
-                                    )}
-                                </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px', flex: 1, overflow: 'hidden' }}>
-                                    {dayEvents.slice(0, 3).map((ev, i) => (
-                                        <div key={i} style={{
-                                            fontSize: '0.7rem',
-                                            backgroundColor: getEventColor(ev),
-                                            color: '#fff',
-                                            padding: '2px 4px',
-                                            borderRadius: '4px',
-                                            whiteSpace: 'nowrap',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis'
-                                        }}>
-                                            {recurringEvents.includes(ev) ? '\u21BB ' : ''}{ev.title}
-                                        </div>
-                                    ))}
-                                    {dayEvents.length > 3 && (
-                                        <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', paddingLeft: '2px' }}>
-                                            +{dayEvents.length - 3} more
-                                        </div>
-                                    )}
-                                </div>
-                                {dayEvents.some(e => e.is_dday && e.dday_target_date) && (
-                                    <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
-                                        {dayEvents.filter(e => e.is_dday && e.dday_target_date).slice(0, 2).map((ev, i) => {
-                                            const dText = getDDayText(ev.dday_target_date);
-                                            const isDDay = dText === 'D-DAY!';
-                                            return (
-                                                <span key={`dday-${i}`} style={{
-                                                    background: isDDay ? 'rgba(239, 68, 68, 0.15)' : 'rgba(var(--accent-rgb), 0.15)',
-                                                    color: isDDay ? '#ef4444' : 'var(--accent-color)',
-                                                    fontSize: '0.65rem',
-                                                    fontWeight: 800,
-                                                    borderRadius: '999px',
-                                                    padding: '1px 6px',
-                                                    whiteSpace: 'nowrap'
-                                                }}>
-                                                    {dText}
-                                                </span>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
+                    {cells.map((cell) => (
+                        <CalendarCell
+                            key={cell.dateStr}
+                            dateStr={cell.dateStr}
+                            day={cell.day}
+                            currentMonth={cell.currentMonth}
+                            isToday={cell.dateStr === todayStr}
+                            isSelected={cell.dateStr === selectedStr}
+                            dayEvents={getEventsForDate(cell.date)}
+                            onSelect={setSelectedDate}
+                            getEventColor={getEventColor}
+                        />
+                    ))}
                 </div>
             </div>
         );
