@@ -543,3 +543,19 @@ body,
 :root {
     accent-color: var(--accent-color, #6366f1);
 }
+input[type="checkbox"].circle-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    cursor: pointer;
+    background-color: transparent;
+    margin: 0;
+}
+input[type="checkbox"].circle-checkbox:checked {
+    background-color: var(--accent-color);
+    border-color: var(--accent-color);
+}

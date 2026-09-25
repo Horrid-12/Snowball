@@ -118,12 +118,17 @@ const isEventOnDate = (ev, dateStr) => {
     const intervalMatch = rule.match(/INTERVAL=(\d+)/);
     const interval = intervalMatch ? parseInt(intervalMatch[1], 10) : 1;
 
+    const getUtcDays = (s) => {
+        const [y, m, d] = s.split('-').map(Number);
+        return Math.floor(Date.UTC(y, m - 1, d) / 86400000);
+    };
+
     if (rule.includes('DAILY')) {
-        const diff = Math.round((new Date(dateStr + 'T00:00:00') - new Date(startStr + 'T00:00:00')) / 86400000);
+        const diff = getUtcDays(dateStr) - getUtcDays(startStr);
         return diff > 0 && diff % interval === 0;
     }
     if (rule.includes('WEEKLY')) {
-        const diff = Math.round((new Date(dateStr + 'T00:00:00') - new Date(startStr + 'T00:00:00')) / 86400000);
+        const diff = getUtcDays(dateStr) - getUtcDays(startStr);
         return diff > 0 && diff % (7 * interval) === 0;
     }
     if (rule.includes('MONTHLY')) {
@@ -208,9 +213,21 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                                 This event will span every day from {formData.event_date} to {formData.end_date}.
                             </p>
                         )}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <input type="checkbox" id="is_all_day" style={{ appearance: "none", WebkitAppearance: "none", width: "20px", height: "20px", borderRadius: "50%", border: `2px solid ${formData.is_all_day ? "var(--accent-color)" : "var(--border-color)"}`, backgroundColor: formData.is_all_day ? "var(--accent-color)" : "transparent", flexShrink: 0, cursor: "pointer", margin: 0, padding: 0 }} checked={formData.is_all_day} onChange={e => setFormData({ ...formData, is_all_day: e.target.checked })} />
-                            <label htmlFor="is_all_day">All Day</label>
+                        <div
+                            onClick={() => setFormData(prev => ({ ...prev, is_all_day: !prev.is_all_day }))}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', userSelect: 'none' }}
+                        >
+                            <div style={{
+                                width: '20px', height: '20px', minWidth: '20px', minHeight: '20px',
+                                borderRadius: '50%',
+                                border: `2px solid ${formData.is_all_day ? 'var(--accent-color)' : 'var(--text-secondary)'}`,
+                                backgroundColor: formData.is_all_day ? 'var(--accent-color)' : 'transparent',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                flexShrink: 0, boxSizing: 'border-box', transition: 'all 0.15s ease'
+                            }}>
+                                {formData.is_all_day && <Check size={13} color="#fff" strokeWidth={3} />}
+                            </div>
+                            <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>All Day</span>
                         </div>
                         <div>
                             <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Repeat</label>
@@ -300,10 +317,22 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                             )}
                         </div>
 
-                        <div style={{ padding: '1rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: formData.is_dday ? '1rem' : 0 }}>
-                                <input type="checkbox" id="is_dday" style={{ appearance: "none", WebkitAppearance: "none", width: "20px", height: "20px", borderRadius: "50%", border: `2px solid ${formData.is_dday ? "var(--accent-color)" : "var(--border-color)"}`, backgroundColor: formData.is_dday ? "var(--accent-color)" : "transparent", flexShrink: 0, cursor: "pointer", margin: 0, padding: 0 }} checked={formData.is_dday} onChange={e => setFormData({ ...formData, is_dday: e.target.checked })} />
-                                <label htmlFor="is_dday" style={{ fontWeight: 600 }}>Enable D-Day Countdown</label>
+                        <div style={{ padding: '1rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '0.5rem', border: '1px solid var(--border-color)', boxSizing: 'border-box' }}>
+                            <div
+                                onClick={() => setFormData(prev => ({ ...prev, is_dday: !prev.is_dday }))}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', userSelect: 'none', marginBottom: formData.is_dday ? '1rem' : 0 }}
+                            >
+                                <div style={{
+                                    width: '20px', height: '20px', minWidth: '20px', minHeight: '20px',
+                                    borderRadius: '50%',
+                                    border: `2px solid ${formData.is_dday ? 'var(--accent-color)' : 'var(--text-secondary)'}`,
+                                    backgroundColor: formData.is_dday ? 'var(--accent-color)' : 'transparent',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    flexShrink: 0, boxSizing: 'border-box', transition: 'all 0.15s ease'
+                                }}>
+                                    {formData.is_dday && <Check size={13} color="#fff" strokeWidth={3} />}
+                                </div>
+                                <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>Enable D-Day Countdown</span>
                             </div>
                             {formData.is_dday && (
                                 <div>
@@ -754,15 +783,15 @@ const Calendar = () => {
         const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
         return (
-            <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '8px' }}>
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '4px', marginBottom: '8px' }}>
                     {daysOfWeek.map(day => (
                         <div key={day} style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
                             {day}
                         </div>
                     ))}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '4px' }}>
                     {cells.map((cell, idx) => {
                         const isToday = formatDateStr(cell.date) === formatDateStr(new Date());
                         const isSelected = formatDateStr(cell.date) === formatDateStr(selectedDate);
@@ -779,30 +808,52 @@ const Calendar = () => {
                                     padding: '4px',
                                     borderRadius: '0.5rem',
                                     border: isSelected ? '2px solid var(--accent-color)' : '1px solid var(--border-color)',
-                                    backgroundColor: cell.currentMonth ? 'var(--bg-primary)' : 'var(--bg-secondary)',
-                                    opacity: cell.currentMonth ? 1 : 0.5,
+                                    backgroundColor: isSelected
+                                        ? 'color-mix(in srgb, var(--accent-color) 12%, var(--bg-card))'
+                                        : (cell.currentMonth ? 'var(--bg-primary)' : 'var(--bg-secondary)'),
+                                    boxShadow: isSelected ? '0 0 0 1px var(--accent-color)' : 'none',
+                                    opacity: cell.currentMonth ? 1 : 0.55,
                                     cursor: 'pointer',
                                     display: 'flex',
                                     flexDirection: 'column',
                                     gap: '2px',
-                                    transition: 'all 0.2s'
+                                    boxSizing: 'border-box'
                                 }}
                             >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span style={{
                                         width: '24px',
                                         height: '24px',
+                                        minWidth: '24px',
+                                        minHeight: '24px',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         borderRadius: '50%',
-                                        backgroundColor: isToday ? 'var(--accent-color)' : 'transparent',
-                                        color: isToday ? '#fff' : 'var(--text-primary)',
-                                        fontSize: '0.9rem',
-                                        fontWeight: isToday ? 600 : 400
+                                        backgroundColor: isSelected
+                                            ? 'var(--accent-color)'
+                                            : (isToday ? 'rgba(var(--accent-rgb), 0.2)' : 'transparent'),
+                                        color: isSelected
+                                            ? '#ffffff'
+                                            : (isToday ? 'var(--accent-color)' : 'var(--text-primary)'),
+                                        fontSize: '0.85rem',
+                                        fontWeight: (isSelected || isToday) ? 700 : 500,
+                                        border: (isToday && !isSelected) ? '1.5px solid var(--accent-color)' : 'none',
+                                        boxSizing: 'border-box'
                                     }}>
                                         {cell.day}
                                     </span>
+                                    {isToday && (
+                                        <span style={{
+                                            fontSize: '0.65rem',
+                                            fontWeight: 700,
+                                            color: isSelected ? 'var(--accent-color)' : 'var(--text-secondary)',
+                                            letterSpacing: '0.3px',
+                                            marginRight: '2px'
+                                        }}>
+                                            Today
+                                        </span>
+                                    )}
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px', flex: 1, overflow: 'hidden' }}>
                                     {dayEvents.slice(0, 3).map((ev, i) => (
@@ -997,8 +1048,8 @@ const Calendar = () => {
                         )}
 
                         {googleCalendars.length > 0 && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', width: '100%', boxSizing: 'border-box' }}>
-                                <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Calendar:</label>
+                            <div style={{ width: '100%', boxSizing: 'border-box', marginBottom: '1rem' }}>
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>Calendar</label>
                                 <select
                                     value={selectedGoogleCalendar}
                                     onChange={(e) => {
@@ -1006,7 +1057,18 @@ const Calendar = () => {
                                         setGoogleCalendarSelection(id);
                                         fetchGoogleEvents(id);
                                     }}
-                                    style={{ flex: 1, minWidth: 0, maxWidth: '100%', padding: '0.4rem 0.5rem', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+                                    style={{
+                                        width: '100%',
+                                        maxWidth: '100%',
+                                        boxSizing: 'border-box',
+                                        padding: '0.6rem 0.75rem',
+                                        borderRadius: '0.5rem',
+                                        border: '1px solid var(--border-color)',
+                                        backgroundColor: 'var(--bg-primary)',
+                                        color: 'var(--text-primary)',
+                                        fontSize: '0.9rem',
+                                        outline: 'none'
+                                    }}
                                 >
                                     {googleCalendars.map((c) => (
                                         <option key={c.id} value={c.id}>{c.summary}{c.is_primary ? ' (Primary)' : ''}</option>
@@ -1064,6 +1126,9 @@ const Calendar = () => {
             padding: '1.5rem',
             color: 'var(--text-primary)',
             maxWidth: '1200px',
+            width: '100%',
+            boxSizing: 'border-box',
+            overflowX: 'hidden',
             margin: '0 auto',
             position: 'relative'
         }}>
@@ -1136,9 +1201,10 @@ const Calendar = () => {
             {detail}
 
             <EventFormModal
+                key={editingEvent ? `edit-${editingEvent.id}` : `new-${formatDateStr(selectedDate)}`}
                 open={showEventForm}
                 initialData={formInitialData}
-                formKey={editingEvent ? String(editingEvent.id) : 'new'}
+                formKey={editingEvent ? String(editingEvent.id) : `new-${formatDateStr(selectedDate)}`}
                 onClose={() => { setShowEventForm(false); setEditingEvent(null); }}
                 onSubmit={handleSaveEvent}
                 tagColors={tagColors}

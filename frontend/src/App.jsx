@@ -1539,7 +1539,7 @@ function App() {
                                 </button>
                             </div>
                             <Suspense fallback={<LoadingFallback height="400px" />}>
-                                <div style={{ overflowY: 'auto', borderRadius: '1rem' }}>
+                                <div style={{ overflowY: 'auto', overflowX: 'hidden', width: '100%', boxSizing: 'border-box', borderRadius: '1rem' }}>
                                     <Calendar />
                                 </div>
                             </Suspense>
