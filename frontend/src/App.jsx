@@ -1517,7 +1517,6 @@ function App() {
                         backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 1000,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         padding: isMobile ? '1rem 0.5rem' : '2rem',
-                        backdropFilter: 'blur(4px)'
                     }}>
                         <div style={{
                             width: '100%', maxWidth: '800px',

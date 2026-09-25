@@ -6,7 +6,7 @@ import {
     RefreshCw, RefreshCcw, LogOut, Repeat
 } from 'lucide-react';
 import { apiFetch } from '../utils/apiClient.js';
-import { getTagColor, loadTagColors, normalizeHexColor, saveTagColors, parseTags, syncTagColorsToServer } from '../utils/tagColors.js';
+import { getTagColor, loadTagColors, normalizeHexColor, saveTagColors, parseTags, syncTagColorsToServer, getReadableTextColor } from '../utils/tagColors.js';
 import TagColorInput from './TagColorInput.jsx';
 
 const COLOR_PRESETS = [
@@ -44,8 +44,34 @@ const RECURRENCE_OPTIONS = [
     { value: 'FREQ=DAILY', label: 'Daily' },
     { value: 'FREQ=WEEKLY', label: 'Weekly' },
     { value: 'FREQ=MONTHLY', label: 'Monthly' },
-    { value: 'FREQ=YEARLY', label: 'Yearly' }
+    { value: 'FREQ=YEARLY', label: 'Yearly' },
+    { value: 'CUSTOM', label: 'Custom (choose days)' }
 ];
+
+const WEEKDAY_OPTIONS = [
+    { key: 'MO', label: 'Mon' },
+    { key: 'TU', label: 'Tue' },
+    { key: 'WE', label: 'Wed' },
+    { key: 'TH', label: 'Thu' },
+    { key: 'FR', label: 'Fri' },
+    { key: 'SA', label: 'Sat' },
+    { key: 'SU', label: 'Sun' }
+];
+
+const getBydayDays = (rule) => {
+    const m = String(rule || '').match(/BYDAY=([A-Z]+(?:,[A-Z]+)*)/i);
+    return m ? m[1].toUpperCase().split(',') : [];
+};
+
+const buildBydayRule = (days) => {
+    const ordered = WEEKDAY_OPTIONS.map(w => w.key).filter(day => days.includes(day));
+    return ordered.length ? `FREQ=WEEKLY;BYDAY=${ordered.join(',')}` : '';
+};
+
+const isCustomWeeklyRule = (rule) => {
+    const r = String(rule || '').toUpperCase();
+    return /FREQ=WEEKLY/i.test(r) && /BYDAY=/.test(r);
+};
 
 const getRruleLabel = (rule) => {
     const r = String(rule || '').toUpperCase();
@@ -54,11 +80,95 @@ const getRruleLabel = (rule) => {
     const interval = intervalMatch ? parseInt(intervalMatch[1], 10) : 1;
     const freq = r.includes('YEARLY') ? 'year' : r.includes('MONTHLY') ? 'month' : r.includes('WEEKLY') ? 'week' : r.includes('DAILY') ? 'day' : null;
     if (!freq) return '';
+    const bydayMatch = r.match(/BYDAY=([A-Z]+(?:,[A-Z]+)*)/);
+    if (freq === 'week' && bydayMatch) {
+        const dayLabels = { SU: 'Sun', MO: 'Mon', TU: 'Tue', WE: 'Wed', TH: 'Thu', FR: 'Fri', SA: 'Sat' };
+        const days = bydayMatch[1].split(',').map(d => dayLabels[d] || d);
+        const base = interval === 1 ? 'Weekly' : `Every ${interval} weeks`;
+        return `${base} on ${days.join(', ')}`;
+    }
     if (interval === 1) {
         const labels = { day: 'Daily', week: 'Weekly', month: 'Monthly', year: 'Yearly' };
         return labels[freq];
     }
     return `Every ${interval} ${freq}s`;
+};
+
+// Splits a stored timestamp into an editable date ('YYYY-MM-DD') + time ('HH:MM').
+// Handles naive values ('2026-09-01', '2026-09-01T17:15') and full Google ISO
+// values ('2026-09-01T17:15:00+05:30') — keeps the wall-clock time as-is.
+const splitDateTime = (value) => {
+    if (!value) return { date: '', time: '' };
+    const s = String(value);
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2})(?::\d{2})?.*)?$/);
+    if (!m) return { date: s.slice(0, 10), time: '' };
+    return { date: m[1], time: m[2] ? `${m[2]}:${m[3]}` : '' };
+};
+
+// "5:15 PM" style wall-clock display for the detail panel.
+const getEventTime = (ev) => {
+    if (!ev || ev.is_all_day || !ev.event_date) return '';
+    const { time } = splitDateTime(ev.event_date);
+    if (!time) return '';
+    const [h, m] = time.split(':').map(Number);
+    const h12 = h % 12 || 12;
+    return `${h12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+};
+
+// Recombines a date + optional 'HH:MM' time into a stored timestamp.
+const withTime = (date, time) => (
+    date && time && /^\d{2}:\d{2}$/.test(time) ? `${date}T${time}` : (date || null)
+);
+
+// Turns a synced Google event into a pre-filled "Add Event" form, kept fully
+// editable so the user can fix titles, dates, times and tags before it lands.
+// The calendar-name tag is NOT auto-applied — that's what caused tag duplication
+// (Google "Computer Science" vs the app's "CS"). _import carries the original
+// link so the saved event still keeps google_event_id + source.
+const buildImportPrefill = (ev) => {
+    const start = splitDateTime(ev.event_date);
+    const end = splitDateTime(ev.end_date);
+    return {
+        title: ev.title || '',
+        event_date: start.date,
+        end_date: end.date,
+        event_start_time: ev.is_all_day ? '' : start.time,
+        end_time: ev.is_all_day ? '' : (end.date ? end.time : ''),
+        is_all_day: !!ev.is_all_day,
+        description: ev.description || '',
+        color: COLOR_PRESETS[0].value,
+        tags: '',
+        is_dday: false,
+        dday_target_date: '',
+        recurrence_rule: ev.recurrence_rule || '',
+        _import: {
+            google_event_id: ev.google_event_id,
+            source: 'google'
+        }
+    };
+};
+
+// Shared payload builder for Save, Skip and "import all with these settings".
+// Times are recombined into the stored timestamp; the google link is attached
+// only for brand-new imported events (edits carry no _import meta).
+const makeEventPayload = (data) => {
+    const payload = {
+        title: data.title,
+        event_date: data.is_all_day ? data.event_date : withTime(data.event_date, data.event_start_time),
+        end_date: data.is_all_day ? (data.end_date || null) : (data.end_date ? withTime(data.end_date, data.end_time) : null),
+        is_all_day: !!data.is_all_day,
+        description: data.description || null,
+        color: data.color || COLOR_PRESETS[1].value,
+        tags: data.tags || null,
+        is_dday: !!data.is_dday,
+        dday_target_date: data.dday_target_date || null,
+        recurrence_rule: data.recurrence_rule || null
+    };
+    if (data._import && data._import.google_event_id) {
+        payload.google_event_id = data._import.google_event_id;
+        payload.source = 'google';
+    }
+    return payload;
 };
 
 // Memoized import row: toggling one checkbox is an O(1) props diff per row instead
@@ -159,7 +269,7 @@ const CalendarCell = memo(({ dateStr, day, currentMonth, isToday, isSelected, da
                     <div key={i} style={{
                         fontSize: '0.7rem',
                         backgroundColor: getEventColor(ev),
-                        color: '#fff',
+                        color: getReadableTextColor(getEventColor(ev)),
                         padding: '2px 4px',
                         borderRadius: '4px',
                         whiteSpace: 'nowrap',
@@ -206,18 +316,26 @@ const CalendarCell = memo(({ dateStr, day, currentMonth, isToday, isSelected, da
 const isEventOnDate = (ev, dateStr) => {
     const startStr = ev.event_date ? String(ev.event_date).slice(0, 10) : '';
     if (!startStr) return false;
+    // A single occurrence was "deleted" via the exclude endpoint — skip that date.
+    if (Array.isArray(ev.excluded_dates) && ev.excluded_dates.includes(dateStr)) return false;
     if (dateStr < startStr) return false;
 
     const rule = String(ev.recurrence_rule || '').toUpperCase();
     const isRecurring = /FREQ=/.test(rule);
     const endStr = ev.end_date ? String(ev.end_date).slice(0, 10) : '';
+    // The RRULE's UNTIL is the authoritative series end for recurring events — the
+    // stored end_date may be a single instance's end (legacy Google imports) which
+    // would otherwise kill the series after its first occurrence.
+    const untilMatch = rule.match(/UNTIL=(\d{4})(\d{2})(\d{2})/);
+    const untilStr = untilMatch ? `${untilMatch[1]}-${untilMatch[2]}-${untilMatch[3]}` : '';
 
     if (!isRecurring) {
         // Multi-day span: covers every day from start to end (inclusive)
         if (endStr && endStr >= startStr && dateStr <= endStr) return true;
-    } else if (endStr && dateStr > endStr) {
-        // Recurring series terminated at end_date
-        return false;
+    } else {
+        // Recurring series terminated at end_date (or earlier at the RRULE's UNTIL)
+        const seriesEnd = (untilStr && (!endStr || untilStr < endStr)) ? untilStr : endStr;
+        if (seriesEnd && dateStr > seriesEnd) return false;
     }
 
     if (dateStr === startStr) return true;
@@ -236,6 +354,18 @@ const isEventOnDate = (ev, dateStr) => {
         return diff > 0 && diff % interval === 0;
     }
     if (rule.includes('WEEKLY')) {
+        // FREQ=WEEKLY can carry BYDAY (e.g. BYDAY=MO,WE). When present, occurrences
+        // fall on those weekdays in the series' week cadence rather than every 7 days
+        // from the anchor.
+        const bydayMatch = rule.match(/BYDAY=([A-Z]+(?:,[A-Z]+)*)/);
+        if (bydayMatch) {
+            const dowNames = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+            const allowed = bydayMatch[1].split(',').map((d) => dowNames[d.trim().toUpperCase()]);
+            const utcDow = new Date(Date.UTC(...dateStr.split('-').map(Number))).getUTCDay();
+            if (!allowed.includes(utcDow)) return false;
+            const diffWeeks = Math.floor(getUtcDays(dateStr) / 7) - Math.floor(getUtcDays(startStr) / 7);
+            return diffWeeks > 0 && diffWeeks % interval === 0;
+        }
         const diff = getUtcDays(dateStr) - getUtcDays(startStr);
         return diff > 0 && diff % (7 * interval) === 0;
     }
@@ -257,7 +387,7 @@ const isEventOnDate = (ev, dateStr) => {
     return false;
 };
 
-const EventFormModal = ({ open, initialData, formKey, onClose, onSubmit, tagColors, onTagColorChange }) => {
+const EventFormModal = ({ open, initialData, formKey, onClose, onSubmit, onSaveAll, tagColors, onTagColorChange, importRemaining = 0, onStopImport }) => {
     const [formData, setFormData] = useState(initialData);
 
     // Reset local form state whenever a (new/edit) form is opened
@@ -288,8 +418,12 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                             maxHeight: '90vh', overflowY: 'auto'
                         }}
                     >
-                    <h2 style={{ marginTop: 0, marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between' }}>
-                        {initialData && initialData.id ? 'Edit Event' : 'Add Event'}
+                    <h2 style={{ marginTop: 0, marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '1.25rem' }}>
+                            {initialData && initialData.id ? 'Edit Event' : (initialData && initialData._import
+                                ? `Import Event — edit before saving${importRemaining > 0 ? ` (${importRemaining} more behind it)` : ''}`
+                                : 'Add Event')}
+                        </span>
                         <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}><X size={20} /></button>
                     </h2>
                     <form onSubmit={(e) => { e.preventDefault(); onSubmit(formData); }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -321,6 +455,28 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                                 This event will span every day from {formData.event_date} to {formData.end_date}.
                             </p>
                         )}
+                        {!formData.is_all_day && (
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Start Time</label>
+                                    <input
+                                        type="time"
+                                        value={formData.event_start_time || ''}
+                                        onChange={e => setFormData({ ...formData, event_start_time: e.target.value })}
+                                        style={{ width: '100%', boxSizing: 'border-box', padding: '0.6rem 0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>End Time (Optional)</label>
+                                    <input
+                                        type="time"
+                                        value={formData.end_time || ''}
+                                        onChange={e => setFormData({ ...formData, end_time: e.target.value })}
+                                        style={{ width: '100%', boxSizing: 'border-box', padding: '0.6rem 0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                    />
+                                </div>
+                            </div>
+                        )}
                         <div
                             onClick={() => setFormData(prev => ({ ...prev, is_all_day: !prev.is_all_day }))}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', userSelect: 'none' }}
@@ -340,8 +496,17 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                         <div>
                             <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Repeat</label>
                             <select
-                                value={formData.recurrence_rule || ''}
-                                onChange={e => setFormData({ ...formData, recurrence_rule: e.target.value })}
+                                value={isCustomWeeklyRule(formData.recurrence_rule) ? 'CUSTOM' : formData.recurrence_rule || ''}
+                                onChange={e => {
+                                    const value = e.target.value;
+                                    if (value === 'CUSTOM') {
+                                        const existing = getBydayDays(formData.recurrence_rule);
+                                        const days = existing.length > 0 ? existing : ['MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+                                        setFormData({ ...formData, recurrence_rule: buildBydayRule(days) });
+                                    } else {
+                                        setFormData({ ...formData, recurrence_rule: value });
+                                    }
+                                }}
                                 style={{ width: '100%', boxSizing: 'border-box', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                             >
                                 {RECURRENCE_OPTIONS.map(opt => (
@@ -352,6 +517,35 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                                 <p style={{ marginTop: '0.35rem', marginBottom: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                                     {getRruleLabel(formData.recurrence_rule)} — repeats from {formData.event_date}{formData.end_date ? ` until ${formData.end_date}` : ''}.
                                 </p>
+                            )}
+                            {isCustomWeeklyRule(formData.recurrence_rule) && (
+                                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                                    {WEEKDAY_OPTIONS.map(day => {
+                                        const active = getBydayDays(formData.recurrence_rule).includes(day.key);
+                                        return (
+                                            <button
+                                                key={day.key}
+                                                type="button"
+                                                onClick={() => {
+                                                    const current = getBydayDays(formData.recurrence_rule);
+                                                    const next = active ? current.filter(d => d !== day.key) : [...current, day.key];
+                                                    setFormData({ ...formData, recurrence_rule: buildBydayRule(next) });
+                                                }}
+                                                style={{
+                                                    padding: '0.3rem 0.65rem',
+                                                    borderRadius: '999px',
+                                                    fontSize: '0.75rem',
+                                                    cursor: 'pointer',
+                                                    border: '1px solid var(--border-color)',
+                                                    backgroundColor: active ? 'var(--accent-color)' : 'var(--bg-primary)',
+                                                    color: active ? '#fff' : 'var(--text-primary)'
+                                                }}
+                                            >
+                                                {day.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             )}
                         </div>
                         <div>
@@ -455,12 +649,36 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
 
                         <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
                             <button type="button" onClick={onClose} style={{ flex: 1, padding: '0.75rem', borderRadius: '0.5rem', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', cursor: 'pointer' }}>
-                                Cancel
+                                {initialData && initialData._import ? 'Skip' : 'Cancel'}
                             </button>
                             <button type="submit" style={{ flex: 1, padding: '0.75rem', borderRadius: '0.5rem', backgroundColor: 'var(--accent-color)', color: '#fff', border: 'none', cursor: 'pointer' }}>
                                 Save Event
                             </button>
                         </div>
+                        {initialData && initialData._import && importRemaining > 0 && onSaveAll && (
+                            <button
+                                type="button"
+                                onClick={() => onSaveAll(formData)}
+                                style={{
+                                    width: '100%', padding: '0.75rem', marginTop: '0.75rem', borderRadius: '0.5rem',
+                                    backgroundColor: 'rgba(var(--accent-rgb), 0.15)', color: 'var(--accent-color)',
+                                    border: '1px solid var(--accent-color)', cursor: 'pointer', fontWeight: 600
+                                }}
+                            >
+                                Import all with these settings ({importRemaining + 1}) — no more windows
+                            </button>
+                        )}
+                        {initialData && initialData._import && importRemaining > 0 && (
+                            <div style={{ textAlign: 'center', marginTop: '0.75rem' }}>
+                                <button
+                                    type="button"
+                                    onClick={onStopImport}
+                                    style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.78rem', textDecoration: 'underline' }}
+                                >
+                                    Stop import ({importRemaining + 1} left) — discard the rest
+                                </button>
+                            </div>
+                        )}
                     </form>
                 </motion.div>
             </motion.div>
@@ -471,9 +689,12 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
 const Calendar = () => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [events, setEvents] = useState([]);
+    const [fetchError, setFetchError] = useState(false);
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [showEventForm, setShowEventForm] = useState(false);
     const [editingEvent, setEditingEvent] = useState(null);
+    const [pendingDelete, setPendingDelete] = useState(null);
+    const [importQueue, setImportQueue] = useState(null);
     const [showGoogleSync, setShowGoogleSync] = useState(false);
     const [googleEvents, setGoogleEvents] = useState([]);
     const [googleStatus, setGoogleStatus] = useState({ connected: false, email: null });
@@ -535,14 +756,19 @@ const Calendar = () => {
 
     const fetchEvents = useCallback(async () => {
         setLoading(true);
+        setFetchError(false);
         try {
             const res = await apiFetch('/api/calendar/events');
             if (res && res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data)) setEvents(data);
+                else setFetchError(true);
+            } else {
+                setFetchError(true);
             }
         } catch (error) {
             console.error("Failed to fetch events:", error);
+            setFetchError(true);
         }
         setLoading(false);
     }, []);
@@ -643,10 +869,12 @@ const Calendar = () => {
         setSelectedGoogleCalendar(id);
     }, []);
 
-    // Open the import modal: load the calendar list, keep the current selection
-    // if it still exists, then sync that calendar.
+    // Open the import modal immediately (loading state), then load the calendar
+    // list, keep the current selection if it still exists, then sync that calendar.
     const openGoogleSync = useCallback(async () => {
         setGoogleEvents([]);
+        setSyncing(true);
+        setShowGoogleSync(true);
         const list = await loadGoogleCalendars();
         let calendarId = selectedGoogleCalendarRef.current || 'primary';
         if (list && list.length > 0 && !list.some((c) => c.id === calendarId)) {
@@ -656,52 +884,6 @@ const Calendar = () => {
         setGoogleCalendarSelection(calendarId);
         await fetchGoogleEvents(calendarId);
     }, [loadGoogleCalendars, setGoogleCalendarSelection, fetchGoogleEvents]);
-
-    const importSelectedGoogleEvents = useCallback(async () => {
-        setSyncing(true);
-        const eventsToImport = googleEvents.filter(e => selectedGoogleEvents.has(e.google_event_id));
-        try {
-            for (const event of eventsToImport) {
-                const res = await apiFetch('/api/calendar/events', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        title: event.title,
-                        event_date: event.event_date,
-                        end_date: event.end_date || null,
-                        is_all_day: !!event.is_all_day,
-                        description: event.description || null,
-                        google_event_id: event.google_event_id,
-                        recurrence_rule: event.recurrence_rule || null,
-                        source: 'google',
-                        color: COLOR_PRESETS[0].value
-                    })
-                });
-                if (!res || !res.ok) {
-                    throw new Error(`Import failed with status ${res && res.status}`);
-                }
-            }
-            setShowGoogleSync(false);
-            fetchEvents();
-        } catch (error) {
-            console.error("Failed to import Google events:", error);
-            setNotice('Failed to import some events.');
-        } finally {
-            setSyncing(false);
-        }
-    }, [googleEvents, selectedGoogleEvents, fetchEvents]);
-
-    const toggleGoogleEventSelection = useCallback((id) => {
-        setSelectedGoogleEvents((prev) => {
-            const newSet = new Set(prev);
-            if (newSet.has(id)) {
-                newSet.delete(id);
-            } else {
-                newSet.add(id);
-            }
-            return newSet;
-        });
-    }, []);
 
     const registerSubmittedTags = useCallback((submittedTags) => {
         if (!submittedTags || submittedTags.length === 0) return;
@@ -721,20 +903,35 @@ const Calendar = () => {
         window.dispatchEvent(new Event('snowball-tag-colors-changed'));
     }, []);
 
+    // Opens the "Add Event" form pre-filled from each selected Google event so the
+// user can edit titles/dates/times/tags (e.g. tag the calendar as "CS", not
+// "Computer Science") before it's saved. One event at a time, then advances.
+const importSelectedGoogleEvents = useCallback(() => {
+        const eventsToImport = googleEvents.filter(e => selectedGoogleEvents.has(e.google_event_id));
+        if (eventsToImport.length === 0) {
+            setNotice('Select at least one event to import.');
+            return;
+        }
+        setImportQueue(eventsToImport.map(buildImportPrefill));
+        setShowGoogleSync(false);
+        setShowEventForm(true);
+    }, [googleEvents, selectedGoogleEvents]);
+
+    const toggleGoogleEventSelection = useCallback((id) => {
+        setSelectedGoogleEvents((prev) => {
+            const newSet = new Set(prev);
+            if (newSet.has(id)) {
+                newSet.delete(id);
+            } else {
+                newSet.add(id);
+            }
+            return newSet;
+        });
+    }, []);
+
     const handleSaveEvent = useCallback(async (data) => {
         if (!data.title || !data.event_date) return;
-        const payload = {
-            title: data.title,
-            event_date: data.event_date,
-            end_date: data.end_date || null,
-            is_all_day: !!data.is_all_day,
-            description: data.description || null,
-            color: data.color || COLOR_PRESETS[1].value,
-            tags: data.tags || null,
-            is_dday: !!data.is_dday,
-            dday_target_date: data.dday_target_date || null,
-            recurrence_rule: data.recurrence_rule || null
-        };
+        const payload = makeEventPayload(data);
         try {
             let res;
             if (editingEvent) {
@@ -759,17 +956,29 @@ const Calendar = () => {
 
             registerSubmittedTags(parseTags(data.tags));
 
-            setShowEventForm(false);
-            setEditingEvent(null);
+            if (importQueue && importQueue.length > 0) {
+                const [, ...rest] = importQueue;
+                setImportQueue(rest);
+                if (rest.length === 0) {
+                    setShowEventForm(false);
+                    setEditingEvent(null);
+                    setImportQueue(null);
+                    setNotice('All events imported.');
+                } else {
+                    setNotice(`Saved — edit the next one (${rest.length} left).`);
+                }
+            } else {
+                setShowEventForm(false);
+                setEditingEvent(null);
+            }
             await fetchEvents();
         } catch (error) {
             console.error("Failed to save event:", error);
             setNotice('Failed to save event. Please try again.');
         }
-    }, [editingEvent, fetchEvents, registerSubmittedTags]);
+    }, [editingEvent, fetchEvents, registerSubmittedTags, importQueue]);
 
-    const deleteEvent = useCallback(async (id) => {
-        if (!window.confirm('Delete this event?')) return;
+    const deleteEventById = useCallback(async (id) => {
         try {
             const res = await apiFetch(`/api/calendar/events/${id}`, { method: 'DELETE' });
             if (res.ok) await fetchEvents();
@@ -778,20 +987,144 @@ const Calendar = () => {
         }
     }, [fetchEvents]);
 
+    // "Use these settings for the whole queue": saves the current event with the
+    // form as-is, then stamps its settings (color, tags, all-day, times, D-Day,
+    // repeat) onto every remaining queued event — each keeping its own title,
+    // date, description and Google link — and imports them all without more dialogs.
+    const handleSaveAll = useCallback(async (data) => {
+        if (!importQueue || importQueue.length === 0) return;
+        const rest = importQueue.slice(1);
+        let saved = 0;
+        let failed = 0;
+
+        const postOne = async (formData) => {
+            try {
+                const res = await apiFetch('/api/calendar/events', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(makeEventPayload(formData))
+                });
+                if (res && res.ok) saved += 1; else failed += 1;
+            } catch (error) {
+                console.error("Failed to bulk-import event:", error);
+                failed += 1;
+            }
+        };
+
+        await postOne(data);
+        for (const q of rest) {
+            const stamped = {
+                ...q,
+                color: data.color,
+                tags: data.tags,
+                is_all_day: !!data.is_all_day,
+                event_start_time: data.event_start_time,
+                end_time: data.end_time,
+                is_dday: !!data.is_dday,
+                dday_target_date: data.dday_target_date,
+                recurrence_rule: data.recurrence_rule
+            };
+            await postOne(stamped);
+        }
+
+        registerSubmittedTags(parseTags(data.tags));
+        setImportQueue(null);
+        setShowEventForm(false);
+        setEditingEvent(null);
+        await fetchEvents();
+        setNotice(saved > 0
+            ? `${failed === 0 ? 'Imported' : 'Imported with errors'} ${saved} event${saved === 1 ? '' : 's'}.${failed > 0 ? ` ${failed} failed.` : ''}`
+            : 'Import failed. Please try again.');
+    }, [importQueue, fetchEvents, registerSubmittedTags]);
+
+    // During a multi-event import, closing the form (Cancel / X / backdrop)
+    // must NOT discard the events still waiting in the queue like it used to —
+    // it skips the current one and keeps the form open on the next. Only the
+    // explicit "Stop import" button fully abandons the remaining queue.
+    const handleCloseEventForm = useCallback(() => {
+        if (importQueue && importQueue.length > 0) {
+            const rest = importQueue.slice(1);
+            if (rest.length > 0) {
+                setImportQueue(rest);
+                setNotice(`Skipped this event — ${rest.length} still to review.`);
+                return;
+            }
+        }
+        setShowEventForm(false);
+        setEditingEvent(null);
+        setImportQueue(null);
+    }, [importQueue]);
+
+    const handleStopImport = useCallback(() => {
+        setShowEventForm(false);
+        setEditingEvent(null);
+        setImportQueue(null);
+    }, []);
+
+    // Non-recurring events delete outright (after a confirm). Recurring events
+    // open a popup to choose between "only this occurrence" and "all occurrences".
+    const deleteEvent = useCallback((ev) => {
+        const isRecurring = /FREQ=/.test(String((ev && ev.recurrence_rule) || ''));
+        if (!isRecurring) {
+            if (!window.confirm('Delete this event?')) return;
+            deleteEventById(ev.id);
+            return;
+        }
+        setPendingDelete({ ev, date: formatDateStr(selectedDate) });
+    }, [selectedDate, deleteEventById]);
+
+    const confirmDeleteSingle = useCallback(async () => {
+        if (!pendingDelete) return;
+        const { ev, date } = pendingDelete;
+        try {
+            const res = await apiFetch(`/api/calendar/events/${ev.id}/exclude`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date })
+            });
+            if (res.ok) {
+                setNotice(`Removed one occurrence (${date}) — the rest of the series is kept.`);
+                await fetchEvents();
+            } else {
+                setNotice('Failed to remove this occurrence.');
+            }
+        } catch (error) {
+            console.error("Failed to exclude occurrence:", error);
+            setNotice('Failed to remove this occurrence.');
+        }
+        setPendingDelete(null);
+    }, [pendingDelete, fetchEvents]);
+
+    const confirmDeleteAll = useCallback(async () => {
+        if (!pendingDelete) return;
+        const { ev } = pendingDelete;
+        await deleteEventById(ev.id);
+        setPendingDelete(null);
+    }, [pendingDelete, deleteEventById]);
+
+    const cancelDelete = useCallback(() => setPendingDelete(null), []);
+
     const openEventForm = useCallback((event = null) => {
         setEditingEvent(event);
         setShowEventForm(true);
     }, []);
 
     const formInitialData = useMemo(() => {
+        if (importQueue && importQueue.length > 0) {
+            return importQueue[0];
+        }
         const date = selectedDate;
         const ev = editingEvent;
         if (ev) {
+            const start = splitDateTime(ev.event_date);
+            const end = splitDateTime(ev.end_date);
             return {
                 id: ev.id,
                 title: ev.title || '',
-                event_date: ev.event_date ? String(ev.event_date).slice(0, 10) : formatDateStr(date),
-                end_date: ev.end_date ? String(ev.end_date).slice(0, 10) : '',
+                event_date: start.date || formatDateStr(date),
+                end_date: end.date || '',
+                event_start_time: ev.is_all_day ? '' : start.time,
+                end_time: ev.is_all_day ? '' : (end.date ? end.time : ''),
                 is_all_day: !!ev.is_all_day,
                 description: ev.description || '',
                 color: ev.color || COLOR_PRESETS[1].value,
@@ -805,6 +1138,8 @@ const Calendar = () => {
             title: '',
             event_date: formatDateStr(date),
             end_date: '',
+            event_start_time: '',
+            end_time: '',
             is_all_day: false,
             description: '',
             color: COLOR_PRESETS[1].value,
@@ -813,7 +1148,7 @@ const Calendar = () => {
             dday_target_date: '',
             recurrence_rule: ''
         };
-    }, [editingEvent, selectedDate]);
+    }, [editingEvent, selectedDate, importQueue]);
 
     // Window of 42 dates rendered by the month grid (recomputed only when the month changes)
     const gridDates = useMemo(() => {
@@ -989,7 +1324,7 @@ const Calendar = () => {
                                             )}
                                         </h4>
                                         <div style={{ display: 'flex', gap: '1rem', color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: ev.description ? '0.5rem' : '0' }}>
-                                            {ev.is_all_day ? <span>All Day</span> : (ev.event_time && <span><Clock size={12} style={{ marginRight: '4px' }} /> {ev.event_time}</span>)}
+                                            {ev.is_all_day ? <span>All Day</span> : (getEventTime(ev) && <span><Clock size={12} style={{ marginRight: '4px' }} /> {getEventTime(ev)}</span>)}
                                             {ev.end_date && String(ev.end_date).slice(0, 10) > String(ev.event_date).slice(0, 10) && (
                                                 <span><CalendarIcon size={12} style={{ marginRight: '4px' }} /> until {String(ev.end_date).slice(0, 10)}</span>
                                             )}
@@ -1008,7 +1343,7 @@ const Calendar = () => {
                                         <button onClick={() => openEventForm(ev)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
                                             <Edit2 size={16} />
                                         </button>
-                                        <button onClick={() => deleteEvent(ev.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
+                                        <button onClick={() => deleteEvent(ev)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
                                             <Trash2 size={16} />
                                         </button>
                                     </div>
@@ -1095,7 +1430,11 @@ const Calendar = () => {
 
                         <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '0.5rem', marginBottom: '1rem' }}>
                             {googleEvents.length === 0 ? (
-                                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>No events found to import.</div>
+                                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                                    {syncing ? <>
+                                        <RefreshCw size={18} className="spin" /> Loading events…
+                                    </> : 'No events found to import.'}
+                                </div>
                             ) : (
                                 googleEvents.map(ev => (
                                     <GoogleEventRow
@@ -1209,16 +1548,80 @@ const Calendar = () => {
             {detail}
 
             <EventFormModal
-                key={editingEvent ? `edit-${editingEvent.id}` : `new-${formatDateStr(selectedDate)}`}
+                key={importQueue && importQueue.length > 0
+                    ? `import-${importQueue.length}-${(importQueue[0]._import || {}).google_event_id || 'x'}`
+                    : (editingEvent ? `edit-${editingEvent.id}` : `new-${formatDateStr(selectedDate)}`)}
                 open={showEventForm}
                 initialData={formInitialData}
-                formKey={editingEvent ? String(editingEvent.id) : `new-${formatDateStr(selectedDate)}`}
-                onClose={() => { setShowEventForm(false); setEditingEvent(null); }}
+                formKey={importQueue && importQueue.length > 0
+                    ? `import-${importQueue.length}`
+                    : (editingEvent ? String(editingEvent.id) : `new-${formatDateStr(selectedDate)}`)}
+                onClose={handleCloseEventForm}
+                onStopImport={handleStopImport}
+                importRemaining={importQueue ? Math.max(0, importQueue.length - 1) : 0}
                 onSubmit={handleSaveEvent}
+                onSaveAll={handleSaveAll}
                 tagColors={tagColors}
                 onTagColorChange={handleTagColorChange}
             />
             {renderGoogleSyncModal()}
+
+            {pendingDelete && (
+                <AnimatePresence>
+                    <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        style={{
+                            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                            backgroundColor: 'rgba(0,0,0,0.5)',
+                            display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100
+                        }}
+                        onClick={cancelDelete}
+                    >
+                        <motion.div
+                            initial={{ y: 32, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 32, opacity: 0 }}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                                backgroundColor: 'var(--bg-card)', padding: '1.5rem', borderRadius: '1rem',
+                                width: '100%', maxWidth: '420px', boxSizing: 'border-box',
+                                border: '1px solid var(--border-color)'
+                            }}
+                        >
+                            <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '1.05rem' }}>Delete repeating event</h3>
+                            <p style={{ margin: 0, marginBottom: '1.25rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                                <strong style={{ color: 'var(--text-primary)' }}>{pendingDelete.ev.title}</strong> repeats
+                                {getRruleLabel(pendingDelete.ev.recurrence_rule) ? ` ${getRruleLabel(pendingDelete.ev.recurrence_rule).toLowerCase()}` : ''}.
+                                Delete only this one ({pendingDelete.date}) or the whole series?
+                            </p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                                <button
+                                    onClick={confirmDeleteSingle}
+                                    style={{ padding: '0.7rem 1rem', borderRadius: '0.5rem', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', cursor: 'pointer', textAlign: 'left' }}
+                                >
+                                    <span style={{ fontWeight: 600 }}>Delete only this occurrence</span>
+                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                        Removes {pendingDelete.date} — other occurrences stay
+                                    </span>
+                                </button>
+                                <button
+                                    onClick={confirmDeleteAll}
+                                    style={{ padding: '0.7rem 1rem', borderRadius: '0.5rem', backgroundColor: 'var(--bg-secondary)', color: '#ef4444', border: '1px solid var(--border-color)', cursor: 'pointer', textAlign: 'left' }}
+                                >
+                                    <span style={{ fontWeight: 600 }}>Delete all occurrences</span>
+                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                        Removes every occurrence of this series
+                                    </span>
+                                </button>
+                                <button
+                                    onClick={cancelDelete}
+                                    style={{ padding: '0.7rem 1rem', borderRadius: '0.5rem', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', cursor: 'pointer' }}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                </AnimatePresence>
+            )}
         </div>
     );
 };

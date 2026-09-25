@@ -25,6 +25,14 @@ const cleanNullable = (value) => {
     return value;
 };
 
+// Google's recurrence rules come back prefixed ("RRULE:FREQ=WEEKLY;BYDAY=MO,WE").
+// Extract the matching RRULE and strip the prefix so the DB stores a clean
+// "FREQ=..." value the frontend can re-expand.
+const parseRrule = (rules) => {
+    const found = (rules || []).find((r) => /^\s*(?:RRULE:)?FREQ=/i.test(r)) || '';
+    return found.replace(/^\s*RRULE:\s*/i, '') || null;
+};
+
 const getOauth2Client = () => {
     const clientId = getEnv('GOOGLE_CLIENT_ID');
     const clientSecret = getEnv('GOOGLE_CLIENT_SECRET');
@@ -361,6 +369,58 @@ const deleteEvent = async (req, res) => {
 router.delete('/:id', deleteEvent);
 router.delete('/events/:id', deleteEvent);
 
+// POST /:id/exclude - Hide a single occurrence of a recurring event
+// Appends the given date to the event's excluded_dates instead of deleting the
+// whole series. The grid's isEventOnDate skips the series on that date.
+const excludeEventOccurrence = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { date } = req.body || {};
+
+        if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            return res.status(400).json({ error: 'Valid date (YYYY-MM-DD) is required' });
+        }
+
+        const db = getDb(req);
+
+        const { data: existing, error: getError } = await db
+            .from('calendar_events')
+            .select('excluded_dates')
+            .eq('id', id)
+            .eq('user_id', req.user.id)
+            .single();
+
+        if (getError || !existing) {
+            if (getError && getError.code === 'PGRST116') {
+                return res.status(404).json({ error: 'Event not found or unauthorized' });
+            }
+            if (getError) throw getError;
+            return res.status(404).json({ error: 'Event not found or unauthorized' });
+        }
+
+        const current = Array.isArray(existing.excluded_dates) ? existing.excluded_dates : [];
+        if (current.includes(date)) return res.json({ ok: true });
+
+        const { error } = await db
+            .from('calendar_events')
+            .update({
+                excluded_dates: [...current, date],
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', id)
+            .eq('user_id', req.user.id);
+
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('Error excluding calendar event occurrence:', error);
+        res.status(500).json({ error: 'Failed to exclude this occurrence' });
+    }
+};
+
+router.post('/:id/exclude', excludeEventOccurrence);
+router.post('/events/:id/exclude', excludeEventOccurrence);
+
 // GET /google/status - Check connection status
 router.get('/google/status', async (req, res) => {
     try {
@@ -442,10 +502,15 @@ router.post('/google/sync', async (req, res) => {
         try {
             response = await calendar.events.list({
                 calendarId,
-                timeMin: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-                maxResults: 250,
+                // A month of history + 6 months forward is enough for an import view;
+                // any wider and the expansion can exceed the event cap or the sync
+                // takes too long to load.
+                timeMin: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+                timeMax: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
+                maxResults: 500,
                 singleEvents: true,
-                orderBy: 'startTime'
+                orderBy: 'startTime',
+                fields: 'items(id,summary,description,start,end,recurringEventId,recurrence)'
             });
         } catch (apiErr) {
             // A 401 here usually means the stored token is no longer valid.
@@ -464,21 +529,70 @@ router.post('/google/sync', async (req, res) => {
         // FIRST instance of each series as a recurring base event so users don't
         // import 50 copies of their weekly standup. The RRULE is preserved so the
         // calendar can re-expand occurrences client-side.
+        //
+        // Expanded instances carry recurringEventId but NOT the recurrence rule (that
+        // lives on the series master). We fetch those masters in PARALLEL batches
+        // (bounded concurrency) instead of one sequential round-trip per series, which
+        // is what made sync take tens of seconds on calendars with many series.
         const seen = new Set();
-        const mappedEvents = [];
+        const rruleBySeries = new Map();
+        const seriesNeedingFetch = [];
         for (const event of rawEvents) {
             const seriesKey = event.recurringEventId || event.id;
             if (seen.has(seriesKey)) continue;
             seen.add(seriesKey);
 
-            const rrule = (event.recurrence || []).find((r) => /^\s*FREQ=/i.test(r)) || null;
+            if (!event.recurringEventId) continue;
+            const fromInstance = parseRrule(event.recurrence);
+            if (fromInstance) {
+                rruleBySeries.set(event.recurringEventId, fromInstance);
+            } else if (!rruleBySeries.has(event.recurringEventId)) {
+                seriesNeedingFetch.push(event.recurringEventId);
+            }
+        }
+
+        const BATCH_SIZE = 10;
+        for (let i = 0; i < seriesNeedingFetch.length; i += BATCH_SIZE) {
+            await Promise.all(seriesNeedingFetch.slice(i, i + BATCH_SIZE).map(async (seriesId) => {
+                try {
+                    const master = await calendar.events.get({
+                        calendarId,
+                        eventId: seriesId,
+                        fields: 'recurrence'
+                    });
+                    rruleBySeries.set(seriesId, parseRrule(master.data.recurrence));
+                } catch {
+                    rruleBySeries.set(seriesId, null);
+                }
+            }));
+        }
+
+        const mappedEvents = [];
+        for (const event of rawEvents) {
+            const seriesKey = event.recurringEventId || event.id;
+            if (seen.has(seriesKey)) {
+                seen.delete(seriesKey);
+            } else {
+                continue;
+            }
+
+            // For recurring imports, end_date MUST be the series end, not the end of
+            // the single expanded instance — otherwise the grid's isEventOnDate sees
+            // a terminating end_date right after the first occurrence and kills the
+            // whole series. Derive it from the RRULE's UNTIL, or null if it never ends.
+            const rrule = event.recurringEventId ? (rruleBySeries.get(event.recurringEventId) || null) : null;
+            let seriesEnd = null;
+            if (rrule) {
+                const untilMatch = String(rrule).match(/UNTIL=(\d{4})(\d{2})(\d{2})/);
+                seriesEnd = untilMatch ? `${untilMatch[1]}-${untilMatch[2]}-${untilMatch[3]}` : null;
+            }
 
             mappedEvents.push({
                 google_event_id: event.id,
                 title: event.summary || 'Untitled Event',
                 description: event.description || '',
                 event_date: event.start?.dateTime || event.start?.date,
-                end_date: event.end?.dateTime || event.end?.date,
+                end_date: rrule ? seriesEnd : (event.end?.dateTime || event.end?.date),
                 is_all_day: !!event.start?.date,
                 recurrence_rule: rrule,
                 source: 'google'
