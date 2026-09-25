@@ -766,11 +766,6 @@ const Calendar = () => {
         setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
     }, [currentDate]);
 
-    const goToToday = useCallback(() => {
-        const today = new Date();
-        setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
-        setSelectedDate(today);
-    }, []);
 
     const renderCalendarGrid = useCallback(() => {
         const month = currentDate.getMonth();
@@ -1171,9 +1166,6 @@ const Calendar = () => {
                     </h2>
                     <button onClick={nextMonth} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', padding: '0.5rem', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex' }}>
                         <ChevronRight size={20} />
-                    </button>
-                    <button onClick={goToToday} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 600 }}>
-                        Today
                     </button>
                 </div>
 
