@@ -79,11 +79,14 @@ const GoogleEventRow = memo(({ ev, isImported, isSelected, onToggle, rruleLabel 
         }}>
             {(isImported || isSelected) && <Check size={14} color="#fff" />}
         </div>
-        <div>
-            <div style={{ fontWeight: 600 }}>{ev.title} {isImported && <span style={{ fontSize: '0.7rem', padding: '2px 6px', background: 'var(--bg-secondary)', borderRadius: '4px', marginLeft: '0.5rem' }}>Imported</span>}</div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span>{String(ev.event_date).slice(0, 10)} {ev.is_all_day ? '(All Day)' : ''}</span>
-                {rruleLabel && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}><Repeat size={11} /> {rruleLabel}</span>}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.title}</span>
+                {isImported && <span style={{ fontSize: '0.7rem', padding: '2px 6px', background: 'var(--bg-secondary)', borderRadius: '4px', flexShrink: 0 }}>Imported</span>}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
+                <span style={{ whiteSpace: 'nowrap' }}>{String(ev.event_date).slice(0, 10)} {ev.is_all_day ? '(All Day)' : ''}</span>
+                {rruleLabel && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><Repeat size={11} /> {rruleLabel}</span>}
             </div>
         </div>
     </div>
@@ -168,7 +171,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                         onClick={e => e.stopPropagation()}
                         style={{
                             backgroundColor: 'var(--bg-card)', padding: '2rem', borderRadius: '1rem',
-                            width: '100%', maxWidth: '500px', border: '1px solid var(--border-color)',
+                            width: '100%', maxWidth: '500px', boxSizing: 'border-box', border: '1px solid var(--border-color)',
                             maxHeight: '90vh', overflowY: 'auto'
                         }}
                     >
@@ -181,7 +184,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                             <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Title</label>
                             <input
                                 type="text" required value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })}
-                                style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                style={{ width: '100%', boxSizing: 'border-box', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                             />
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -189,14 +192,14 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                                 <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Date</label>
                                 <input
                                     type="date" required value={formData.event_date} onChange={e => setFormData({ ...formData, event_date: e.target.value })}
-                                    style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                    style={{ width: '100%', boxSizing: 'border-box', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                                 />
                             </div>
                             <div>
                                 <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>End Date (Optional)</label>
                                 <input
                                     type="date" value={formData.end_date} onChange={e => setFormData({ ...formData, end_date: e.target.value })}
-                                    style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                    style={{ width: '100%', boxSizing: 'border-box', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                                 />
                             </div>
                         </div>
@@ -206,7 +209,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                             </p>
                         )}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <input type="checkbox" id="is_all_day" className="circle-checkbox" checked={formData.is_all_day} onChange={e => setFormData({ ...formData, is_all_day: e.target.checked })} />
+                            <input type="checkbox" id="is_all_day" style={{ appearance: "none", WebkitAppearance: "none", width: "20px", height: "20px", borderRadius: "50%", border: `2px solid ${formData.is_all_day ? "var(--accent-color)" : "var(--border-color)"}`, backgroundColor: formData.is_all_day ? "var(--accent-color)" : "transparent", flexShrink: 0, cursor: "pointer", margin: 0, padding: 0 }} checked={formData.is_all_day} onChange={e => setFormData({ ...formData, is_all_day: e.target.checked })} />
                             <label htmlFor="is_all_day">All Day</label>
                         </div>
                         <div>
@@ -214,7 +217,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                             <select
                                 value={formData.recurrence_rule || ''}
                                 onChange={e => setFormData({ ...formData, recurrence_rule: e.target.value })}
-                                style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                style={{ width: '100%', boxSizing: 'border-box', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                             >
                                 {RECURRENCE_OPTIONS.map(opt => (
                                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -230,7 +233,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                             <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Description</label>
                             <textarea
                                 rows="3" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', resize: 'vertical' }}
+                                style={{ width: '100%', boxSizing: 'border-box', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', resize: 'vertical' }}
                             />
                         </div>
 
@@ -241,7 +244,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                                 placeholder="Tags (comma-separated, e.g. Work, Health)"
                                 value={formData.tags}
                                 onChange={e => setFormData({ ...formData, tags: e.target.value })}
-                                style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                style={{ width: '100%', boxSizing: 'border-box', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                             />
                             {parseTags(formData.tags).length > 0 && (
                                 <div style={{
@@ -299,7 +302,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
 
                         <div style={{ padding: '1rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: formData.is_dday ? '1rem' : 0 }}>
-                                <input type="checkbox" id="is_dday" className="circle-checkbox" checked={formData.is_dday} onChange={e => setFormData({ ...formData, is_dday: e.target.checked })} />
+                                <input type="checkbox" id="is_dday" style={{ appearance: "none", WebkitAppearance: "none", width: "20px", height: "20px", borderRadius: "50%", border: `2px solid ${formData.is_dday ? "var(--accent-color)" : "var(--border-color)"}`, backgroundColor: formData.is_dday ? "var(--accent-color)" : "transparent", flexShrink: 0, cursor: "pointer", margin: 0, padding: 0 }} checked={formData.is_dday} onChange={e => setFormData({ ...formData, is_dday: e.target.checked })} />
                                 <label htmlFor="is_dday" style={{ fontWeight: 600 }}>Enable D-Day Countdown</label>
                             </div>
                             {formData.is_dday && (
@@ -307,7 +310,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                                     <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Target Date</label>
                                     <input
                                         type="date" required={formData.is_dday} value={formData.dday_target_date} onChange={e => setFormData({ ...formData, dday_target_date: e.target.value })}
-                                        style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                        style={{ width: '100%', boxSizing: 'border-box', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                                     />
                                 </div>
                             )}
@@ -702,17 +705,19 @@ const Calendar = () => {
     // Index events per day (YYYY-MM-DD) once per events/window change so grid cells
     // are O(1) lookups instead of re-filtering the full event list ~43 times per render.
     const eventsByDate = useMemo(() => {
-        const lookups = new Set([...gridDates, selectedDate].map(formatDateStr));
+        const lookups = gridDates.map(formatDateStr);
         const map = new Map();
         for (const dateStr of lookups) {
             map.set(dateStr, events.filter(e => isEventOnDate(e, dateStr)));
         }
         return map;
-    }, [events, gridDates, selectedDate]);
+    }, [events, gridDates]);
 
     const getEventsForDate = useCallback((date) => {
-        return eventsByDate.get(formatDateStr(date)) || [];
-    }, [eventsByDate]);
+        const dateStr = formatDateStr(date);
+        if (eventsByDate.has(dateStr)) return eventsByDate.get(dateStr);
+        return events.filter(e => isEventOnDate(e, dateStr));
+    }, [eventsByDate, events]);
 
     const getEventColor = useCallback((ev) => {
         if (ev.tags) {
@@ -770,6 +775,7 @@ const Calendar = () => {
                                 onClick={() => setSelectedDate(cell.date)}
                                 style={{
                                     minHeight: '80px',
+                                    minWidth: 0,
                                     padding: '4px',
                                     borderRadius: '0.5rem',
                                     border: isSelected ? '2px solid var(--accent-color)' : '1px solid var(--border-color)',
@@ -973,7 +979,7 @@ const Calendar = () => {
                         onClick={e => e.stopPropagation()}
                         style={{
                             backgroundColor: 'var(--bg-card)', padding: '2rem', borderRadius: '1rem',
-                            width: '100%', maxWidth: '600px', border: '1px solid var(--border-color)',
+                            width: '100%', maxWidth: '600px', boxSizing: 'border-box', border: '1px solid var(--border-color)',
                             maxHeight: '90vh', display: 'flex', flexDirection: 'column'
                         }}
                     >
@@ -991,7 +997,7 @@ const Calendar = () => {
                         )}
 
                         {googleCalendars.length > 0 && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', width: '100%', boxSizing: 'border-box' }}>
                                 <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Calendar:</label>
                                 <select
                                     value={selectedGoogleCalendar}
@@ -1000,7 +1006,7 @@ const Calendar = () => {
                                         setGoogleCalendarSelection(id);
                                         fetchGoogleEvents(id);
                                     }}
-                                    style={{ flex: 1, padding: '0.4rem 0.5rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+                                    style={{ flex: 1, minWidth: 0, maxWidth: '100%', padding: '0.4rem 0.5rem', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
                                 >
                                     {googleCalendars.map((c) => (
                                         <option key={c.id} value={c.id}>{c.summary}{c.is_primary ? ' (Primary)' : ''}</option>
