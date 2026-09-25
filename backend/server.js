@@ -20,6 +20,7 @@ import youtubeRoutes from './routes/youtube.js';
 import notesRoutes from './routes/notes.js';
 import friendRoutes from './routes/friends.js';
 import timerRoutes from './routes/timer.js';
+import calendarRoutes from './routes/calendar.js';
 import { initDB } from './db.js';
 
 // Middleware imports
@@ -122,9 +123,15 @@ app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // Apply general rate limiter to all routes except Spotify
-// (Spotify has its own API rate limiting, already handled in the route with 429 retry logic)
+// (Spotify has its own API rate limiting, already handled in the route with 429 retry logic).
+// Only state-changing methods are limited. GETs are idempotent and CSRF-exempt, and the
+// calendar fetches /api/calendar/events on every open + after every mutation — limiting
+// reads made the calendar grid 429-block empty ("cleared") under active use, with no value
+// gained. Read-only routes still rely on Supabase's own quotas; destructive/write
+// spam stays capped here, and auth endpoints keep their dedicated tighter limiter below.
 app.use((req, res, next) => {
     if (req.path.startsWith('/api/spotify')) return next();
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
     return generalRateLimiter(req, res, next);
 });
 app.use(csrfProtection);
@@ -152,6 +159,7 @@ app.use('/api/youtube', youtubeRoutes);
 app.use('/api/notes', notesRoutes);
 app.use('/api/friends', friendRoutes);
 app.use('/api/timer', timerRoutes);
+app.use('/api/calendar', calendarRoutes);
 
 // --- Error Handling (must be last) ---
 app.use(errorHandler);

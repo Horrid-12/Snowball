@@ -127,6 +127,19 @@ export const normalizeHexColor = (value, fallback = '#3b82f6') => {
     return fallback;
 };
 
+// Returns a readable text color for a given background hex: white for dark
+// backgrounds, near-black for light ones. Tag colors are user-editable to any
+// value (including white), so a fixed white text color turns invisible on
+// light tags — compute it from perceived luminance instead.
+export const getReadableTextColor = (background = '#3b82f6') => {
+    const h = String(background || '').replace('#', '').padStart(6, '0');
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.6 ? '#0f172a' : '#ffffff';
+};
+
 /**
  * Invalidate the cached monet tag palette. Call this when the theme or
  * accent color changes so that the next getDefaultTagColor picks up the
