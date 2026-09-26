@@ -40,6 +40,7 @@ const CalculatorWidget = React.lazy(() => import('./components/CalculatorWidget.
 const TaskComposerPanel = React.lazy(() => import('./components/TaskComposerPanel.jsx'));
 const FriendsPanel = React.lazy(() => import('./components/FriendsPanel.jsx'));
 const Calendar = React.lazy(() => import('./components/Calendar.jsx'));
+const CalendarSummaryCard = React.lazy(() => import('./components/CalendarSummaryCard.jsx'));
 
 const DynamicColorPlugin = registerPlugin('DynamicColor');
 
@@ -1641,6 +1642,11 @@ function App() {
                                                     <ProductivityDashboard tasks={tasks} />
                                                 </Suspense>
                                             </ErrorBoundary>
+                                            <ErrorBoundary>
+                                                <Suspense fallback={<LoadingFallback />}>
+                                                    <CalendarSummaryCard onOpenCalendar={() => setShowCalendar(true)} />
+                                                </Suspense>
+                                            </ErrorBoundary>
                                         </div>
                                         <ErrorBoundary>
                                             <Suspense fallback={<LoadingFallback />}>
@@ -1742,11 +1748,18 @@ function App() {
                                                 />
                                             </Suspense>
                                         </ErrorBoundary>
-                                        <ErrorBoundary>
-                                            <Suspense fallback={<LoadingFallback />}>
-                                                <ProductivityDashboard tasks={tasks} />
-                                            </Suspense>
-                                        </ErrorBoundary>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
+                                            <ErrorBoundary>
+                                                <Suspense fallback={<LoadingFallback />}>
+                                                    <ProductivityDashboard tasks={tasks} />
+                                                </Suspense>
+                                            </ErrorBoundary>
+                                            <ErrorBoundary>
+                                                <Suspense fallback={<LoadingFallback />}>
+                                                    <CalendarSummaryCard onOpenCalendar={() => setShowCalendar(true)} />
+                                                </Suspense>
+                                            </ErrorBoundary>
+                                        </div>
                                     </div>
                                     <ErrorBoundary>
                                         <div>
