@@ -20,7 +20,7 @@ const COLOR_PRESETS = [
     { name: 'Pink', value: '#ec4899' }
 ];
 
-export const getDDayText = (targetDate) => {
+const getDDayText = (targetDate) => {
     if (!targetDate) return '';
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -32,7 +32,7 @@ export const getDDayText = (targetDate) => {
     return `D+${Math.abs(diff)}`;
 };
 
-export const formatDateStr = (d) => {
+const formatDateStr = (d) => {
     const yr = d.getFullYear();
     const mo = String(d.getMonth() + 1).padStart(2, '0');
     const dy = String(d.getDate()).padStart(2, '0');
@@ -97,7 +97,7 @@ const getRruleLabel = (rule) => {
 // Splits a stored timestamp into an editable date ('YYYY-MM-DD') + time ('HH:MM').
 // Handles naive values ('2026-09-01', '2026-09-01T17:15') and full Google ISO
 // values ('2026-09-01T17:15:00+05:30') — keeps the wall-clock time as-is.
-export const splitDateTime = (value) => {
+const splitDateTime = (value) => {
     if (!value) return { date: '', time: '' };
     const s = String(value);
     const m = s.match(/^(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2})(?::\d{2})?.*)?$/);
@@ -106,7 +106,7 @@ export const splitDateTime = (value) => {
 };
 
 // "5:15 PM" style wall-clock display for the detail panel.
-export const getEventTime = (ev) => {
+const getEventTime = (ev) => {
     if (!ev || ev.is_all_day || !ev.event_date) return '';
     const { time } = splitDateTime(ev.event_date);
     if (!time) return '';
@@ -313,7 +313,7 @@ const CalendarCell = memo(({ dateStr, day, currentMonth, isToday, isSelected, da
 // Does this event occupy the given calendar day (YYYY-MM-DD)?
 // Handles single/multi-day spans AND recurring events (DAILY/WEEKLY/MONTHLY/YEARLY
 // with optional INTERVAL). For recurring events the optional end_date caps the series.
-export const isEventOnDate = (ev, dateStr) => {
+const isEventOnDate = (ev, dateStr) => {
     const startStr = ev.event_date ? String(ev.event_date).slice(0, 10) : '';
     if (!startStr) return false;
     // A single occurrence was "deleted" via the exclude endpoint — skip that date.
@@ -761,12 +761,8 @@ const Calendar = () => {
             const res = await apiFetch('/api/calendar/events');
             if (res && res.ok) {
                 const data = await res.json();
-                if (Array.isArray(data)) {
-                    setEvents(data);
-                    window.dispatchEvent(new CustomEvent('snowball-calendar-updated', { detail: data }));
-                } else {
-                    setFetchError(true);
-                }
+                if (Array.isArray(data)) setEvents(data);
+                else setFetchError(true);
             } else {
                 setFetchError(true);
             }
