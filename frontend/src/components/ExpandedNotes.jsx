@@ -963,7 +963,7 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
                 position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                 backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 3000,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                backdropFilter: 'blur(10px)', padding: '1rem'
+                padding: '1rem'
             }}
         >
             <motion.div 

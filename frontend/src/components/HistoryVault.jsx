@@ -129,8 +129,7 @@ const HistoryVault = ({ onClose, tasks: currentTasks = [] }) => {
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
             backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 1000,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: isMobile ? '1rem 0.75rem' : '2rem',
-            backdropFilter: 'blur(4px)'
+            padding: isMobile ? '1rem 0.75rem' : '2rem'
         }}>
             <div style={{
                 background: 'var(--bg-primary)',

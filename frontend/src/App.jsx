@@ -388,6 +388,16 @@ function App() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
+    // Escape closes the calendar (matches Settings/History/Calculator/TaskComposer)
+    useEffect(() => {
+        if (!showCalendar) return;
+        const handleEscape = (e) => {
+            if (e.key === 'Escape') setShowCalendar(false);
+        };
+        window.addEventListener('keydown', handleEscape);
+        return () => window.removeEventListener('keydown', handleEscape);
+    }, [showCalendar]);
+
     // Scroll wheel zoom handling for Tauri
     useEffect(() => {
         if (!isTauriDesktop) return;

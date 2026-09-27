@@ -379,7 +379,6 @@ body {
     padding: 0.45rem;
     padding-bottom: calc(0.45rem + env(safe-area-inset-bottom, 0px));
     z-index: 1000;
-    backdrop-filter: blur(18px);
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2);
     box-sizing: border-box;
     overflow: hidden;
