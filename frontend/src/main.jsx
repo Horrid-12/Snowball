@@ -63,3 +63,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         </ErrorBoundary>
     </React.StrictMode>,
 )
+
+// Dev-only Android preview. Kept behind a build-time constant so Rollup drops both
+// the condition and the dynamic import from production bundles.
+const DEV_TOOLS_ENABLED = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_TOOLS === 'true'
+
+if (DEV_TOOLS_ENABLED && window.top === window.self) {
+    import('./dev/AndroidEmu.jsx')
+        .then(({ mountAndroidEmu }) => mountAndroidEmu())
+        .catch((err) => console.warn('Android preview failed to mount:', err))
+}

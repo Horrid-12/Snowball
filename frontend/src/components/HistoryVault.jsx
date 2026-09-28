@@ -127,7 +127,10 @@ const HistoryVault = ({ onClose, tasks: currentTasks = [] }) => {
     return (
         <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 1000,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            /* Same reason as the calendar modal: BottomNav is z-index 1000 and renders
+               later in the DOM, so it would otherwise float over this overlay. */
+            zIndex: 1001,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: isMobile ? '1rem 0.75rem' : '2rem'
         }}>

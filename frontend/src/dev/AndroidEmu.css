@@ -1,0 +1,406 @@
+/* Android preview chrome — dev only, loaded dynamically in main.jsx. */
+
+html.ae-active,
+html.ae-active body {
+    overflow: hidden !important;
+}
+
+.ae-stage {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483646;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+        radial-gradient(circle at 50% -10%, #232a38 0%, #0d1017 55%, #05070a 100%);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    overflow: hidden;
+}
+
+/* ---- Device frame ---- */
+
+.ae-device {
+    position: relative;
+    flex: none;
+    padding: 9px;
+    border-radius: 42px;
+    background: linear-gradient(160deg, #333a47 0%, #0f131a 42%, #2a303b 100%);
+    box-shadow:
+        0 0 0 2px #05070a,
+        0 0 0 5px #1b202a,
+        0 50px 100px -25px rgba(0, 0, 0, 0.9);
+    transform-origin: center center;
+}
+
+.ae-screen {
+    position: relative;
+    border-radius: 33px;
+    overflow: hidden;
+    background: #000;
+}
+
+.ae-viewport {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #000;
+    color-scheme: normal;
+}
+
+/* ---- System bars ---- */
+
+.ae-statusbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 26px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 13px 0 16px;
+    pointer-events: none;
+    color: var(--ae-ink, #f8fafc);
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.35);
+}
+
+.ae-statusbar-clock {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+    font-variant-numeric: tabular-nums;
+}
+
+.ae-statusbar-icons {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.ae-statusbar-icons svg {
+    display: block;
+    fill: currentColor;
+}
+
+.ae-statusbar-icons .ae-battery {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.4;
+}
+
+.ae-statusbar-icons .ae-battery-fill {
+    fill: currentColor;
+    stroke: none;
+}
+
+.ae-statusbar-icons .ae-battery-low {
+    fill: #ef4444;
+    stroke: none;
+}
+
+.ae-navbar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 24px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ae-pill {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 140px;
+    height: 24px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.ae-pill::before {
+    content: '';
+    width: 108px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--ae-ink, #f8fafc);
+    opacity: 0.85;
+    transition: transform 130ms ease, opacity 130ms ease;
+}
+
+.ae-pill:hover::before {
+    opacity: 1;
+}
+
+.ae-pill:active::before {
+    transform: scaleX(0.8);
+    opacity: 1;
+}
+
+.ae-pill:focus-visible {
+    outline: 1px solid #60a5fa;
+    outline-offset: -3px;
+}
+
+/* ---- Launch toggle (always visible when dev tools are on) ---- */
+
+.ae-toggle {
+    position: fixed;
+    left: 14px;
+    bottom: 14px;
+    z-index: 2147483647;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 13px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 999px;
+    background: rgba(15, 19, 26, 0.9);
+    color: #cbd5e1;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    cursor: pointer;
+    box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.8);
+    transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.ae-toggle:hover {
+    color: #f8fafc;
+    transform: translateY(-1px);
+}
+
+.ae-toggle svg {
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+}
+
+.ae-toggle[data-on='true'] {
+    background: #1d4ed8;
+    border-color: #3b82f6;
+    color: #f8fafc;
+}
+
+/* ---- Control panel ---- */
+
+.ae-panel {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    z-index: 2147483647;
+    width: 244px;
+    padding: 12px 13px 11px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 14px;
+    background: rgba(13, 17, 23, 0.94);
+    color: #cbd5e1;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1.45;
+    box-shadow: 0 24px 60px -18px rgba(0, 0, 0, 0.9);
+    backdrop-filter: blur(8px);
+}
+
+.ae-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.ae-panel-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: #93c5fd;
+    text-transform: uppercase;
+}
+
+.ae-panel-close {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #64748b;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ae-panel-close:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #e2e8f0;
+}
+
+.ae-panel-section {
+    margin: 0 0 6px;
+    padding: 0;
+    border: 0;
+}
+
+.ae-panel-label {
+    display: block;
+    margin-bottom: 5px;
+    color: #64748b;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.ae-presets {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+}
+
+.ae-preset {
+    padding: 6px 4px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.03);
+    color: #94a3b8;
+    font-family: inherit;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.ae-preset:hover {
+    border-color: rgba(255, 255, 255, 0.28);
+    color: #e2e8f0;
+}
+
+.ae-preset[data-active='true'] {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.16);
+    color: #dbeafe;
+}
+
+.ae-preset-size {
+    display: block;
+    margin-top: 1px;
+    color: #475569;
+    font-size: 9px;
+}
+
+.ae-preset[data-active='true'] .ae-preset-size {
+    color: #60a5fa;
+}
+
+.ae-options {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.ae-option {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 5px;
+    border-radius: 6px;
+    color: #94a3b8;
+    font-size: 10.5px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ae-option:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #e2e8f0;
+}
+
+.ae-option input {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: none;
+    width: 12px;
+    height: 12px;
+    margin: 0;
+    border: 1px solid #475569;
+    border-radius: 3px;
+    background: transparent;
+    cursor: pointer;
+    display: grid;
+    place-content: center;
+}
+
+.ae-option input:checked {
+    border-color: #3b82f6;
+    background: #3b82f6;
+}
+
+.ae-option input:checked::after {
+    content: '';
+    width: 6px;
+    height: 3px;
+    border-left: 1.5px solid #0b0e14;
+    border-bottom: 1.5px solid #0b0e14;
+    transform: translateY(-1px) rotate(-45deg);
+}
+
+.ae-restart {
+    width: 100%;
+    margin-top: 3px;
+    padding: 6px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.03);
+    color: #94a3b8;
+    font-family: inherit;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.ae-restart:hover {
+    border-color: rgba(255, 255, 255, 0.28);
+    color: #e2e8f0;
+}
+
+.ae-panel-note {
+    margin: 9px 0 0;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    color: #475569;
+    font-size: 9.5px;
+    line-height: 1.5;
+}
+
+.ae-panel-note code {
+    color: #7dd3fc;
+    font-family: inherit;
+    font-size: 9.5px;
+}
+
+.ae-panel-note kbd {
+    padding: 1px 4px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.05);
+    color: #94a3b8;
+    font-family: inherit;
+    font-size: 9px;
+}

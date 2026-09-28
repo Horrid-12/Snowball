@@ -135,10 +135,14 @@ function App() {
         }
     });
 
-    const [showSidebar, setShowSidebar] = useState(() => {
-        const stored = localStorage.getItem('snowball_show_sidebar');
-        return stored ? JSON.parse(stored) : true;
-    });
+    // showSidebar is viewport-derived, not a user preference: nothing in the UI toggles
+    // it (the SettingsModal props are unused leftovers), and it owns the desktop-only
+    // right column holding Notes + HabitTracker. It must therefore be computed from the
+    // current width rather than read back from storage — storage holds the residue of
+    // whichever viewport last ran the app, and a narrow session leaves it false with no
+    // resize ever firing to correct it, which hides Habits and collapses the grid to a
+    // single stretched column on desktop.
+    const [showSidebar, setShowSidebar] = useState(() => window.innerWidth > 768);
 
     const [showHeatmap, setShowHeatmap] = useState(() => {
         const stored = localStorage.getItem('snowball_show_heatmap');
@@ -521,10 +525,6 @@ function App() {
 
     // UI Toggles effects
     useEffect(() => {
-        localStorage.setItem('snowball_show_sidebar', JSON.stringify(showSidebar));
-    }, [showSidebar]);
-
-    useEffect(() => {
         localStorage.setItem('snowball_show_heatmap', JSON.stringify(showHeatmap));
     }, [showHeatmap]);
 
@@ -550,10 +550,8 @@ function App() {
             }
         };
 
-        if (lastMobile) {
-            setShowSidebar(false);
-        }
-
+        // Mount is handled by the useState initializer above; this only has to
+        // cover live transitions across the breakpoint.
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, []);
@@ -1525,7 +1523,10 @@ function App() {
                 {showCalendar && user && (
                     <div style={{
                         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                        backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 1000,
+                        backgroundColor: 'rgba(0,0,0,0.7)',
+                        /* 1001: BottomNav also uses z-index 1000 and is rendered later in the
+                           DOM, so it would otherwise paint on top of this modal. */
+                        zIndex: 1001,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         padding: isMobile ? '1rem 0.5rem' : '2rem',
                     }}>

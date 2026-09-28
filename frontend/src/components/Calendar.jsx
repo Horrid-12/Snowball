@@ -214,6 +214,7 @@ const CalendarCell = memo(({ dateStr, day, currentMonth, isToday, isSelected, da
             style={{
                 minHeight: '80px',
                 minWidth: 0,
+                containerType: 'inline-size',
                 padding: '4px',
                 borderRadius: '0.5rem',
                 border: isSelected ? '2px solid var(--accent-color)' : '1px solid var(--border-color)',
@@ -229,7 +230,7 @@ const CalendarCell = memo(({ dateStr, day, currentMonth, isToday, isSelected, da
                 boxSizing: 'border-box'
             }}
         >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="cell-day-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', overflow: 'hidden', minWidth: 0 }}>
                 <span style={{
                     width: '24px',
                     height: '24px',
@@ -253,7 +254,7 @@ const CalendarCell = memo(({ dateStr, day, currentMonth, isToday, isSelected, da
                     {day}
                 </span>
                 {isToday && (
-                    <span style={{
+                    <span className="cell-today-label" style={{
                         fontSize: '0.65rem',
                         fontWeight: 700,
                         color: isSelected ? 'var(--accent-color)' : 'var(--text-secondary)',
@@ -286,7 +287,7 @@ const CalendarCell = memo(({ dateStr, day, currentMonth, isToday, isSelected, da
                 )}
             </div>
             {ddayEvents.length > 0 && (
-                <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap', overflow: 'hidden', minWidth: 0 }}>
                     {ddayEvents.slice(0, 2).map((ev, i) => {
                         const dText = getDDayText(ev.dday_target_date);
                         const isDDay = dText === 'D-DAY!';
@@ -298,7 +299,11 @@ const CalendarCell = memo(({ dateStr, day, currentMonth, isToday, isSelected, da
                                 fontWeight: 800,
                                 borderRadius: '999px',
                                 padding: '1px 6px',
-                                whiteSpace: 'nowrap'
+                                whiteSpace: 'nowrap',
+                                minWidth: 0,
+                                maxWidth: '100%',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis'
                             }}>
                                 {dText}
                             </span>
@@ -1482,13 +1487,24 @@ const importSelectedGoogleEvents = useCallback(() => {
             maxWidth: '1200px',
             width: '100%',
             boxSizing: 'border-box',
-            overflowX: 'hidden',
             margin: '0 auto',
             position: 'relative'
         }}>
             <style>{`
                 .spin { animation: spin 1s linear infinite; }
                 @keyframes spin { 100% { transform: rotate(360deg); } }
+
+                /* 7 columns on a phone leaves ~37px of usable cell width, which cannot
+                   hold the 24px day pill plus the "Today" caption. Hide the caption as
+                   soon as the cell stops being wide enough for it (measured against the
+                   cell's own content box, so it also degrades correctly at any zoom). */
+                .cell-today-label { flex-shrink: 1; min-width: 0; }
+                @container (max-width: 63px) {
+                    .cell-today-label { display: none; }
+                }
+                @media (max-width: 560px) {
+                    .cell-today-label { display: none; }
+                }
                 .circle-checkbox {
                     -webkit-appearance: none; appearance: none;
                     width: 18px; height: 18px; border-radius: 50%;
@@ -1505,7 +1521,7 @@ const importSelectedGoogleEvents = useCallback(() => {
             `}</style>
             {notice && (
                 <div style={{
-                    position: 'sticky', top: 0, zIndex: 5,
+                    position: 'sticky', top: 0, zIndex: 6,
                     marginBottom: '1rem', padding: '0.6rem 1rem',
                     borderRadius: '0.5rem', fontSize: '0.9rem',
                     backgroundColor: 'rgba(var(--accent-rgb), 0.12)',
@@ -1515,7 +1531,18 @@ const importSelectedGoogleEvents = useCallback(() => {
                     {notice}
                 </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+            <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                flexWrap: 'wrap', gap: '1rem',
+                /* The modal body scrolls on narrow screens (grid + detail panel exceed the
+                   viewport). Pin the month nav so it never scrolls out of reach, and use
+                   padding instead of margin so the gap below it stays opaque while grid
+                   rows slide underneath. */
+                position: 'sticky', top: 0, zIndex: 5,
+                background: 'var(--bg-card)',
+                paddingTop: '0.25rem',
+                paddingBottom: '1.5rem'
+            }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <button onClick={prevMonth} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', padding: '0.5rem', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex' }}>
                         <ChevronLeft size={20} />
