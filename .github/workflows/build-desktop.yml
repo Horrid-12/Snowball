@@ -106,8 +106,13 @@ jobs:
             librsvg2-dev \
             patchelf
 
+      # Install directly in frontend/ rather than via the root `npm run install:all`.
+      # The root package.json has a `postinstall` hook, and driving it from CI made
+      # npm recurse while two installs fought over frontend/node_modules (EPERM).
+      # A desktop bundle only needs frontend deps -- the backend is deployed to Vercel.
       - name: Install frontend dependencies
-        run: npm run install:all
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
 
       - name: Build frontend
         working-directory: frontend
