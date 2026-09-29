@@ -30,6 +30,9 @@ permissions:
 env:
   NODE_VERSION: '22'
   RUST_TOOLCHAIN: 'stable'
+  # Resolved once and reused everywhere. Cannot be inlined into a single-quoted
+  # YAML scalar because the expression itself contains single quotes.
+  RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version || '8.0.1') }}
 
 jobs:
   build-tauri:
@@ -128,9 +131,9 @@ jobs:
         with:
           projectPath: frontend
           args: --target ${{ matrix.target }}
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || (inputs.version && format('v{0}', inputs.version) || 'v8.0.1') }}
-          releaseName: 'Snowball ${{ github.ref_type == 'tag' && github.ref_name || (inputs.version && format('v{0}', inputs.version) || 'v8.0.1') }}'
-          releaseBody: 'Desktop release for ${{ github.ref_type == 'tag' && github.ref_name || (inputs.version && format('v{0}', inputs.version) || 'v8.0.1') }}'
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: Snowball ${{ env.RELEASE_TAG }}
+          releaseBody: Desktop release for ${{ env.RELEASE_TAG }}
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
@@ -154,7 +157,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ github.ref_type == 'tag' && github.ref_name || (inputs.version && format('v{0}', inputs.version) || 'v8.0.1') }}"
+          TAG="$RELEASE_TAG"
           echo "Downloading updater JSONs for tag: $TAG"
 
           # Wait for draft release to be available
@@ -192,7 +195,7 @@ jobs:
 
       - name: Merge updater manifests
         run: |
-          TAG="${{ github.ref_type == 'tag' && github.ref_name || (inputs.version && format('v{0}', inputs.version) || 'v8.0.1') }}"
+          TAG="$RELEASE_TAG"
           VERSION="${TAG#v}"
 
           node -e "
@@ -233,7 +236,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ github.ref_type == 'tag' && github.ref_name || (inputs.version && format('v{0}', inputs.version) || 'v8.0.1') }}"
+          TAG="$RELEASE_TAG"
           RELEASE_ID=$(gh api repos/${{ github.repository }}/releases --jq ".[] | select(.tag_name == \"$TAG\") | .id" 2>/dev/null | head -1 || echo "")
 
           if [[ -n "$RELEASE_ID" ]]; then
