@@ -328,8 +328,8 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
                 return;
             }
 
-            // Ctrl+Tab (and Ctrl+Shift+Tab) quick-switch between notes
-            if (e.ctrlKey && e.key === 'Tab') {
+            // Ctrl+Tab / Cmd+Tab (and Ctrl/Cmd+Shift+Tab) quick-switch between notes
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Tab') {
                 e.preventDefault(); // Prevent browser/desktop tab switch
                 if (notes.length > 1) {
                     const currentIndex = notes.findIndex(n => n.id === activeNoteId);

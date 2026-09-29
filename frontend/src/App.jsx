@@ -372,8 +372,8 @@ function App() {
                 }
             }
 
-            // Zoom handling (Ctrl + +, Ctrl + -, Ctrl + 0)
-            if (e.ctrlKey && isTauriDesktop) {
+            // Zoom handling (Ctrl/Cmd + +, Ctrl/Cmd + -, Ctrl/Cmd + 0)
+            if ((e.ctrlKey || e.metaKey) && isTauriDesktop) {
                 if (e.key === '=' || e.key === '+') {
                     e.preventDefault();
                     setZoomLevel(prev => Math.min(prev + 0.1, 2.0));
@@ -408,7 +408,7 @@ function App() {
         if (!isTauriDesktop) return;
 
         const handleWheel = (e) => {
-            if (e.ctrlKey) {
+            if (e.ctrlKey || e.metaKey) {
                 e.preventDefault();
                 // Sub-pixel scaling for buttery smooth trackpad pinch detection
                 const zoomFactor = -e.deltaY * 0.005; 
