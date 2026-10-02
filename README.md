@@ -77,8 +77,7 @@ Head over to [Releases](https://github.com/Horrid-12/Snowball/releases) to downl
 | **macOS (Intel)** | `Snowball_*_x64.dmg` | Open `.dmg`, drag `Snowball.app` into **Applications**. *(See Gatekeeper note below)* |
 | **Linux (Ubuntu/Debian)** | `snowball_*_amd64.deb` | Run `sudo apt install ./snowball_*_amd64.deb` (or double-click to install). |
 | **Linux (Universal)** | `Snowball_*_amd64.AppImage` | Run `chmod +x Snowball_*.AppImage` then `./Snowball_*.AppImage`. |
-| **Android** | `Snowball_*_Android.apk` | Sideload and install the APK on your device. |
-| **Web / PWA** | [snowball-ruddy.vercel.app](https://snowball-ruddy.vercel.app) | Open in browser and click **Install App** to run offline as a standalone app. |
+| **Android** | `Snowball_*_Android.apk` | Sideload and install the APK on your device. ||
 
 > [!NOTE]
 > **macOS First Launch (Gatekeeper):** Because Snowball is community open-source and not signed with an Apple Developer ID certificate ($99/yr), macOS will flag the app on first launch. To run it:
