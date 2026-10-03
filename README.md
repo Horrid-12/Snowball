@@ -25,38 +25,38 @@ Snowball replaces the daily juggle of a task manager, habit tracker, focus timer
 
 ---
 
-##  Features
+## <img src="./docs/assets/icons/sparkles.svg" width="18" alt=""> Features
 
-###  Task Management
+### <img src="./docs/assets/icons/list-checks.svg" width="16" alt=""> Task Management
 
 - **Planning & execution**: priorities, dates, and time blocks for your day.
 - **Progress tracking**: completion counts and effort allocation per task.
 - **Tagging**: custom, color-coded tags for effortless categorization.
 
-###  Habit Tracking
+### <img src="./docs/assets/icons/sprout.svg" width="16" alt=""> Habit Tracking
 
 - **Consistency first**: a dedicated tracker for daily habits.
 - **Visual momentum**: an activity heatmap that shows your streaks over months.
 
-###  Deep Work & Focus
+### <img src="./docs/assets/icons/timer.svg" width="16" alt=""> Deep Work & Focus
 
 - **Focus timer**: a built-in timer to cut out distractions and enter a flow state.
 - **Session tracking**: logged focus hours feed into your productivity score.
 
-###  Knowledge & Scratchpad
+### <img src="./docs/assets/icons/notebook-pen.svg" width="16" alt=""> Knowledge & Scratchpad
 
 - **Quick notes**: a low-friction scratchpad for reminders, ideas, and temporary logs.
 - **Zero overhead**: fast access to information without maintaining a full wiki.
 
-###  Media Hub
+### <img src="./docs/assets/icons/music.svg" width="16" alt=""> Media Hub
 
 - **Spotify & YouTube**: bring study/work soundtracks and tutorials straight into your focus environment.
 
-##  Architecture
+## <img src="./docs/assets/icons/layers.svg" width="18" alt=""> Architecture
 
 Snowball is built on a **local-first** philosophy: immediate responsiveness and offline availability come before constant network connectivity. For a deeper dive, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
-###  Sync Engine
+### <img src="./docs/assets/icons/refresh-cw.svg" width="16" alt=""> Sync Engine
 
 - **Immediate UI (optimistic updates)**: every mutation is applied to local state and IndexedDB (via Dexie.js) instantly.
 - **Eventually consistent**: changes are pushed to the cloud (Supabase) in the background.
@@ -73,17 +73,40 @@ Snowball is built on a **local-first** philosophy: immediate responsiveness and 
 | Desktop & mobile | ![Tauri Rust](https://img.shields.io/badge/Tauri-Rust-24C8DB?logo=tauri&logoColor=black) ![Capacitor Android](https://img.shields.io/badge/Capacitor-Android-119EFF?logo=capacitor&logoColor=white)                                                                                                                                                                                                                |
 | Hosting          | ![Vercel](https://img.shields.io/badge/Vercel-000000?logo=vercel&logoColor=white)                                                                                                                                                                                                                                                                                                                                  |
 
-##  Preview
+## <img src="./docs/assets/icons/camera.svg" width="18" alt=""> Preview
 
-<!-- Add screenshots to docs/assets/preview/ and uncomment:
-![Task board](./docs/assets/preview/board.png)
-![Focus session](./docs/assets/preview/focus.png)
-![Habit heatmap](./docs/assets/preview/heatmap.png)
--->
+A tour of the current interface — click any image to open it at full size.
 
-Screenshots are on the way — check back after the next release.
+**Plan and review**
 
-##  Get Started
+<p align="center">
+  <a href="./docs/assets/screenshots/Tasks_Full.PNG"><img src="./docs/assets/screenshots/Tasks_Full.PNG" alt="Task board with priorities, dates, tags and effort tracking" width="800"></a>
+  <br><sub>Full task board — priorities, dates, tags, and effort tracking</sub>
+</p>
+
+<p align="center">
+  <a href="./docs/assets/screenshots/Tasks_Minimal.PNG"><img src="./docs/assets/screenshots/Tasks_Minimal.PNG" alt="Minimal task board view" width="800"></a>
+  <br><sub>Minimal task board</sub>
+</p>
+
+<p align="center">
+  <a href="./docs/assets/screenshots/History.PNG"><img src="./docs/assets/screenshots/History.PNG" alt="Activity history and productivity score" width="800"></a>
+  <br><sub>History and productivity score</sub>
+</p>
+
+**Track and focus**
+
+| Habits | Daily summary | Focus timer |
+|:---:|:---:|:---:|
+| <a href="./docs/assets/screenshots/Habits.PNG"><img src="./docs/assets/screenshots/Habits.PNG" alt="Habit tracker with activity heatmap" height="250"></a> | <a href="./docs/assets/screenshots/Calendar_Summary.PNG"><img src="./docs/assets/screenshots/Calendar_Summary.PNG" alt="Daily summary panel" height="250"></a> | <a href="./docs/assets/screenshots/Timer.PNG"><img src="./docs/assets/screenshots/Timer.PNG" alt="Focus timer session" height="250"></a> |
+
+**Organize and connect**
+
+| Calendar | Friends | Quick notes |
+|:---:|:---:|:---:|
+| <a href="./docs/assets/screenshots/Calendar.PNG"><img src="./docs/assets/screenshots/Calendar.PNG" alt="Calendar month view" height="250"></a> | <a href="./docs/assets/screenshots/Friends.PNG"><img src="./docs/assets/screenshots/Friends.PNG" alt="Friends list" height="250"></a> | <a href="./docs/assets/screenshots/Expanded_Notes.PNG"><img src="./docs/assets/screenshots/Expanded_Notes.PNG" alt="Expanded quick notes editor" height="250"></a> |
+
+## <img src="./docs/assets/icons/terminal.svg" width="18" alt=""> Get Started
 
 Run the app from source. Prerequisites: [Node.js](https://nodejs.org/) 22+ and git.
 
@@ -123,7 +146,7 @@ The app then runs at:
 - Frontend: [http://localhost:5173](http://localhost:5173)
 - Backend: [http://localhost:3000](http://localhost:3000)
 
-##  Installation
+## <img src="./docs/assets/icons/download.svg" width="18" alt=""> Installation
 
 Download a prebuilt app from [Releases](https://github.com/Horrid-12/Snowball/releases):
 
@@ -143,11 +166,11 @@ Download a prebuilt app from [Releases](https://github.com/Horrid-12/Snowball/re
 > 2. Click **Open** in the confirmation dialog.
 > 3. *Alternative:* Go to **System Settings → Privacy & Security**, scroll down to Security, and click **Open Anyway** (or run `xattr -cr /Applications/Snowball.app` in Terminal).
 
-##  Status
+## <img src="./docs/assets/icons/activity.svg" width="18" alt=""> Status
 
 **Current stage: active development.** Features are added and refined frequently. Contributions and feedback are welcome — see [Issues](https://github.com/Horrid-12/Snowball/issues) for current bugs and feature requests.
 
-##  Contributing
+## <img src="./docs/assets/icons/git-pull-request.svg" width="18" alt=""> Contributing
 
 Contributions, bug reports, and feature requests are all welcome:
 
@@ -157,6 +180,6 @@ Contributions, bug reports, and feature requests are all welcome:
 
 Report bugs and propose features in [Issues](https://github.com/Horrid-12/Snowball/issues). For security matters, follow [SECURITY.md](./SECURITY.md).
 
-##  License
+## <img src="./docs/assets/icons/scale.svg" width="18" alt=""> License
 
 Distributed under the MIT License. See [`LICENSE`](./LICENSE) for details.
