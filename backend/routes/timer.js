@@ -35,19 +35,52 @@ router.get('/sessions', requireAuth, async (req, res, next) => {
 // Create a new study session
 router.post('/sessions', requireAuth, validate(schemas.studySession), async (req, res, next) => {
     try {
-        const { subject, started_at, ended_at, duration_ms } = req.validatedBody;
+        const { subject, started_at, ended_at, duration_ms, client_id } = req.validatedBody;
 
-        const { data, error } = await supabase
+        const row = {
+            user_id: req.user.id,
+            subject,
+            started_at,
+            ended_at,
+            duration_ms
+        };
+        if (client_id) row.client_id = client_id;
+
+        let { data, error } = await supabase
             .from('study_sessions')
-            .insert([{
-                user_id: req.user.id,
-                subject,
-                started_at,
-                ended_at,
-                duration_ms
-            }])
+            .insert([row])
             .select()
             .single();
+
+        if (error && error.code === '23505') {
+            // Unique violation — this session already exists. Treat as success so
+            // outbox replays / lost-response retries don't surface as failures.
+            let lookup = supabase
+                .from('study_sessions')
+                .select('*')
+                .eq('user_id', req.user.id)
+                .eq('started_at', started_at)
+                .limit(1)
+                .maybeSingle();
+            let { data: existing, error: lookupError } = await lookup;
+            if ((!existing || lookupError) && client_id) {
+                ({ data: existing, error: lookupError } = await supabase
+                    .from('study_sessions')
+                    .select('*')
+                    .eq('user_id', req.user.id)
+                    .eq('client_id', client_id)
+                    .limit(1)
+                    .maybeSingle());
+            }
+            if (lookupError || !existing) throw error;
+            return res.status(200).json({
+                id: existing.id,
+                subject: existing.subject,
+                startedAt: existing.started_at,
+                endedAt: existing.ended_at,
+                durationMs: existing.duration_ms
+            });
+        }
 
         if (error) throw error;
 

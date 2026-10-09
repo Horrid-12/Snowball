@@ -282,6 +282,8 @@ router.put('/me', requireAuth, validate(schemas.userSettings), async (req, res, 
 
         // Backward compatibility: If an old client sends sessions in the blob, 
         // migrate them on-the-fly to the new table so offline/outdated clients don't lose data.
+        // Guard: skip sessions whose started_at already exists — without this every
+        // debounced state PUT from an old client re-inserted its whole history.
         if (study_timer_state?.sessions && Array.isArray(study_timer_state.sessions)) {
             const legacySessions = study_timer_state.sessions
                 .filter(s => s?.subject && s?.startedAt && s?.endedAt && s?.durationMs)
@@ -292,11 +294,23 @@ router.put('/me', requireAuth, validate(schemas.userSettings), async (req, res, 
                     ended_at: s.endedAt,
                     duration_ms: s.durationMs
                 }));
-            
+
             if (legacySessions.length > 0) {
-                // Insert into the new table. We ignore errors here so that it doesn't break the main auth update
-                // if there are duplicate 'started_at' timestamps (handled by DB constraints)
-                supabase.from('study_sessions').insert(legacySessions).then();
+                try {
+                    const startedAts = [...new Set(legacySessions.map(s => s.started_at))];
+                    const { data: existingRows } = await supabase
+                        .from('study_sessions')
+                        .select('started_at')
+                        .eq('user_id', req.user.id)
+                        .in('started_at', startedAts);
+                    const existingSet = new Set((existingRows || []).map(r => r.started_at));
+                    const toInsert = legacySessions.filter(s => !existingSet.has(s.started_at));
+                    if (toInsert.length > 0) {
+                        await supabase.from('study_sessions').insert(toInsert);
+                    }
+                } catch (legacyErr) {
+                    console.warn('Legacy study session migration skipped:', legacyErr?.message || legacyErr);
+                }
             }
         }
 

@@ -171,7 +171,8 @@ export const schemas = {
         subject: z.string().trim().min(1, 'Subject is required').max(255),
         started_at: z.string().datetime(),
         ended_at: z.string().datetime(),
-        duration_ms: z.number().int().nonnegative()
+        duration_ms: z.number().int().nonnegative(),
+        client_id: z.string().trim().max(300).optional()
     }),
     studySessionUpdate: z.object({
         subject: z.string().trim().min(1).max(255).optional(),

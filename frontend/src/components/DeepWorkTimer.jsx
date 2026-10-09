@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, ChevronDown, ChevronUp, Clock, Edit3, Pause, Play, Plus, RotateCcw, Trash2, X } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronUp, Clock, Edit3, Play, Plus, RotateCcw, Square, Trash2, X } from 'lucide-react';
 import { apiFetch } from '../utils/apiClient.js';
 import { queueMutation } from '../db/db';
 import { getTagColor, loadTagColors, parseTags } from '../utils/tagColors.js';
@@ -7,6 +7,7 @@ import { nativeConfirm } from '../utils/confirm.js';
 
 const SESSIONS_KEY = 'snowball_study_timer_sessions';
 const ACTIVE_KEY = 'snowball_study_timer_active';
+const STOP_AT_KEY = 'snowball_study_timer_last_stop_at';
 const EXPANDED_KEY = 'snowball_study_timer_expanded';
 const CUSTOM_SUBJECTS_KEY = 'snowball_study_custom_subjects';
 const MAX_CONCURRENT_TIMERS = 3;
@@ -41,16 +42,30 @@ const mergeSessions = (localSessions = [], remoteSessions = []) => {
         .slice(-500);
 };
 
+const getLocalStopAt = () => {
+    const value = Number(localStorage.getItem(STOP_AT_KEY));
+    return Number.isFinite(value) ? value : 0;
+};
+
+const markLocalStop = () => {
+    try { localStorage.setItem(STOP_AT_KEY, String(Date.now())); } catch (_e) { /* ignore */ }
+};
+
 const chooseActiveSessions = (localActive, remoteActive, remoteHasState, remoteUpdatedAt) => {
     const local = normalizeActiveSessions(localActive);
     const remote = normalizeActiveSessions(remoteActive);
+    const remoteTime = remoteUpdatedAt ? new Date(remoteUpdatedAt).getTime() : 0;
+    // A local stop/reset that is NEWER than the remote snapshot means this tab's
+    // state is the freshest (the stop PUT hadn't landed when the snapshot was
+    // taken). Never let a stale remote list resurrect a stopped timer — that
+    // ghost session keeps counting paused time and duplicates the next stop.
+    if (remoteTime > 0 && getLocalStopAt() > remoteTime) return local;
     if (remoteHasState && remote.length === 0 && local.length === 0) return [];
     if (remoteHasState && remote.length > 0) return remote;
     if (remoteHasState && remote.length === 0 && local.length > 0) {
         // Remote explicitly has no active sessions (timers were stopped/paused on
         // another device).  Only keep local sessions that were started AFTER the
         // remote state was last updated — these are genuinely new local timers.
-        const remoteTime = remoteUpdatedAt ? new Date(remoteUpdatedAt).getTime() : 0;
         return local.filter((s) => new Date(s.startedAt).getTime() > remoteTime);
     }
     return local;
@@ -374,6 +389,8 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
     const syncTimerRef = useRef(null);
     const syncReqSeqRef = useRef(0);
     const lastSyncedStateRef = useRef('');
+    const pendingPushRef = useRef(null);
+    const [remoteApplySeq, setRemoteApplySeq] = useState(0);
     const [tagColors, setTagColors] = useState(() => loadTagColors());
     const [isExpanded, setIsExpanded] = useState(() => {
         const saved = localStorage.getItem(EXPANDED_KEY);
@@ -452,6 +469,20 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         window.dispatchEvent(new Event('snowball-study-sessions-changed'));
     }, [activeSessions]);
 
+    // Cross-tab: when another tab starts/stops a timer, adopt its state so a stop
+    // in tab A can't be re-pushed as still-running by tab B (ghost → duplicates).
+    useEffect(() => {
+        const handleStorage = (e) => {
+            if (e.key !== null && e.key !== ACTIVE_KEY && e.key !== STOP_AT_KEY) return;
+            const next = normalizeActiveSessions(safeJson(localStorage.getItem(ACTIVE_KEY), null));
+            setActiveSessions((prev) => (
+                JSON.stringify(prev) === JSON.stringify(next) ? prev : next
+            ));
+        };
+        window.addEventListener('storage', handleStorage);
+        return () => window.removeEventListener('storage', handleStorage);
+    }, []);
+
     useEffect(() => {
         let cancelled = false;
 
@@ -491,6 +522,9 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                 window.setTimeout(() => {
                     isApplyingRemoteRef.current = false;
                     hasLoadedRemoteRef.current = true;
+                    // Re-trigger the state-push effect: a stop made while this load
+                    // was in flight early-returned and would otherwise never be PUT.
+                    setRemoteApplySeq((v) => v + 1);
                 }, 0);
             }
         };
@@ -504,12 +538,22 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
 
         const nextState = buildTimerState([], activeSessions, customSubjects);
         const serialized = stableStringify({ activeSessions: nextState.activeSessions, customSubjects: nextState.customSubjects });
-        if (serialized === lastSyncedStateRef.current) return;
+        if (serialized === lastSyncedStateRef.current) {
+            // Current state already matches what the server has — any stale
+            // pending payload is obsolete and must not be flushed later.
+            pendingPushRef.current = null;
+            return;
+        }
 
         if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
         syncReqSeqRef.current += 1;
         const localSeq = syncReqSeqRef.current;
+        // Track the payload until it is either PUT successfully or queued — the
+        // unmount flush below picks it up if the component dies mid-debounce
+        // (e.g. mobile tab switch within 150 ms of pressing stop).
+        pendingPushRef.current = nextState;
         syncTimerRef.current = window.setTimeout(async () => {
+            pendingPushRef.current = null;
             try {
                 const response = await apiFetch('/api/auth/me', {
                     method: 'PUT',
@@ -527,7 +571,22 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         }, 150);
 
         return () => { if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current); };
-    }, [activeSessions, customSubjects]);
+    }, [activeSessions, customSubjects, remoteApplySeq]);
+
+    // On unmount, flush any still-pending timer state to the outbox so a stop
+    // made right before unmount is never silently dropped.
+    useEffect(() => () => {
+        if (syncTimerRef.current) {
+            window.clearTimeout(syncTimerRef.current);
+            syncTimerRef.current = null;
+        }
+        const pending = pendingPushRef.current;
+        if (pending) {
+            pendingPushRef.current = null;
+            queueMutation('timer_state_update', 'PUT', '/api/auth/me', { study_timer_state: pending })
+                .catch((err) => console.warn('Failed to queue pending timer state on unmount', err));
+        }
+    }, []);
 
     // Re-sync from server when the tab regains visibility (handles cross-device
     // deletes, pauses, etc. that happened while the tab was in the background).
@@ -554,7 +613,10 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                 if (remoteCustom.length > 0) {
                     setCustomSubjects((prev) => [...new Set([...prev, ...remoteCustom])]);
                 }
-                window.setTimeout(() => { isApplyingRemoteRef.current = false; }, 0);
+                window.setTimeout(() => {
+                    isApplyingRemoteRef.current = false;
+                    setRemoteApplySeq((v) => v + 1);
+                }, 0);
             } catch (err) {
                 console.warn('Failed to re-sync study timer on visibility change', err);
             }
@@ -662,25 +724,24 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
 
     const addCompletedSession = async (sessionData) => {
         setSessions((prev) => mergeSessions(prev, [sessionData]));
+        // client_id makes the create idempotent: outbox replays and lost-response
+        // retries upsert instead of inserting a duplicate row.
+        const payload = {
+            client_id: sessionData.id,
+            subject: sessionData.subject,
+            started_at: sessionData.startedAt,
+            ended_at: sessionData.endedAt,
+            duration_ms: sessionData.durationMs
+        };
         try {
             const res = await apiFetch('/api/timer/sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    subject: sessionData.subject,
-                    started_at: sessionData.startedAt,
-                    ended_at: sessionData.endedAt,
-                    duration_ms: sessionData.durationMs
-                })
+                body: JSON.stringify(payload)
             });
             if (!res.ok) throw new Error();
         } catch (error) {
-            await queueMutation('study_session_create', 'POST', '/api/timer/sessions', {
-                subject: sessionData.subject,
-                started_at: sessionData.startedAt,
-                ended_at: sessionData.endedAt,
-                duration_ms: sessionData.durationMs
-            });
+            await queueMutation('study_session_create', 'POST', '/api/timer/sessions', payload);
         }
     };
 
@@ -697,6 +758,9 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
     const stopTimer = async (activeId) => {
         const active = activeSessions.find((s) => s.id === activeId);
         if (!active) return;
+        // Record the stop before anything async — a subsequent remote snapshot
+        // must never win over this stop (see chooseActiveSessions).
+        markLocalStop();
         const endedAt = new Date();
         const startedAt = new Date(active.startedAt);
         const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
@@ -718,6 +782,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         const confirmed = await nativeConfirm('Reset today\'s study timer totals?');
         if (!confirmed) return;
 
+        markLocalStop();
         setActiveSessions([]);
         setSessions((prev) => prev.filter((session) => getSessionDurationForDay(session, dayStart, dayEnd) <= 0));
 
@@ -973,7 +1038,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                                                 }}
                                                 title="Stop this timer"
                                             >
-                                                <Pause size={16} fill="currentColor" />
+                                                <Square size={13} fill="currentColor" />
                                             </button>
                                         </div>
                                     </div>
