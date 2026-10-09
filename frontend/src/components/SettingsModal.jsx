@@ -118,6 +118,32 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
         const stored = typeof window !== 'undefined' ? window.localStorage.getItem('snowball_discord_presence_enabled') : null;
         return stored !== 'false';
     });
+    const [discordStatus, setDiscordStatus] = useState(null);
+
+    // Live Discord IPC status (desktop only) — drives the honest label + status line.
+    useEffect(() => {
+        if (!isTauriDesktop) {
+            return undefined;
+        }
+
+        let cancelled = false;
+        const refresh = async () => {
+            const debug = await discordPresenceService.getDebugState();
+            if (!cancelled) {
+                setDiscordStatus(debug);
+            }
+        };
+
+        void refresh();
+        const intervalId = setInterval(() => {
+            void refresh();
+        }, 2500);
+
+        return () => {
+            cancelled = true;
+            clearInterval(intervalId);
+        };
+    }, []);
 
     const scrollContainerRef = useRef(null);
     const isScrollingToRef = useRef(false);
@@ -1399,9 +1425,14 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
                                             const next = !discordRpcEnabled;
                                             setDiscordRpcEnabled(next);
                                             window.localStorage.setItem('snowball_discord_presence_enabled', String(next));
-                                            if (!next) {
+                                            if (next) {
+                                                void discordPresenceService.resendLast();
+                                            } else {
                                                 void discordPresenceService.clear();
                                             }
+                                            void discordPresenceService.getDebugState().then((debug) => {
+                                                setDiscordStatus(debug);
+                                            });
                                         }}
                                         style={{
                                             width: '100%',
@@ -1414,8 +1445,22 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
                                             cursor: 'pointer'
                                         }}
                                     >
-                                        {discordRpcEnabled ? 'Discord Presence Enabled' : 'Enable Discord Presence'}
+                                        {!discordRpcEnabled
+                                            ? 'Enable Discord Presence'
+                                            : discordStatus?.connected
+                                                ? 'Discord Presence Enabled'
+                                                : 'Discord Presence Enabled — connecting…'}
                                     </button>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.5rem', lineHeight: 1.5 }}>
+                                        Status: {!discordRpcEnabled
+                                            ? 'Off'
+                                            : discordStatus?.connected
+                                                ? 'Connected to Discord'
+                                                : `Waiting for Discord${discordStatus?.lastError ? ` (${discordStatus.lastError})` : ''}`}
+                                        {discordRpcEnabled && !discordStatus?.connected && (
+                                            <span> — start the Discord desktop app; Snowball retries automatically.</span>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 

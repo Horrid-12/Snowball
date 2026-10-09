@@ -9,6 +9,12 @@ const localApiUrl = isNativeAndroid ? 'http://10.0.2.2:3000' : 'http://localhost
 const productionApiUrl = 'https://snowball-ruddy.vercel.app';
 
 export const isTauriDesktop = isTauri;
+
+// Discord application client ID, baked into the bundle so the CI-built
+// desktop app works without a gitignored .env. VITE_DISCORD_CLIENT_ID
+// still overrides it when present.
+export const DISCORD_CLIENT_ID = '1487509274207981718';
+
 export const API_URL = import.meta.env.PROD
     ? productionApiUrl
     : localApiUrl;

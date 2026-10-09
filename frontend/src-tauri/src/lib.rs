@@ -176,65 +176,71 @@ mod discord_presence {
         }
 
         // Some Discord-compatible clients can get "stuck" on an older activity
-        // if we only overwrite in-place, so clear first and reconnect once on failure.
-        let _ = managed.client.clear_activity();
+        // if we only overwrite in-place, so clear first. If the pipe is stale
+        // (Discord restarted) or Discord is briefly unavailable, reconnect with
+        // a short backoff and retry — a few attempts total.
+        let mut last_error: Option<String> = None;
+        let max_attempts = 3u32;
 
-        match managed.client.set_activity(activity.clone()) {
-            Ok(_) => {
-                update_debug(state, |debug| {
-                    debug.connected = true;
-                    debug.last_event = String::from("set_activity_ok");
-                    debug.last_error.clear();
-                });
-                Ok(())
-            }
-            Err(_first_err) => {
-                update_debug(state, |debug| {
-                    debug.last_event = String::from("set_activity_retry");
-                });
+        for attempt in 0..max_attempts {
+            if attempt > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(250 * attempt as u64));
 
-                let replacement = match connect_client(client_id) {
-                    Ok(client) => client,
+                match connect_client(client_id) {
+                    Ok(client) => {
+                        // Keep the original session start so the elapsed timer
+                        // doesn't reset when we reconnect mid-session.
+                        let preserved_started_at = managed.started_at;
+                        *managed = client;
+                        managed.started_at = preserved_started_at;
+                        update_debug(state, |debug| {
+                            debug.last_event = String::from("reconnect_attempt");
+                        });
+                    }
                     Err(error) => {
                         update_debug(state, |debug| {
                             debug.connected = false;
                             debug.last_event = String::from("reconnect_failed");
                             debug.last_error = error.clone();
                         });
-                        return Err(error);
-                    }
-                };
-                *managed = replacement;
-
-                managed
-                    .client
-                    .clear_activity()
-                    .ok();
-
-                match managed
-                    .client
-                    .set_activity(activity)
-                {
-                    Ok(_) => {
-                        update_debug(state, |debug| {
-                            debug.connected = true;
-                            debug.last_event = String::from("set_activity_retry_ok");
-                            debug.last_error.clear();
-                        });
-                        Ok(())
-                    }
-                    Err(err) => {
-                        let error = err.to_string();
-                        update_debug(state, |debug| {
-                            debug.connected = false;
-                            debug.last_event = String::from("set_activity_failed");
-                            debug.last_error = error.clone();
-                        });
-                        Err(error)
+                        last_error = Some(error);
+                        continue;
                     }
                 }
             }
+
+            let _ = managed.client.clear_activity();
+
+            match managed.client.set_activity(activity.clone()) {
+                Ok(_) => {
+                    update_debug(state, |debug| {
+                        debug.connected = true;
+                        debug.last_event = if attempt == 0 {
+                            String::from("set_activity_ok")
+                        } else {
+                            String::from("set_activity_retry_ok")
+                        };
+                        debug.last_error.clear();
+                    });
+                    return Ok(());
+                }
+                Err(err) => {
+                    let error = err.to_string();
+                    update_debug(state, |debug| {
+                        debug.connected = false;
+                        debug.last_event = if attempt == 0 {
+                            String::from("set_activity_retry")
+                        } else {
+                            String::from("set_activity_failed")
+                        };
+                        debug.last_error = error.clone();
+                    });
+                    last_error = Some(error);
+                }
+            }
         }
+
+        Err(last_error.unwrap_or_else(|| String::from("failed to set Discord activity")))
     }
 
     pub fn clear_presence(state: &DiscordPresenceState) -> Result<(), String> {
