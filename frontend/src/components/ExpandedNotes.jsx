@@ -51,6 +51,15 @@ const DEFAULT_UNLOCK_FORM = {
 
 const getNoteLockInfo = (note) => parseLockedNoteContent(note?.content);
 
+// Tags that carry content of their own even when they have no text.
+const CONTENT_TAGS_RE = /<(img|video|audio|iframe|hr|li|h[1-6]|blockquote|pre|code|table|input|td|th)\b/i;
+
+const isEffectivelyEmptyHtml = (html) => {
+    if (!html) return true;
+    if (CONTENT_TAGS_RE.test(html)) return false;
+    return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim().length === 0;
+};
+
 const ExpandedNotes = ({ onClose, initialContent }) => {
     const isOnline = useOnline();
     const [notes, setNotes] = useState([]);
@@ -74,6 +83,7 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
     const [loadingLockedNote, setLoadingLockedNote] = useState(false);
 
     const notesRef = useRef(notes);
+    const lastAppliedNoteIdRef = useRef(null);
 
     // Keep notesRef in sync with notes state for non-rendering logic
     useEffect(() => {
@@ -150,10 +160,12 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
     const getActiveNote = () => notesRef.current.find((note) => note.id === activeNoteId) || null;
     const getUnlockedHtml = (noteId) => noteAccess[noteId]?.decryptedHtml ?? null;
 
-    const persistNoteRecord = async (noteRecord, { queueOnly = false, synced = false } = {}) => {
+    const persistNoteRecord = async (noteRecord, { queueOnly = false } = {}) => {
         const normalizedRecord = {
             ...noteRecord,
-            syncedAt: synced ? Date.now() : noteRecord.syncedAt ?? null
+            // Never pre-mark as synced — syncedAt is only set after the server
+            // actually accepts the write (or the mutation is safely queued).
+            syncedAt: noteRecord.syncedAt ?? null
         };
 
         await db.notes.put(normalizedRecord);
@@ -164,29 +176,43 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
             .concat(normalizedRecord)
             .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)));
 
+        const mutationBody = {
+            note_id: normalizedRecord.id,
+            title: normalizedRecord.title,
+            content: normalizedRecord.content
+        };
+
         if (queueOnly || !isOnline) {
-            await queueMutation('notes_update', 'PUT', `${API_URL}/api/notes`, {
-                note_id: normalizedRecord.id,
-                title: normalizedRecord.title,
-                content: normalizedRecord.content
-            });
+            await queueMutation('notes_update', 'PUT', `${API_URL}/api/notes`, mutationBody);
             setSyncStatus('queued');
             return normalizedRecord;
         }
 
-        const res = await apiFetch('/api/notes', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                note_id: normalizedRecord.id,
-                title: normalizedRecord.title,
-                content: normalizedRecord.content
-            })
-        });
+        let res;
+        try {
+            res = await apiFetch('/api/notes', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(mutationBody)
+            });
+        } catch (networkError) {
+            // Network failure — recoverable, queue for replay
+            await queueMutation('notes_update', 'PUT', `${API_URL}/api/notes`, mutationBody);
+            const error = new Error(`Network sync failed: ${networkError?.message || networkError}`);
+            error.queued = true;
+            throw error;
+        }
 
         if (!res.ok) {
             const error = new Error(`Sync failed: ${res.status}`);
             error.status = res.status;
+            if (res.status >= 500) {
+                // Server error — recoverable, queue for replay
+                await queueMutation('notes_update', 'PUT', `${API_URL}/api/notes`, mutationBody);
+                error.queued = true;
+            }
+            // 4xx (validation, rate limit, ...) is not fixable by replaying —
+            // don't queue (SyncService would discard it) and leave the note unsynced.
             throw error;
         }
 
@@ -230,18 +256,23 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
             }
         }
 
-        const localNotes = await db.notes.toArray();
-        for (const localNote of localNotes) {
-            const localId = String(localNote.id);
-            if (
-                localNote.syncedAt
-                && !cloudIds.has(localId)
-                && !pendingUpdateIds.has(localId)
-                && !deletedIds.has(localId)
-            ) {
-                await db.notes.delete(localId);
-                await db.noteSecrets.delete(localId);
-                hasMerged = true;
+        // Never delete local notes based on an empty cloud response — a 200 with []
+        // is indistinguishable from a transient auth/RLS issue and would wipe
+        // local-only notes (including ones whose first save never landed).
+        if (cloudNotes.length > 0) {
+            const localNotes = await db.notes.toArray();
+            for (const localNote of localNotes) {
+                const localId = String(localNote.id);
+                if (
+                    localNote.syncedAt
+                    && !cloudIds.has(localId)
+                    && !pendingUpdateIds.has(localId)
+                    && !deletedIds.has(localId)
+                ) {
+                    await db.notes.delete(localId);
+                    await db.noteSecrets.delete(localId);
+                    hasMerged = true;
+                }
             }
         }
 
@@ -424,16 +455,32 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
     useEffect(() => {
         if (!editor) return;
 
+        // Skip background refreshes (cloud merge, persist, title update) while the
+        // user has unsaved edits on this same note — re-applying stored content
+        // would silently revert their edits and clear the dirty flag.
+        if (hasUnsavedChanges && lastAppliedNoteIdRef.current === activeNoteId) {
+            return;
+        }
+        lastAppliedNoteIdRef.current = activeNoteId;
+
         const activeNote = notes.find(n => n.id === activeNoteId);
         applyActiveNoteToEditor(activeNote).catch((error) => {
             console.error('Failed to render active note', error);
         });
-    }, [activeNoteId, editor, notes, noteAccess]);
+    }, [activeNoteId, editor, notes, noteAccess, hasUnsavedChanges]);
 
     const handleSave = async (html) => {
         const currentActiveId = localStorage.getItem('snowball_active_note_id') || activeNoteId;
         if (!currentActiveId) return;
-        
+
+        // Never upload empty content from the editor — an emptied editor can be the
+        // result of an auto-clear (missing/locked note), not user intent. Explicit
+        // clearing lives behind the widget's confirmed Clear action.
+        if (isEffectivelyEmptyHtml(html)) {
+            setSyncStatus('empty');
+            return;
+        }
+
         setSyncStatus('saving');
         const updatedAt = Date.now();
         const activeNote = notes.find(n => n.id === currentActiveId);
@@ -455,7 +502,7 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
                 title: activeNote?.title || 'Untitled',
                 content: contentToPersist,
                 updatedAt
-            }, { synced: isOnline });
+            });
 
             if (lockInfo && noteAccess[currentActiveId]?.password) {
                 setNoteAccess((prev) => ({
@@ -479,7 +526,9 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
             } catch (ignore) {}
         } catch (err) {
             console.error("Cloud sync failed for note", currentActiveId, err);
-            if (err.status === 413) {
+            if (err.queued) {
+                setSyncStatus('queued');
+            } else if (err.status === 413) {
                 setSyncStatus('too_large');
             } else if (!isOnline) {
                 setSyncStatus('queued');
@@ -529,7 +578,7 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
                 ...activeNote,
                 content: lockedContent,
                 updatedAt: Date.now()
-            }, { synced: isOnline });
+            });
 
             setNoteAccess((prev) => ({
                 ...prev,
@@ -679,15 +728,16 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
                 throw new Error('Enter the note password to remove the lock.');
             }
 
-            await unlockNoteWithPassword(activeNote.content, unlockForm.removePassword);
+            // Use the HTML returned by the unlock itself — never fall back to the
+            // editor, which may be cleared if this note was never unlocked in-session.
+            const unlockedHtml = await unlockNoteWithPassword(activeNote.content, unlockForm.removePassword);
             setSyncStatus('saving');
-            const unlockedHtml = getUnlockedHtml(activeNote.id);
             await db.noteSecrets.delete(activeNote.id);
             await persistNoteRecord({
                 ...activeNote,
-                content: unlockedHtml ?? editor.getHTML(),
+                content: unlockedHtml ?? getUnlockedHtml(activeNote.id) ?? editor.getHTML(),
                 updatedAt: Date.now()
-            }, { synced: isOnline });
+            });
 
             setNoteAccess((prev) => {
                 const next = { ...prev };
@@ -1391,6 +1441,7 @@ const EditorToolbar = React.memo(({
                 {syncStatus === 'queued' && <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', opacity: 0.8 }}>Queued for manual sync</span>}
                 {syncStatus === 'error' && <span style={{ fontSize: '0.7rem', color: '#ff4d4d' }}>Sync error</span>}
                 {syncStatus === 'too_large' && <span style={{ fontSize: '0.7rem', color: '#ff9f43' }}>Too large to sync</span>}
+                {syncStatus === 'empty' && <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', opacity: 0.8 }}>Nothing to save</span>}
 
                 <ToolbarButton
                     icon={<Save size={18} />}

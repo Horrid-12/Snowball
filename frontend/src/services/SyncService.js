@@ -1,4 +1,4 @@
-import { clearNoteDeletionMark, db } from '../db/db';
+import { clearNoteDeletionMark, db, setOutboxFlushHandler } from '../db/db';
 import { hasPersistedSession, apiFetch } from '../utils/apiClient';
 
 let Network = null;
@@ -27,6 +27,7 @@ class SyncService {
     constructor() {
         this.isSyncing = false;
         this.syncDebounceTimer = null;
+        setOutboxFlushHandler(() => this.debouncedSync(500));
         this.init();
     }
 

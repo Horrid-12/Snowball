@@ -37,15 +37,30 @@ db.version(5).stores({
     calendarEvents: 'id, event_date'
 });
 
+// Registered by SyncService so every queued mutation flushes soon after
+// being written instead of waiting for the next online/reload/login event.
+let outboxFlushHandler = null;
+export const setOutboxFlushHandler = (handler) => {
+    outboxFlushHandler = handler;
+};
+
 // Helper to add mutation to outbox
 export const queueMutation = async (type, method, url, body) => {
-    return await db.outbox.add({
+    const id = await db.outbox.add({
         type,
         method,
         url,
         body,
         timestamp: Date.now()
     });
+    if (outboxFlushHandler) {
+        try {
+            outboxFlushHandler();
+        } catch (err) {
+            console.warn('Outbox flush failed', err);
+        }
+    }
+    return id;
 };
 
 export const markNoteDeleted = async (id) => {

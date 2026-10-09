@@ -130,12 +130,17 @@ const Notes = () => {
                             }
                         }
 
-                        const localNotes = await db.notes.toArray();
-                        for (const localNote of localNotes) {
-                            const localId = String(localNote.id);
-                            if (localNote.syncedAt && !cloudIds.has(localId) && !pendingUpdateIds.has(localId) && !deletedIds.has(localId)) {
-                                await db.notes.delete(localId);
-                                await db.noteSecrets.delete(localId);
+                        // Never delete local notes based on an empty cloud response —
+                        // a 200 with [] is indistinguishable from a transient auth/RLS
+                        // issue and would wipe local-only notes.
+                        if (cloudNotes.length > 0) {
+                            const localNotes = await db.notes.toArray();
+                            for (const localNote of localNotes) {
+                                const localId = String(localNote.id);
+                                if (localNote.syncedAt && !cloudIds.has(localId) && !pendingUpdateIds.has(localId) && !deletedIds.has(localId)) {
+                                    await db.notes.delete(localId);
+                                    await db.noteSecrets.delete(localId);
+                                }
                             }
                         }
 
@@ -179,9 +184,15 @@ const Notes = () => {
         setHasLocalEdits(true);
     };
 
-    const saveNote = async (text) => {
+    const saveNote = async (text, { allowEmpty = false } = {}) => {
         if (!activeNoteId) {
             setShowExpanded(true);
+            return;
+        }
+        // Empty saves are only allowed from the explicit Clear action — an empty
+        // payload from any other path would wipe existing note content.
+        const isBlank = !(text || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim();
+        if (isBlank && !allowEmpty) {
             return;
         }
         setSaving(true);
@@ -192,27 +203,43 @@ const Notes = () => {
             setLastSaved(new Date());
             setHasLocalEdits(false);
 
+            const payload = {
+                note_id: activeNoteId,
+                title: activeNoteTitle,
+                content: text
+            };
+
             // Cloud sync
             if (!isOnline) {
-                await queueMutation('notes_update', 'PUT', `${API_URL}/api/notes`, { 
-                    note_id: activeNoteId,
-                    title: activeNoteTitle,
-                    content: text 
-                });
+                await queueMutation('notes_update', 'PUT', `${API_URL}/api/notes`, payload);
                 setSaving(false);
                 return;
             }
 
-            const res = await apiFetch('/api/notes', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    note_id: activeNoteId,
-                    title: activeNoteTitle,
-                    content: text 
-                })
-            });
-            if (res.ok) setLastSaved(new Date());
+            let res;
+            try {
+                res = await apiFetch('/api/notes', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch (networkErr) {
+                // Network failure — recoverable, queue for retry
+                await queueMutation('notes_update', 'PUT', `${API_URL}/api/notes`, payload);
+                console.warn('Note save offline, queued for retry', networkErr);
+                setSaving(false);
+                return;
+            }
+            if (res.ok) {
+                await db.notes.update(activeNoteId, { syncedAt: Date.now() });
+                setLastSaved(new Date());
+            } else if (res.status >= 500) {
+                await queueMutation('notes_update', 'PUT', `${API_URL}/api/notes`, payload);
+                console.error(`Note save failed (HTTP ${res.status}), queued for retry`);
+            } else {
+                // 4xx is not recoverable by replaying — leave unsynced, don't pollute the outbox
+                console.error(`Note save rejected (HTTP ${res.status})`);
+            }
         } catch (err) {
             console.error("Failed to save note", err);
         } finally {
@@ -226,11 +253,13 @@ const Notes = () => {
             setContent('');
             setRawContent('');
             setHasLocalEdits(true);
-            saveNote('');
+            saveNote('', { allowEmpty: true });
         }
     };
 
-    const showRichPreview = !hasLocalEdits && hasRichNoteContent(rawContent);
+    const isRichNote = hasRichNoteContent(rawContent);
+    const widgetReadOnly = activeNoteLocked || isRichNote;
+    const showRichPreview = isRichNote;
 
     return (
         <div style={{
@@ -420,6 +449,7 @@ const Notes = () => {
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                     <button
                                         onClick={() => saveNote(content)}
+                                        disabled={widgetReadOnly}
                                         style={{
                                             display: 'flex',
                                             alignItems: 'center',
@@ -430,9 +460,10 @@ const Notes = () => {
                                             border: '1px solid var(--border-color)',
                                             padding: '0.2rem 0.6rem',
                                             borderRadius: '4px',
-                                            cursor: 'pointer'
+                                            cursor: widgetReadOnly ? 'not-allowed' : 'pointer',
+                                            opacity: widgetReadOnly ? 0.5 : 1
                                         }}
-                                        title={activeNoteId ? "Manual Save" : "Open full editor"}
+                                        title={!activeNoteId ? "Open full editor" : widgetReadOnly ? "Rich or locked notes are edited in the full editor" : "Manual Save"}
                                     >
                                         <Save size={12} /> Save
                                     </button>
@@ -445,13 +476,13 @@ const Notes = () => {
                                         gap: '0.25rem',
                                         fontSize: '0.7rem',
                                         color: 'var(--danger-color)',
-                                        opacity: activeNoteId && content ? 0.8 : 0.3,
-                                        cursor: activeNoteId && content ? 'pointer' : 'default',
+                                        opacity: activeNoteId && content && !widgetReadOnly ? 0.8 : 0.3,
+                                        cursor: activeNoteId && content && !widgetReadOnly ? 'pointer' : 'default',
                                         background: 'none',
                                         border: 'none',
                                         padding: '0.2rem'
                                     }}
-                                    disabled={!activeNoteId || !content}
+                                    disabled={!activeNoteId || !content || widgetReadOnly}
                                 >
                                     <Trash2 size={12} /> Clear
                                 </button>
