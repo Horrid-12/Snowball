@@ -149,6 +149,14 @@ class SyncService {
                         // Payload too large - stop syncing and keep in outbox for user to reduce size
                         console.error('Payload too large, sync stopped.');
                         break;
+                    } else if (response.status === 429) {
+                        // Rate limited — keep the entry (never discard) and back off.
+                        // Discarding here would destroy queued data during bulk replays
+                        // (the backend allows 100 req/15 min per path).
+                        const retryAfterSeconds = Number(response.headers.get('Retry-After')) || 60;
+                        console.warn(`Rate limited during sync, retrying in ${retryAfterSeconds}s`);
+                        this.debouncedSync(retryAfterSeconds * 1000);
+                        break;
                     } else if (response.status >= 500) {
                         // Server error - try again later
                         console.error('Server error during sync, will retry');

@@ -52,6 +52,18 @@ router.post('/sessions', requireAuth, validate(schemas.studySession), async (req
             .select()
             .single();
 
+        // The client_id column only exists after study_sessions_idempotency_migration.sql
+        // runs. Until then the insert fails with a missing-column error — retry without
+        // client_id so session creates keep working (idempotency degrades gracefully).
+        if (error && (error.code === 'PGRST204' || error.code === '42703' || /client_id/i.test(error.message || ''))) {
+            delete row.client_id;
+            ({ data, error } = await supabase
+                .from('study_sessions')
+                .insert([row])
+                .select()
+                .single());
+        }
+
         if (error && error.code === '23505') {
             // Unique violation — this session already exists. Treat as success so
             // outbox replays / lost-response retries don't surface as failures.

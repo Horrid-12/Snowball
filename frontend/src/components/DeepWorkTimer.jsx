@@ -495,12 +495,16 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                 const remoteActive = remoteState.activeSessions || (remoteState.activeSession ? [remoteState.activeSession] : []);
                 const remoteHasState = profile?.study_timer_state != null;
 
-                let remoteSessions = [];
+                let remoteSessions = null;
                 try {
                     const sessionsRes = await apiFetch('/api/timer/sessions');
                     if (sessionsRes.ok) {
                         const sessionsData = await sessionsRes.json();
                         remoteSessions = normalizeSessions(sessionsData);
+                    } else {
+                        // Keep local sessions when the fetch fails — replacing with
+                        // [] would wipe locally recorded history.
+                        console.warn('Failed to load remote sessions: HTTP', sessionsRes.status);
                     }
                 } catch (err) {
                     console.warn('Failed to load remote sessions', err);
@@ -509,7 +513,9 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                 if (cancelled) return;
 
                 isApplyingRemoteRef.current = true;
-                setSessions(remoteSessions.length > 0 ? remoteSessions : []);
+                if (remoteSessions) {
+                    setSessions(remoteSessions);
+                }
                 setActiveSessions((currentActive) => chooseActiveSessions(currentActive, remoteActive, remoteHasState, remoteState.updatedAt));
                 // Merge remote custom subjects with local ones so they sync across devices
                 const remoteCustom = Array.isArray(remoteState.customSubjects) ? remoteState.customSubjects : [];
