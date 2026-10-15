@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Archive, X, CheckSquare, Activity, Calendar, Award, Clock } from 'lucide-react';
 import { useAppContext } from '../context/AppContext.jsx';
 import { calculateProductivityScore, getTodayDateString } from '../utils/productivityScore.js';
@@ -22,6 +22,14 @@ const HistoryVault = ({ onClose, tasks: currentTasks = [] }) => {
     const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
     const today = getTodayDateString();
 
+    // The API returns sessions oldest-first (DeepWorkTimer.jsx depends on that),
+    // so the vault sorts a copy newest-first for display.
+    const sortedTimerSessions = useMemo(() => (
+        [...timerSessions].sort((a, b) => (
+            new Date(b.startedAt || b.started_at || 0) - new Date(a.startedAt || a.started_at || 0)
+        ))
+    ), [timerSessions]);
+
     const formatDuration = (durationMs) => {
         const totalMinutes = Math.floor(durationMs / 60000);
         const hours = Math.floor(totalMinutes / 60);
@@ -43,6 +51,9 @@ const HistoryVault = ({ onClose, tasks: currentTasks = [] }) => {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
+    // Fetch once on mount. This used to live in an effect keyed on `onClose`,
+    // but App passes an inline arrow, so every App re-render produced a new
+    // function identity, re-ran the fetch and flashed "Loading archive...".
     useEffect(() => {
         const fetchHistory = async () => {
             setLoading(true);
@@ -65,7 +76,10 @@ const HistoryVault = ({ onClose, tasks: currentTasks = [] }) => {
             }
         };
         fetchHistory();
+        // Mount-only: intentionally no dependencies (see note above).
+    }, []);
 
+    useEffect(() => {
         const handleEscape = (e) => {
             if (e.key === 'Escape') onClose();
         };
@@ -308,7 +322,7 @@ const HistoryVault = ({ onClose, tasks: currentTasks = [] }) => {
                                 ));
                             })()}
 
-                            {activeTab === 'timer' && timerSessions.map(session => {
+                            {activeTab === 'timer' && sortedTimerSessions.map(session => {
                                 const start = new Date(session.startedAt || session.started_at);
                                 const dateStr = start.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
                                 const timeStr = start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
