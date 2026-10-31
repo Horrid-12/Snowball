@@ -3,7 +3,9 @@ import { supabase as serviceDb } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireUUID, requireString, validate, schemas } from '../middleware/validate.js';
 
-const getDb = (req) => req?.anonDb || serviceDb;
+// Friends tables (friendships, friend_presence, friend_messages) are backend-only
+// tables accessed exclusively via serviceDb with explicit req.user.id scoping.
+const getDb = () => serviceDb;
 
 const router = express.Router();
 

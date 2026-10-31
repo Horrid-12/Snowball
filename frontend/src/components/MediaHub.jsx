@@ -55,15 +55,16 @@ const MediaHub = ({ onReady }) => {
     const refreshSpotifyStatus = useCallback(async () => {
         try {
             const response = await apiFetch('/api/spotify/status');
-            if (!response.ok) return false;
+            if (!response.ok) return null;
             const data = await response.json();
-            setSpotifyConnected(Boolean(data.connected));
+            const isConn = Boolean(data.connected);
+            setSpotifyConnected(isConn);
             setSpotifyCredentialSource(data.credentialSource || 'shared');
             setSpotifyStatusError('');
-            return Boolean(data.connected);
+            return isConn;
         } catch (_error) {
             setSpotifyStatusError('Could not check Spotify connection status.');
-            return false;
+            return null;
         }
     }, []);
 
@@ -134,15 +135,13 @@ const MediaHub = ({ onReady }) => {
 
             } else if (response.status === 401) {
                 const stillConnected = await refreshSpotifyStatus();
-                if (!stillConnected) {
+                if (stillConnected === false) {
                     setSpotifyConnected(false);
                     setSpotifyData(null);
                 }
                 setIsRateLimited(false);
                 // No need to show persistent error for 401, it just means not connected
             } else {
-                const stillConnected = await refreshSpotifyStatus();
-                setSpotifyConnected(stillConnected);
                 setIsRateLimited(false);
                 if (response.status !== 401) {
                     const errData = await response.json().catch(() => ({}));
@@ -163,50 +162,14 @@ const MediaHub = ({ onReady }) => {
         }
     }, [hasAttemptedPlaylists, playlists.length, refreshSpotifyStatus]);
 
+    // Mount effect: check connection status once and process Spotify redirect callbacks
     useEffect(() => {
-        let appStateListener = null;
-
-        const startPolling = () => {
-            if (pollInterval.current) {
-                clearInterval(pollInterval.current);
-            }
-            fetchSpotify();
-            if (!isSyncPaused && !document.hidden) {
-                pollInterval.current = setInterval(fetchSpotify, retryInterval);
-            }
-        };
-
-        const handleVisibilityChange = () => {
-            if (document.hidden) {
-                if (pollInterval.current) {
-                    clearInterval(pollInterval.current);
-                    pollInterval.current = null;
-                }
-            } else if (!isSyncPaused) {
-                startPolling();
-            }
-        };
-
         refreshSpotifyStatus()
-            .then(() => fetchSpotify())
             .catch(() => {})
             .finally(() => {
                 onReady?.();
-                if (!isSyncPaused && !document.hidden) {
-                    pollInterval.current = setInterval(fetchSpotify, retryInterval);
-                }
             });
 
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        window.addEventListener('focus', startPolling);
-        CapacitorApp.addListener('appStateChange', ({ isActive }) => {
-            if (isActive) {
-                startPolling();
-            }
-        }).then(listener => {
-            appStateListener = listener;
-        }).catch(() => {});
- 
         // Check for URL params from Spotify redirect
         const params = new URLSearchParams(window.location.search);
         const spotifyStatus = params.get('spotify');
@@ -214,7 +177,7 @@ const MediaHub = ({ onReady }) => {
 
         if (spotifyStatus === 'connected') {
             setMessage({ type: 'success', text: 'Spotify connected successfully!' });
-            // Clean URL
+            refreshSpotifyStatus();
             window.history.replaceState({}, document.title, window.location.pathname);
             pollTimeouts.current.push(setTimeout(() => setMessage(null), 5000));
         } else if (spotifyStatus === 'error') {
@@ -225,14 +188,75 @@ const MediaHub = ({ onReady }) => {
 
         return () => {
             clearTimeouts();
-            if (pollInterval.current) clearInterval(pollInterval.current);
+        };
+    }, [refreshSpotifyStatus, onReady]);
+
+    // Polling effect: ONLY active when Spotify is actually connected
+    useEffect(() => {
+        if (!spotifyConnected || isSyncPaused) {
+            if (pollInterval.current) {
+                clearInterval(pollInterval.current);
+                pollInterval.current = null;
+            }
+            return;
+        }
+
+        const poll = () => {
+            if (!document.hidden) {
+                fetchSpotify();
+            }
+        };
+
+        // Poll immediately when becoming connected / active
+        poll();
+        pollInterval.current = setInterval(poll, retryInterval);
+
+        const handleVisibilityChange = () => {
+            if (document.hidden) {
+                if (pollInterval.current) {
+                    clearInterval(pollInterval.current);
+                    pollInterval.current = null;
+                }
+            } else {
+                poll();
+                if (!pollInterval.current) {
+                    pollInterval.current = setInterval(poll, retryInterval);
+                }
+            }
+        };
+
+        const handleFocus = () => {
+            if (!document.hidden) {
+                poll();
+            }
+        };
+
+        let appStateListener = null;
+        if (Capacitor.isNativePlatform()) {
+            CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+                if (isActive) {
+                    poll();
+                }
+            }).then(listener => {
+                appStateListener = listener;
+            }).catch(() => {});
+        }
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleFocus);
+
+        return () => {
+            if (pollInterval.current) {
+                clearInterval(pollInterval.current);
+                pollInterval.current = null;
+            }
             document.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.removeEventListener('focus', startPolling);
+            window.removeEventListener('focus', handleFocus);
             if (appStateListener) {
                 appStateListener.remove();
             }
         };
-    }, [retryInterval, isSyncPaused, fetchSpotify]);
+    }, [spotifyConnected, isSyncPaused, retryInterval, fetchSpotify]);
 
     // Lyrics Fetching with cache
     const lyricsCacheRef = useRef(new Map());

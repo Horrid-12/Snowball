@@ -527,9 +527,15 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
 
     const fetchActivity = async () => {
         try {
-            const cached = await db.heatmap.get('history');
-            if (cached) {
-                setActivity(cached.data);
+            const [cachedHistory, cachedArchived, cachedHabitLogs] = await Promise.all([
+                db.heatmap.get('history'),
+                db.heatmap.get('archivedTasks'),
+                db.heatmap.get('habitLogs')
+            ]);
+            if (cachedHistory) setActivity(cachedHistory.data);
+            if (cachedArchived) setArchivedTasks(Array.isArray(cachedArchived.data) ? cachedArchived.data : []);
+            if (cachedHabitLogs) setHabitLogs(Array.isArray(cachedHabitLogs.data) ? cachedHabitLogs.data : []);
+            if (cachedHistory || cachedArchived || cachedHabitLogs) {
                 setLoading(false);
             }
 
@@ -538,45 +544,41 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
                 return;
             }
 
-            const [activityResponse, historyResponse, habitHistoryResponse] = await Promise.all([
-                apiFetch('/api/activity/heatmap'),
-                apiFetch('/api/tasks/history'),
-                apiFetch('/api/habits/history')
+            await Promise.allSettled([
+                apiFetch('/api/activity/heatmap').then(async (res) => {
+                    if (res.ok) {
+                        const data = await res.json();
+                        const map = data.reduce((acc, curr) => {
+                            acc[curr.date] = curr.totalScore;
+                            return acc;
+                        }, {});
+                        setActivity(map);
+                        await db.heatmap.put({ id: 'history', data: map });
+                    }
+                }).catch(() => {}),
+
+                apiFetch('/api/tasks/history').then(async (res) => {
+                    if (res.ok) {
+                        const historyData = await res.json();
+                        const list = Array.isArray(historyData) ? historyData : [];
+                        setArchivedTasks(list);
+                        await db.heatmap.put({ id: 'archivedTasks', data: list });
+                    }
+                }).catch(() => {}),
+
+                apiFetch('/api/habits/history').then(async (res) => {
+                    if (res.ok) {
+                        const hLogs = await res.json();
+                        const list = Array.isArray(hLogs) ? hLogs : [];
+                        setHabitLogs(list);
+                        await db.heatmap.put({ id: 'habitLogs', data: list });
+                    }
+                }).catch(() => {})
             ]);
-
-            // If all responses are auth failures (401/403), retry after a delay
-            // This handles Android Capacitor where auth may not be ready on first mount
-            const allFailed = [activityResponse, historyResponse, habitHistoryResponse]
-                .every(r => r.status === 401 || r.status === 403);
-            if (allFailed) {
-                if (fetchRetryRef.current) clearTimeout(fetchRetryRef.current);
-                fetchRetryRef.current = setTimeout(() => fetchActivity(), 3000);
-                return;
-            }
-
-            if (activityResponse.ok) {
-                const data = await activityResponse.json();
-                const map = data.reduce((acc, curr) => {
-                    acc[curr.date] = curr.totalScore;
-                    return acc;
-                }, {});
-                setActivity(map);
-                await db.heatmap.put({ id: 'history', data: map });
-            }
-
-            if (historyResponse.ok) {
-                const historyData = await historyResponse.json();
-                setArchivedTasks(Array.isArray(historyData) ? historyData : []);
-            }
-            if (habitHistoryResponse?.ok) {
-                const hLogs = await habitHistoryResponse.json();
-                setHabitLogs(Array.isArray(hLogs) ? hLogs : []);
-            }
         } catch (err) {
             console.error('Failed to fetch activity', err);
-            // Retry on network errors (common during Android cold start)
             if (fetchRetryRef.current) clearTimeout(fetchRetryRef.current);
-            fetchRetryRef.current = setTimeout(() => fetchActivity(), 3000);
+            fetchRetryRef.current = setTimeout(() => fetchActivity(), 5000);
         } finally {
             setLoading(false);
         }

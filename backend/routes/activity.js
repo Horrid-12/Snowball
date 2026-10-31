@@ -2,7 +2,9 @@ import express from 'express';
 import { supabase as serviceDb } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 
-const getDb = (req) => req?.anonDb || serviceDb;
+// daily_productivity and activity_logs are backend-only tables without anon/authenticated RLS policies.
+// All queries in this router are explicitly scoped to req.user.id.
+const getDb = () => serviceDb;
 import { getTodayWithOffset, getPastDateWithOffset } from '../utils.js';
 import { backfillDailyProductivity } from '../utils/productivityScore.js';
 
@@ -76,49 +78,54 @@ router.post('/backfill', async (req, res, next) => {
 // GET lifetime stats for XP calculation
 router.get('/stats', async (req, res, next) => {
     try {
-        // Total tasks completed (fully allocated)
-        const { data: tasks, error: tasksError } = await getDb(req)
+        const db = getDb(req);
+
+        const tasksPromise = db
             .from('tasks')
             .select('tasks_completed, tasks_allocated')
             .eq('user_id', req.user.id);
 
+        const habitsPromise = (async () => {
+            const { data: userHabits, error: fetchHabitsError } = await db
+                .from('habits')
+                .select('id')
+                .eq('user_id', req.user.id);
+
+            if (fetchHabitsError) throw fetchHabitsError;
+
+            const habitIds = (userHabits || []).map(h => h.id);
+            if (habitIds.length === 0) return 0;
+
+            const { count, error: habitsError } = await db
+                .from('habit_logs')
+                .select('id', { count: 'exact', head: true })
+                .in('habit_id', habitIds);
+
+            if (habitsError) throw habitsError;
+            return count || 0;
+        })();
+
+        const logsPromise = db
+            .from('activity_logs')
+            .select('score')
+            .eq('user_id', req.user.id);
+
+        const [
+            { data: tasks, error: tasksError },
+            completedHabits,
+            { data: logs, error: logsError }
+        ] = await Promise.all([tasksPromise, habitsPromise, logsPromise]);
+
         if (tasksError) throw tasksError;
+        if (logsError) throw logsError;
+
         const completedTasks = (tasks || []).filter((task) => {
             const allocated = Number(task?.tasks_allocated || 0);
             const completed = Number(task?.tasks_completed || 0);
             return allocated > 0 && completed >= allocated;
         }).length;
 
-        // Total habit logs
-        const { data: userHabits, error: fetchHabitsError } = await getDb(req)
-            .from('habits')
-            .select('id')
-            .eq('user_id', req.user.id);
-
-        if (fetchHabitsError) throw fetchHabitsError;
-
-        const habitIds = (userHabits || []).map(h => h.id);
-        
-        let completedHabits = 0;
-        if (habitIds.length > 0) {
-            const { count, error: habitsError } = await getDb(req)
-                .from('habit_logs')
-                .select('id', { count: 'exact', head: true })
-                .in('habit_id', habitIds);
-            
-            if (habitsError) throw habitsError;
-            completedHabits = count || 0;
-        }
-
-        // Total activity score
-        const { data: logs, error: logsError } = await getDb(req)
-            .from('activity_logs')
-            .select('score')
-            .eq('user_id', req.user.id);
-
-        if (logsError) throw logsError;
-
-        const totalScore = logs.reduce((sum, log) => sum + (log.score || 0), 0);
+        const totalScore = (logs || []).reduce((sum, log) => sum + (log.score || 0), 0);
 
         res.json({
             completedTasks,

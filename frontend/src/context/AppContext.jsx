@@ -135,11 +135,13 @@ export const AppProvider = ({ children }) => {
         const handleSync = () => {
             fetchHabits();
             fetchStats();
+            triggerHeatmapRefresh();
         };
 
         const handleManualRefresh = () => {
             fetchHabits();
             fetchStats();
+            triggerHeatmapRefresh();
         };
 
         const interval = setInterval(checkAndResetDailyData, 60000);
@@ -151,7 +153,7 @@ export const AppProvider = ({ children }) => {
             window.removeEventListener('snowball-refresh-required', handleManualRefresh);
             clearInterval(interval);
         };
-    }, [fetchHabits, fetchStats]);
+    }, [checkAndResetDailyData, fetchHabits, fetchStats, triggerHeatmapRefresh]);
 
     // Heatmap refresh should only re-fetch stats (the weights/logs)
     useEffect(() => {

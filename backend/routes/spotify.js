@@ -90,6 +90,8 @@ const getSpotifyCredentials = async (userId) => {
     return null;
 };
 
+const refreshPromises = new Map(); // userId -> Promise<string | null>
+
 const updateTokens = async (userId, tokens) => {
     // If expires_in is present, calculate new expires_at. 
     // Otherwise keep existing expires_at if it's already an ISO string.
@@ -97,59 +99,102 @@ const updateTokens = async (userId, tokens) => {
         ? new Date(Date.now() + (tokens.expires_in * 1000)).toISOString()
         : tokens.expires_at;
 
+    const payload = {
+        user_id: userId,
+        access_token: tokens.access_token,
+        expires_at: expires_at
+    };
+    if (tokens.refresh_token) {
+        payload.refresh_token = tokens.refresh_token;
+    }
+
     const { error } = await serviceDb
         .from('spotify_tokens')
-        .upsert({
-            user_id: userId,
-            access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token,
-            expires_at: expires_at
-        });
+        .upsert(payload, { onConflict: 'user_id' });
     if (error) console.error('Failed to update Spotify tokens in DB:', error.message);
 };
 
 const refreshAccessToken = async (userId) => {
-    console.log(`[Spotify] Refreshing access token for user ${userId}...`);
-    const tokens = await getTokens(userId);
-    if (!tokens) {
-        console.warn(`[Spotify] Cannot refresh token: No tokens found in DB for user ${userId}`);
-        return null;
-    }
-    if (!tokens.refresh_token) {
-        console.warn(`[Spotify] Cannot refresh token: No refresh_token found in tokens for user ${userId}`);
-        return null;
-    }
-    const credentials = await getSpotifyCredentials(userId);
-    if (!credentials) {
-        console.warn(`[Spotify] Cannot refresh token: No credentials found for user ${userId}`);
-        return null;
+    if (refreshPromises.has(userId)) {
+        return refreshPromises.get(userId);
     }
 
-    try {
-        const response = await axios({
-            method: 'post',
-            url: 'https://accounts.spotify.com/api/token',
-            data: querystring.stringify({
-                grant_type: 'refresh_token',
-                refresh_token: tokens.refresh_token
-            }),
-            headers: {
-                'content-type': 'application/x-www-form-urlencoded',
-                Authorization: `Basic ${Buffer.from(`${credentials.clientId}:${credentials.clientSecret}`).toString('base64')}`
+    const refreshPromise = (async () => {
+        try {
+            console.log(`[Spotify] Refreshing access token for user ${userId}...`);
+            const tokens = await getTokens(userId);
+            if (!tokens?.refresh_token) {
+                console.warn(`[Spotify] Cannot refresh token: No tokens found in DB for user ${userId}`);
+                return null;
             }
-        });
 
-        const newTokens = {
-            ...tokens,
-            ...response.data
-        };
-        await updateTokens(userId, newTokens);
-        console.log(`✅ Spotify Token refreshed for user ${userId}`);
-        return newTokens.access_token;
-    } catch (err) {
-        console.error(`Spotify token refresh failed for user ${userId}:`, err.response?.data || err.message);
+            // If another concurrent request already refreshed the token in DB within the last minute:
+            if (tokens.expires_at && new Date(tokens.expires_at).getTime() > Date.now() + 60000 && tokens.access_token) {
+                return tokens.access_token;
+            }
+
+            const credentials = await getSpotifyCredentials(userId);
+            if (!credentials) {
+                console.warn(`[Spotify] Cannot refresh token: No credentials found for user ${userId}`);
+                return null;
+            }
+
+            const response = await axios({
+                method: 'post',
+                url: 'https://accounts.spotify.com/api/token',
+                data: querystring.stringify({
+                    grant_type: 'refresh_token',
+                    refresh_token: tokens.refresh_token
+                }),
+                headers: {
+                    'content-type': 'application/x-www-form-urlencoded',
+                    Authorization: `Basic ${Buffer.from(`${credentials.clientId}:${credentials.clientSecret}`).toString('base64')}`
+                }
+            });
+
+            const newTokens = {
+                ...tokens,
+                ...response.data,
+                refresh_token: response.data.refresh_token || tokens.refresh_token
+            };
+            await updateTokens(userId, newTokens);
+            console.log(`✅ Spotify Token refreshed for user ${userId}`);
+            return newTokens.access_token;
+        } catch (err) {
+            console.error(`Spotify token refresh failed for user ${userId}:`, err.response?.data || err.message);
+            // If the refresh token was explicitly revoked on Spotify, remove the dead token row
+            if (err.response?.data?.error === 'invalid_grant') {
+                console.warn(`[Spotify] Refresh token revoked for user ${userId}. Clearing from DB.`);
+                await serviceDb.from('spotify_tokens').delete().eq('user_id', userId);
+            }
+            return null;
+        } finally {
+            refreshPromises.delete(userId);
+        }
+    })();
+
+    refreshPromises.set(userId, refreshPromise);
+    return refreshPromise;
+};
+
+const getValidAccessToken = async (userId) => {
+    const tokens = await getTokens(userId);
+    if (!tokens) return null;
+    if (!tokens.refresh_token && !tokens.access_token) return null;
+
+    // Check if token is expired or expiring within 60 seconds
+    const isExpired = !tokens.expires_at || new Date(tokens.expires_at).getTime() <= Date.now() + 60000;
+    if (isExpired && tokens.refresh_token) {
+        const refreshed = await refreshAccessToken(userId);
+        if (refreshed) return refreshed;
+    }
+
+    // Do not return an expired token if refresh failed or token is past its expiration
+    if (!tokens.expires_at || new Date(tokens.expires_at).getTime() <= Date.now()) {
         return null;
     }
+
+    return tokens.access_token || null;
 };
 
 router.get('/status', requireAuth, async (req, res, next) => {
@@ -331,20 +376,20 @@ router.get('/now-playing', requireAuth, async (req, res) => {
         return res.json(cached.data);
     }
 
-    const tokens = await getTokens(userId);
+    const accessToken = await getValidAccessToken(userId);
  
-    if (!tokens) {
+    if (!accessToken) {
         return res.status(401).json({ error: 'Not connected to Spotify' });
     }
 
     try {
-        const fetchPlaying = (accessToken) => axios.get('https://api.spotify.com/v1/me/player/currently-playing', {
-            headers: { Authorization: `Bearer ${accessToken}` }
+        const fetchPlaying = (token) => axios.get('https://api.spotify.com/v1/me/player/currently-playing', {
+            headers: { Authorization: `Bearer ${token}` }
         });
 
         let response;
         try {
-            response = await fetchPlaying(tokens.access_token);
+            response = await fetchPlaying(accessToken);
         } catch (err) {
             if (err.response?.status === 401) {
                 const newAccessToken = await refreshAccessToken(userId);
@@ -382,11 +427,11 @@ const withRefresh = async (apiCall, req, res, bustCache = false) => {
     if (bustCache) {
         nowPlayingCache.delete(userId); // ⚡ Clear cache immediately on control action
     }
-    const tokens = await getTokens(userId);
-    if (!tokens) return res.status(401).json({ error: 'Not connected' });
+    const accessToken = await getValidAccessToken(userId);
+    if (!accessToken) return res.status(401).json({ error: 'Not connected' });
 
     try {
-        await apiCall(tokens.access_token);
+        await apiCall(accessToken);
         res.json({ success: true });
     } catch (error) {
         const status = error.response?.status || 500;
@@ -449,8 +494,8 @@ router.put('/volume', requireAuth, async (req, res) => {
 
 router.get('/search', requireAuth, requireString('q', { source: 'query' }), async (req, res) => {
     const userId = req.user.id;
-    const tokens = await getTokens(userId);
-    if (!tokens) return res.status(401).json({ error: 'Not connected' });
+    const accessToken = await getValidAccessToken(userId);
+    if (!accessToken) return res.status(401).json({ error: 'Not connected' });
 
     const q = req.query.q;
 
@@ -460,7 +505,7 @@ router.get('/search', requireAuth, requireString('q', { source: 'query' }), asyn
 
     try {
         let response;
-        try { response = await fetchSearch(tokens.access_token); }
+        try { response = await fetchSearch(accessToken); }
         catch (err) {
             if (err.response?.status === 401) {
                 const newAccessToken = await refreshAccessToken(userId);
@@ -484,8 +529,8 @@ router.get('/search', requireAuth, requireString('q', { source: 'query' }), asyn
 
 router.get('/playlists', requireAuth, async (req, res) => {
     const userId = req.user.id;
-    const tokens = await getTokens(userId);
-    if (!tokens) return res.status(401).json({ error: 'Not connected' });
+    const accessToken = await getValidAccessToken(userId);
+    if (!accessToken) return res.status(401).json({ error: 'Not connected' });
 
     const fetchPlaylists = (token) => axios.get(`https://api.spotify.com/v1/me/playlists?limit=20`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -494,7 +539,7 @@ router.get('/playlists', requireAuth, async (req, res) => {
     try {
         let response;
         try { 
-            response = await fetchPlaylists(tokens.access_token); 
+            response = await fetchPlaylists(accessToken); 
         } catch (err) {
             console.error(`[Spotify] Fetch playlists failed for user ${userId}:`, err.response?.data || err.message);
             if (err.response?.status === 401) {

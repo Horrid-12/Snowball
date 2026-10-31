@@ -214,9 +214,6 @@ function App() {
 
     const [tasks, setTasks] = useState([]);
     const [checkingAuth, setCheckingAuth] = useState(!!token);
-    const [initialLoadComplete, setInitialLoadComplete] = useState(!token);
-    const [mediaHubReady, setMediaHubReady] = useState(false);
-    const handleMediaHubReady = useCallback(() => setMediaHubReady(true), []);
     const [profileSyncStatus, setProfileSyncStatus] = useState('unknown');
     const [profileSyncMessage, setProfileSyncMessage] = useState('');
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -319,7 +316,6 @@ function App() {
     useEffect(() => {
         if (!token) {
             setCheckingAuth(false);
-            setInitialLoadComplete(true);
             isNewLoginRef.current = false;
             return;
         }
@@ -618,6 +614,16 @@ function App() {
             const doAuth = async () => {
                 await initAuthFromStorage();
 
+                // Proactively restore cached user profile so UI renders instantly
+                try {
+                    const cachedProfile = await db.profile.get('me');
+                    if (cachedProfile && !userRef.current) {
+                        setUser(cachedProfile);
+                        setUserData(cachedProfile);
+                        setCheckingAuth(false);
+                    }
+                } catch { /* noop */ }
+
                 apiFetch('/api/auth/me')
                     .then(async res => {
                         if (res.status === 401 || res.status === 403) {
@@ -672,21 +678,22 @@ function App() {
                             setProfileSyncStatus('error');
                             setProfileSyncMessage(errMsg || 'Session check failed');
                         }
+                    })
+                    .finally(() => {
                         setCheckingAuth(false);
-                        setInitialLoadComplete(true);
                     });
             };
             doAuth();
 
             const authSafetyTimeout = setTimeout(() => {
                 setCheckingAuth(false);
-            }, 15000);
+            }, 8000);
 
             return () => {
                 clearTimeout(authSafetyTimeout);
             };
         }
-    }, [token, user?.id]);
+    }, [token]);
 
     const fetchTasksRef = useRef(null);
 
@@ -795,17 +802,10 @@ function App() {
         if (!token || !user) return;
         fetchTasksInternal().finally(() => {
             setCheckingAuth(false);
-            setInitialLoadComplete(true);
         });
-        const safetyTimeout = setTimeout(() => setInitialLoadComplete(true), 10000);
-        return () => clearTimeout(safetyTimeout);
     }, [token, user, isOnline]);
 
-    // Safety timeout: hide loading overlay even if MediaHub never loads
-    useEffect(() => {
-        const t = setTimeout(() => setMediaHubReady(true), 15000);
-        return () => clearTimeout(t);
-    }, []);
+
 
     // Auto-refresh tasks when window regains focus (cross-device sync)
     useEffect(() => {
@@ -1664,7 +1664,7 @@ function App() {
                                         </div>
                                         <ErrorBoundary>
                                             <Suspense fallback={<LoadingFallback />}>
-<MediaHub onReady={handleMediaHubReady} />
+                                                <MediaHub />
                                         </Suspense>
                                     </ErrorBoundary>
                                     <ErrorBoundary>
@@ -1842,7 +1842,7 @@ function App() {
                                     {showMediaHub && (
                                         <ErrorBoundary>
                                             <Suspense fallback={<LoadingFallback />}>
-                                                <MediaHub onReady={handleMediaHubReady} />
+                                                <MediaHub />
                                             </Suspense>
                                         </ErrorBoundary>
                                     )}
@@ -1887,27 +1887,6 @@ function App() {
                     setActiveTab={setActiveTab}
                     setShowSettings={setShowSettings}
                 />
-            )}
-            {user && (!initialLoadComplete || !mediaHubReady) && (
-                <div style={{
-                    position: 'fixed',
-                    inset: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '1.5rem',
-                    background: 'var(--bg-primary)',
-                    zIndex: 9999
-                }}>
-                    <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-                    >
-                        <RefreshCcw size={40} color="var(--accent-color)" />
-                    </motion.div>
-                    <p style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>{loadingMessages[Math.floor(Math.random() * loadingMessages.length)]}</p>
-                </div>
             )}
             {/* <Analytics /> */}
         </div>

@@ -54,7 +54,13 @@ router.get('/', async (req, res, next) => {
 // GET habit logs history (past habits)
 router.get('/history', async (req, res, next) => {
     try {
-        const { data: habits } = await getDb(req).from('habits').select('id, name, icon, color').eq('user_id', req.user.id);
+        const [habitsResult, todayStr] = await Promise.all([
+            getDb(req).from('habits').select('id, name, icon, color').eq('user_id', req.user.id),
+            getTodayWithOffset(req.user.id)
+        ]);
+
+        if (habitsResult.error) throw habitsResult.error;
+        const habits = habitsResult.data;
         if (!habits || habits.length === 0) return res.json([]);
         
         const habitMap = {};
@@ -62,7 +68,6 @@ router.get('/history', async (req, res, next) => {
             habitMap[h.id] = h;
         });
 
-        const todayStr = await getTodayWithOffset(req.user.id);
         const todayDate = new Date(todayStr);
         todayDate.setFullYear(todayDate.getFullYear() - 1);
         const oneYearAgoStr = todayDate.toISOString().split('T')[0];

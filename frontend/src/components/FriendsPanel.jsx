@@ -3,6 +3,7 @@ import { Check, MessageCircle, Search, Send, Trash2, UserPlus, Users, X } from '
 import { apiFetch, getUserData } from '../utils/apiClient.js';
 import { getApiErrorMessage } from '../utils/api.js';
 import { ProfileIcon } from '../utils/profileIcons.jsx';
+import { db } from '../db/db';
 
 const emptyFriendsState = { friends: [], incoming: [], outgoing: [] };
 
@@ -171,11 +172,13 @@ const FriendsPanel = ({ compact = false }) => {
             }
 
             if (!res.ok) throw new Error(getApiErrorMessage(payload, 'Failed to load friends'));
-            setFriendsState({
+            const nextFriendsState = {
                 friends: payload?.friends || [],
                 incoming: payload?.incoming || [],
                 outgoing: payload?.outgoing || []
-            });
+            };
+            setFriendsState(nextFriendsState);
+            db.profile.put({ id: 'friends', data: nextFriendsState }).catch(() => {});
             setActiveFriend((selected) => {
                 if (!selected) return selected;
                 return (payload?.friends || []).find((friend) => friend.id === selected.id) || null;
@@ -194,12 +197,27 @@ const FriendsPanel = ({ compact = false }) => {
     }, []);
 
     useEffect(() => {
+        let active = true;
+        // Purge any prohibited user data from localStorage
+        try { localStorage.removeItem('snowball_cached_friends'); } catch {}
+
+        // Instant render from Dexie IndexedDB cache (offline-first)
+        db.profile.get('friends').then((cached) => {
+            if (active && cached?.data) {
+                setFriendsState(cached.data);
+                setLoading(false);
+            }
+        }).catch(() => {});
+
         loadFriends();
         const interval = window.setInterval(() => {
             loadFriends({ silent: true });
         }, 10000);
 
-        return () => window.clearInterval(interval);
+        return () => {
+            active = false;
+            window.clearInterval(interval);
+        };
     }, [loadFriends]);
 
     useEffect(() => {

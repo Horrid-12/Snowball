@@ -34,6 +34,10 @@ syncRevokedTokens();
 setInterval(syncRevokedTokens, 60 * 1000);
 
 const knownGoodTokens = new Map();
+// Single-flight guard: concurrent requests for the same jti (the app fires
+// several authenticated requests in parallel on mount) share one lookup
+// instead of each doing its own token_blacklist round trip.
+const pendingChecks = new Map();
 
 export const revokeToken = async (jti, exp) => {
     if (!jti || !exp) return;
@@ -67,7 +71,22 @@ export const isTokenRevoked = async (jti) => {
         return false;
     }
 
-    // 3. Fallback: Query Supabase token_blacklist directly to handle cold-starts and cross-instance delays
+    // 3. Deduplicate concurrent lookups for the same token (app start fires
+    //    several authenticated requests at once).
+    const pending = pendingChecks.get(jti);
+    if (pending) return pending;
+
+    const check = lookupRevoked(jti).finally(() => {
+        pendingChecks.delete(jti);
+    });
+    pendingChecks.set(jti, check);
+    return check;
+};
+
+const lookupRevoked = async (jti) => {
+    const now = Date.now();
+
+    // Fallback: Query Supabase token_blacklist directly to handle cold-starts and cross-instance delays
     try {
         const { data, error } = await supabase
             .from('token_blacklist')
@@ -83,6 +102,12 @@ export const isTokenRevoked = async (jti) => {
         if (data?.jti) {
             revokedTokens.set(data.jti, data.exp);
             knownGoodTokens.delete(jti);
+            return true;
+        }
+
+        // A logout may have landed while this lookup was in flight; never
+        // cache a token that has been revoked in the meantime.
+        if (revokedTokens.has(jti)) {
             return true;
         }
 
