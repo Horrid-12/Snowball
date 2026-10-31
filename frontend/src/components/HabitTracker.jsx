@@ -5,6 +5,7 @@ import { useAppContext } from '../context/AppContext.jsx';
 import { useOnline } from '../context/OnlineContext';
 import { db, queueMutation } from '../db/db';
 import { apiFetch } from '../utils/apiClient.js';
+import { HabitRowSkeleton } from './Skeletons.jsx';
 
 const HabitItem = React.memo(({ habit, onToggle, onDelete, onRename }) => {
     const [editing, setEditing] = useState(false);
@@ -127,7 +128,7 @@ const HabitItem = React.memo(({ habit, onToggle, onDelete, onRename }) => {
 
 const HabitTracker = () => {
     const isOnline = useOnline();
-    const { globalHabits, setGlobalHabits, fetchHabits, triggerHeatmapRefresh, sortHabits } = useAppContext();
+    const { globalHabits, habitsLoading, setGlobalHabits, fetchHabits, triggerHeatmapRefresh, sortHabits } = useAppContext();
     const [newHabitName, setNewHabitName] = useState('');
     const [_editingHabitId, _setEditingHabitId] = useState(null);
 
@@ -329,16 +330,24 @@ const HabitTracker = () => {
             </form>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {globalHabits.map(habit => (
-                    <HabitItem 
-                        key={habit.id} 
-                        habit={habit} 
-                        onToggle={handleToggleHabit} 
-                        onDelete={handleDeleteHabit} 
-                        onRename={handleRenameHabit}
-                    />
-                ))}
-                {globalHabits.length === 0 && (
+                {habitsLoading && globalHabits.length === 0 ? (
+                    <>
+                        <HabitRowSkeleton />
+                        <HabitRowSkeleton />
+                        <HabitRowSkeleton />
+                    </>
+                ) : (
+                    globalHabits.map(habit => (
+                        <HabitItem 
+                            key={habit.id} 
+                            habit={habit} 
+                            onToggle={handleToggleHabit} 
+                            onDelete={handleDeleteHabit} 
+                            onRename={handleRenameHabit}
+                        />
+                    ))
+                )}
+                {!habitsLoading && globalHabits.length === 0 && (
                     <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '1rem 0', opacity: 0.8 }}>
                         Design your destiny. Add a habit!
                     </p>

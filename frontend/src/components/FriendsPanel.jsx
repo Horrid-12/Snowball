@@ -4,6 +4,7 @@ import { apiFetch, getUserData } from '../utils/apiClient.js';
 import { getApiErrorMessage } from '../utils/api.js';
 import { ProfileIcon } from '../utils/profileIcons.jsx';
 import { db } from '../db/db';
+import { FriendRowSkeleton, ChatMessagesSkeleton } from './Skeletons.jsx';
 
 const emptyFriendsState = { friends: [], incoming: [], outgoing: [] };
 
@@ -470,20 +471,28 @@ const FriendsPanel = ({ compact = false }) => {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Friends</div>
-                {friendsState.friends.map((friend) => (
-                    <FriendRow
-                        key={friend.id}
-                        user={friend.user}
-                        meta={friend.presence?.is_online ? 'Online in Snowball' : 'Connected'}
-                        presence={friend.presence}
-                        actions={
-                            <>
-                                <PillButton tone={activeFriend?.id === friend.id ? 'accent' : 'neutral'} icon={MessageCircle} onClick={() => setActiveFriend(friend)}>Chat</PillButton>
-                                <PillButton tone="danger" icon={Trash2} disabled={busyId === friend.id} onClick={() => removeFriendship(friend.id)}>Remove</PillButton>
-                            </>
-                        }
-                    />
-                ))}
+                {loading && friendsState.friends.length === 0 ? (
+                    <>
+                        <FriendRowSkeleton compact={compact} />
+                        <FriendRowSkeleton compact={compact} />
+                        <FriendRowSkeleton compact={compact} />
+                    </>
+                ) : (
+                    friendsState.friends.map((friend) => (
+                        <FriendRow
+                            key={friend.id}
+                            user={friend.user}
+                            meta={friend.presence?.is_online ? 'Online in Snowball' : 'Connected'}
+                            presence={friend.presence}
+                            actions={
+                                <>
+                                    <PillButton tone={activeFriend?.id === friend.id ? 'accent' : 'neutral'} icon={MessageCircle} onClick={() => setActiveFriend(friend)}>Chat</PillButton>
+                                    <PillButton tone="danger" icon={Trash2} disabled={busyId === friend.id} onClick={() => removeFriendship(friend.id)}>Remove</PillButton>
+                                </>
+                            }
+                        />
+                    ))
+                )}
                 {!loading && friendsState.friends.length === 0 && (
                     <div style={{ padding: '1rem', borderRadius: '1rem', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', fontSize: '0.85rem', textAlign: 'center' }}>
                         Search for a Snowball user to start your friend list.
@@ -518,9 +527,7 @@ const FriendsPanel = ({ compact = false }) => {
                         border: '1px solid var(--border-color)'
                     }}>
                         {messagesLoading && messages.length === 0 && (
-                            <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', textAlign: 'center', margin: 'auto' }}>
-                                Loading messages...
-                            </div>
+                            <ChatMessagesSkeleton />
                         )}
                         {!messagesLoading && messages.length === 0 && (
                             <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', textAlign: 'center', margin: 'auto' }}>

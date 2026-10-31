@@ -15,6 +15,8 @@
     --radius: 1.5rem;
     --radius-lg: 2rem;
     --card-padding: 1.5rem;
+    --skeleton-base: color-mix(in srgb, var(--text-primary) 7%, var(--bg-secondary));
+    --skeleton-highlight: color-mix(in srgb, var(--text-primary) 15%, var(--bg-secondary));
     color-scheme: dark;
 }
 
@@ -50,6 +52,8 @@ body,
     --accent-rgb: 59, 130, 246;
     --accent-hover: #60a5fa;
     --border-color: #334155;
+    --skeleton-base: color-mix(in srgb, var(--text-primary) 8%, var(--bg-secondary));
+    --skeleton-highlight: color-mix(in srgb, var(--text-primary) 18%, var(--bg-secondary));
 }
 
 
@@ -64,6 +68,8 @@ body,
     --accent-color: #6366f1;
     --accent-rgb: 99, 102, 241;
     --border-color: #1e1e1e;
+    --skeleton-base: #18181b;
+    --skeleton-highlight: #27272a;
 }
 
 
@@ -558,3 +564,54 @@ input[type="checkbox"].circle-checkbox:checked {
     background-color: var(--accent-color);
     border-color: var(--accent-color);
 }
+
+/* Skeleton Loading Animations & Primitives */
+@keyframes skeleton-shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+@keyframes skeleton-pulse {
+    0%, 100% {
+        opacity: 0.6;
+    }
+    50% {
+        opacity: 0.95;
+    }
+}
+
+.skeleton-shimmer {
+    background: linear-gradient(
+        90deg,
+        var(--skeleton-base) 0%,
+        var(--skeleton-base) 20%,
+        var(--skeleton-highlight) 50%,
+        var(--skeleton-base) 80%,
+        var(--skeleton-base) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.8s infinite ease-in-out;
+}
+
+.skeleton-pulse {
+    animation: skeleton-pulse 1.8s ease-in-out infinite;
+}
+
+.skeleton-box {
+    display: inline-block;
+    border-radius: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .skeleton-shimmer,
+    .skeleton-pulse {
+        animation: none !important;
+        background: var(--skeleton-base) !important;
+        opacity: 0.85;
+    }
+}
+

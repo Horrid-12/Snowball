@@ -9,6 +9,7 @@ import {
     getDDayText, formatDateStr, splitDateTime,
     getEventTime, isEventOnDate
 } from './Calendar.jsx';
+import { SkeletonBox } from './Skeletons.jsx';
 
 const CalendarSummaryCard = ({ onOpenCalendar }) => {
     const [isExpanded, setIsExpanded] = useState(() => {
@@ -226,9 +227,13 @@ const CalendarSummaryCard = ({ onOpenCalendar }) => {
                         }}
                     >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
-                                {todayEvents.length} event{todayEvents.length === 1 ? '' : 's'} today
-                            </span>
+                            {loading ? (
+                                <SkeletonBox width="80px" height="13px" />
+                            ) : (
+                                <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
+                                    {todayEvents.length} event{todayEvents.length === 1 ? '' : 's'} today
+                                </span>
+                            )}
                             <span>•</span>
                             <span>{formattedDate}</span>
                         </div>
@@ -246,15 +251,21 @@ const CalendarSummaryCard = ({ onOpenCalendar }) => {
                         }}
                     >
                         {loading ? (
-                            <div
-                                style={{
-                                    padding: '1.25rem 0',
-                                    textAlign: 'center',
-                                    color: 'var(--text-secondary)',
-                                    fontSize: '0.8rem'
-                                }}
-                            >
-                                Loading schedule...
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', padding: '0.25rem 0' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                    <SkeletonBox width="4px" height="32px" borderRadius="2px" />
+                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                        <SkeletonBox width="65%" height="13px" />
+                                        <SkeletonBox width="35%" height="11px" />
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                    <SkeletonBox width="4px" height="32px" borderRadius="2px" />
+                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                        <SkeletonBox width="80%" height="13px" />
+                                        <SkeletonBox width="40%" height="11px" />
+                                    </div>
+                                </div>
                             </div>
                         ) : todayEvents.length === 0 ? (
                             <div

@@ -4,6 +4,7 @@ import './index.css';
 import AuthModal from './components/AuthModal.jsx';
 import BottomNav from './components/BottomNav.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import LoadingFallback, { TaskBoardSkeleton } from './components/Skeletons.jsx';
 import { Settings as SettingsIcon, History as HistoryIcon, Calculator as CalculatorIcon, Plus, BarChart3, ChevronDown, ChevronUp, Users, CalendarDays } from 'lucide-react';
 import appPackage from '../package.json';
 import { useAppContext } from './context/AppContext.jsx';
@@ -20,7 +21,7 @@ import { apiFetch, hasPersistedSession, setUserData, clearSession, initAuthFromS
 import { calculateProductivityScore, filterTasksForDate, formatLocalDate } from './utils/productivityScore.js';
 import { registerPlugin, Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
-import { Wifi, WifiOff, CloudSync, RefreshCcw } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Lazy-loaded components (split by tab/modal to reduce initial bundle)
@@ -94,12 +95,6 @@ const loadingMessages = [
     "Reticulating splines...",
     "Finding the perfect Spotify playlist...",
 ];
-
-const LoadingFallback = ({ height = '120px' }) => (
-    <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem', gap: '0.5rem' }}>
-        <CloudSync size={16} /> Loading...
-    </div>
-);
 
 function App() {
     const isOnline = useOnline();
@@ -213,6 +208,7 @@ function App() {
     }, [isNativeAndroid]);
 
     const [tasks, setTasks] = useState([]);
+    const [tasksLoading, setTasksLoading] = useState(true);
     const [checkingAuth, setCheckingAuth] = useState(!!token);
     const [profileSyncStatus, setProfileSyncStatus] = useState('unknown');
     const [profileSyncMessage, setProfileSyncMessage] = useState('');
@@ -316,6 +312,7 @@ function App() {
     useEffect(() => {
         if (!token) {
             setCheckingAuth(false);
+            setTasksLoading(false);
             isNewLoginRef.current = false;
             return;
         }
@@ -326,9 +323,13 @@ function App() {
         }
 
         const loadLocalTasks = async () => {
-            const localTasks = await db.tasks.toArray();
-            if (localTasks.length > 0) {
-                setTasks(localTasks);
+            try {
+                const localTasks = await db.tasks.toArray();
+                if (localTasks.length > 0) {
+                    setTasks(localTasks);
+                }
+            } finally {
+                setTasksLoading(false);
             }
         };
         loadLocalTasks();
@@ -708,6 +709,8 @@ function App() {
             }
         } catch (error) {
             console.error('Refresh tasks failed:', error);
+        } finally {
+            setTasksLoading(false);
         }
     }, [token, user]);
 
@@ -1013,6 +1016,7 @@ function App() {
         setToken(false);
         setUser(null);
         setTasks([]);
+        setTasksLoading(false);
     }, [clearLocalCache]);
 
     const handleLogin = useCallback(async (newUser) => {
@@ -1552,7 +1556,7 @@ function App() {
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                 </button>
                             </div>
-                            <Suspense fallback={<LoadingFallback height="400px" />}>
+                            <Suspense fallback={<LoadingFallback variant="calendar-modal" height="400px" />}>
                                 <div style={{ overflowY: 'auto', overflowX: 'hidden', width: '100%', boxSizing: 'border-box', borderRadius: '1rem' }}>
                                     <Calendar />
                                 </div>
@@ -1568,13 +1572,13 @@ function App() {
                 minHeight: '600px'
             }}>
                 {showCalculator && user && (
-                    <Suspense fallback={<LoadingFallback height="200px" />}>
+                    <Suspense fallback={<LoadingFallback variant="calculator-modal" height="280px" />}>
                         <CalculatorWidget onClose={() => setShowCalculator(false)} />
                     </Suspense>
                 )}
 
                 {showTaskComposer && user && (
-                    <Suspense fallback={<LoadingFallback height="200px" />}>
+                    <Suspense fallback={<LoadingFallback variant="composer-modal" height="260px" />}>
                         <TaskComposerPanel
                             onClose={() => {
                                 if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
@@ -1589,13 +1593,13 @@ function App() {
                     </Suspense>
                 )}
                 {showHistory && user && (
-                    <Suspense fallback={<LoadingFallback height="200px" />}>
+                    <Suspense fallback={<LoadingFallback variant="history-modal" height="320px" />}>
                         <HistoryVault tasks={tasks} onClose={() => setShowHistory(false)} />
                     </Suspense>
                 )}
 
                 {showSettings && user && (
-                    <Suspense fallback={<LoadingFallback height="200px" />}>
+                    <Suspense fallback={<LoadingFallback variant="settings-modal" height="320px" />}>
                         <SettingsModal
                             user={user}
                             onClose={() => setShowSettings(false)}
@@ -1644,7 +1648,7 @@ function App() {
                                     <>
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem', alignItems: 'start' }}>
                                             <ErrorBoundary>
-                                                <Suspense fallback={<LoadingFallback />}>
+                                                <Suspense fallback={<LoadingFallback variant="timer" />}>
                                                     <DeepWorkTimer
                                                         tasks={tasks}
                                                         resetOffsetHours={user?.reset_offset_hours ?? 0}
@@ -1652,24 +1656,24 @@ function App() {
                                                 </Suspense>
                                             </ErrorBoundary>
                                             <ErrorBoundary>
-                                                <Suspense fallback={<LoadingFallback />}>
-                                                    <ProductivityDashboard tasks={tasks} />
+                                                <Suspense fallback={<LoadingFallback variant="dashboard" />}>
+                                                    <ProductivityDashboard tasks={tasks} loading={tasksLoading || (checkingAuth && tasks.length === 0)} />
                                                 </Suspense>
                                             </ErrorBoundary>
                                             <ErrorBoundary>
-                                                <Suspense fallback={<LoadingFallback />}>
+                                                <Suspense fallback={<LoadingFallback variant="calendar-summary" />}>
                                                     <CalendarSummaryCard onOpenCalendar={() => setShowCalendar(true)} />
                                                 </Suspense>
                                             </ErrorBoundary>
                                         </div>
                                         <ErrorBoundary>
-                                            <Suspense fallback={<LoadingFallback />}>
+                                            <Suspense fallback={<LoadingFallback variant="media" />}>
                                                 <MediaHub />
-                                        </Suspense>
-                                    </ErrorBoundary>
-                                    <ErrorBoundary>
-                                        <Suspense fallback={<LoadingFallback />}>
-                                            <Notes />
+                                            </Suspense>
+                                        </ErrorBoundary>
+                                        <ErrorBoundary>
+                                            <Suspense fallback={<LoadingFallback variant="notes" />}>
+                                                <Notes />
                                             </Suspense>
                                         </ErrorBoundary>
                                     </>
@@ -1696,10 +1700,10 @@ function App() {
                                             )}
                                         </div>
                                         {isTasksExpanded && (
-                                            checkingAuth && tasks.length === 0 ? (
-                                                <p style={{ color: 'var(--text-secondary)' }}>Loading tasks...</p>
+                                            (tasksLoading || (checkingAuth && tasks.length === 0)) ? (
+                                                <TaskBoardSkeleton count={3} />
                                             ) : (
-                                                <Suspense fallback={<LoadingFallback height="200px" />}>
+                                                <Suspense fallback={<LoadingFallback variant="taskboard" />}>
                                                     <TaskBoard
                                                         tasks={tasks}
                                                         onTaskUpdate={handleTaskUpdate}
@@ -1716,7 +1720,7 @@ function App() {
                                 {activeTab === 'habits' && (
                                     <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
                                         <ErrorBoundary>
-                                            <Suspense fallback={<LoadingFallback />}>
+                                            <Suspense fallback={<LoadingFallback variant="habits" />}>
                                                 <HabitTracker />
                                             </Suspense>
                                         </ErrorBoundary>
@@ -1726,7 +1730,7 @@ function App() {
                                 {activeTab === 'heatmap' && (
                                     <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
                                         <ErrorBoundary>
-                                            <Suspense fallback={<LoadingFallback height="300px" />}>
+                                            <Suspense fallback={<LoadingFallback variant="heatmap" height="300px" />}>
                                                 <ActivityHeatmap
                                                     tasks={tasks}
                                                     resetOffsetHours={user?.reset_offset_hours ?? 0}
@@ -1739,7 +1743,7 @@ function App() {
                                 {activeTab === 'friends' && (
                                     <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
                                         <ErrorBoundary>
-                                            <Suspense fallback={<LoadingFallback />}>
+                                            <Suspense fallback={<LoadingFallback variant="friends" />}>
                                                 <FriendsPanel />
                                             </Suspense>
                                         </ErrorBoundary>
@@ -1753,7 +1757,7 @@ function App() {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem', alignItems: 'start' }}>
                                         <ErrorBoundary>
-                                            <Suspense fallback={<LoadingFallback />}>
+                                            <Suspense fallback={<LoadingFallback variant="timer" />}>
                                                 <DeepWorkTimer
                                                     tasks={tasks}
                                                     resetOffsetHours={user?.reset_offset_hours ?? 0}
@@ -1762,12 +1766,12 @@ function App() {
                                         </ErrorBoundary>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
                                             <ErrorBoundary>
-                                                <Suspense fallback={<LoadingFallback />}>
-                                                    <ProductivityDashboard tasks={tasks} />
+                                                <Suspense fallback={<LoadingFallback variant="dashboard" />}>
+                                                    <ProductivityDashboard tasks={tasks} loading={tasksLoading || (checkingAuth && tasks.length === 0)} />
                                                 </Suspense>
                                             </ErrorBoundary>
                                             <ErrorBoundary>
-                                                <Suspense fallback={<LoadingFallback />}>
+                                                <Suspense fallback={<LoadingFallback variant="calendar-summary" />}>
                                                     <CalendarSummaryCard onOpenCalendar={() => setShowCalendar(true)} />
                                                 </Suspense>
                                             </ErrorBoundary>
@@ -1811,10 +1815,10 @@ function App() {
                                                 )}
                                             </div>
                                             {isTasksExpanded && (
-                                                checkingAuth && tasks.length === 0 ? (
-                                                    <p style={{ color: 'var(--text-secondary)' }}>Loading tasks...</p>
+                                                (tasksLoading || (checkingAuth && tasks.length === 0)) ? (
+                                                    <TaskBoardSkeleton count={3} />
                                                 ) : (
-                                                    <Suspense fallback={<LoadingFallback height="200px" />}>
+                                                    <Suspense fallback={<LoadingFallback variant="taskboard" />}>
                                                         <TaskBoard
                                                             tasks={tasks}
                                                             onTaskUpdate={handleTaskUpdate}
@@ -1830,7 +1834,7 @@ function App() {
 
                                     <ErrorBoundary>
                                         {showHeatmap && (
-                                            <Suspense fallback={<LoadingFallback height="300px" />}>
+                                            <Suspense fallback={<LoadingFallback variant="heatmap" height="300px" />}>
                                                 <ActivityHeatmap
                                                     tasks={tasks}
                                                     resetOffsetHours={user?.reset_offset_hours ?? 0}
@@ -1841,7 +1845,7 @@ function App() {
 
                                     {showMediaHub && (
                                         <ErrorBoundary>
-                                            <Suspense fallback={<LoadingFallback />}>
+                                            <Suspense fallback={<LoadingFallback variant="media" />}>
                                                 <MediaHub />
                                             </Suspense>
                                         </ErrorBoundary>
@@ -1855,7 +1859,7 @@ function App() {
                                 }}>
                                     {showFriends && (
                                         <ErrorBoundary>
-                                            <Suspense fallback={<LoadingFallback />}>
+                                            <Suspense fallback={<LoadingFallback variant="friends-compact" />}>
                                                 <FriendsPanel compact />
                                             </Suspense>
                                         </ErrorBoundary>
@@ -1863,12 +1867,12 @@ function App() {
                                     {showSidebar && (
                                         <>
                                             <ErrorBoundary>
-                                                <Suspense fallback={<LoadingFallback />}>
+                                                <Suspense fallback={<LoadingFallback variant="notes" />}>
                                                     <Notes />
                                                 </Suspense>
                                             </ErrorBoundary>
                                             <ErrorBoundary>
-                                                <Suspense fallback={<LoadingFallback />}>
+                                                <Suspense fallback={<LoadingFallback variant="habits" />}>
                                                     <HabitTracker />
                                                 </Suspense>
                                             </ErrorBoundary>

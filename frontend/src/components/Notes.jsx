@@ -7,6 +7,7 @@ import { API_URL } from '../config.js';
 import ExpandedNotes from './ExpandedNotes';
 import { parseLockedNoteContent } from '../utils/noteSecurity.js';
 import DOMPurify from 'dompurify';
+import { SkeletonBox } from './Skeletons.jsx';
 
 // Helper to strip HTML tags for the small textarea view 🧹
 const stripHtml = (html) => {
@@ -331,8 +332,12 @@ const Notes = () => {
             {isExpanded && (
                 <div style={{ padding: '0.75rem' }}>
                     {loading ? (
-                        <div style={{ height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Loading notes...</span>
+                        <div style={{ padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.65rem', minHeight: '180px' }}>
+                            <SkeletonBox width="92%" height="14px" />
+                            <SkeletonBox width="78%" height="14px" />
+                            <SkeletonBox width="85%" height="14px" />
+                            <SkeletonBox width="60%" height="14px" />
+                            <SkeletonBox width="45%" height="14px" />
                         </div>
                     ) : (
                         <>

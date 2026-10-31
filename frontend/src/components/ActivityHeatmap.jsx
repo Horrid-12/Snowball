@@ -12,6 +12,7 @@ import {
 } from '../utils/productivityScore.js';
 import { apiFetch } from '../utils/apiClient.js';
 import { getTagColor, loadTagColors, parseTags } from '../utils/tagColors.js';
+import { ActivityHeatmapSkeleton } from './Skeletons.jsx';
 
 const chartPalette = [
     '#3b82f6',
@@ -747,14 +748,7 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
         return 'var(--accent-color)';
     };
 
-    if (loading) return (
-        <div className="heatmap-card card-container" style={cardStyle}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem' }}>
-                <div style={{ height: '14px', width: '140px', background: 'var(--bg-secondary)', borderRadius: '4px' }} />
-                <div style={{ height: '130px', background: 'var(--bg-secondary)', borderRadius: '8px', opacity: 0.5 }} />
-            </div>
-        </div>
-    );
+    if (loading) return <ActivityHeatmapSkeleton />;
 
     const panels = [
         {

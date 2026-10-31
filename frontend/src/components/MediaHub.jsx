@@ -6,6 +6,7 @@ import { Capacitor } from '@capacitor/core';
 import { apiFetch } from '../utils/apiClient';
 import { isTauriDesktop } from '../config.js';
 import YouTubePanel from './YouTubePanel.jsx';
+import { SkeletonBox, SkeletonCircle } from './Skeletons.jsx';
 
 const MediaHub = ({ onReady }) => {
     const [activeTab, setActiveTab] = useState('spotify'); // 'spotify' or 'youtube'
@@ -25,6 +26,7 @@ const MediaHub = ({ onReady }) => {
     // Spotify State
     const [spotifyData, setSpotifyData] = useState(null);
     const [spotifyConnected, setSpotifyConnected] = useState(false);
+    const [isCheckingStatus, setIsCheckingStatus] = useState(true);
     const [spotifyResults, setSpotifyResults] = useState([]);
     const [spotifyQuery, setSpotifyQuery] = useState('');
     const [spotifyLoading, setSpotifyLoading] = useState(false);
@@ -164,11 +166,25 @@ const MediaHub = ({ onReady }) => {
 
     // Mount effect: check connection status once and process Spotify redirect callbacks
     useEffect(() => {
-        refreshSpotifyStatus()
-            .catch(() => {})
-            .finally(() => {
-                onReady?.();
-            });
+        let mounted = true;
+
+        const initSpotify = async () => {
+            try {
+                const isConn = await refreshSpotifyStatus();
+                if (isConn && mounted) {
+                    await fetchSpotify();
+                }
+            } catch (err) {
+                console.error('Spotify init error:', err);
+            } finally {
+                if (mounted) {
+                    setIsCheckingStatus(false);
+                    onReady?.();
+                }
+            }
+        };
+
+        initSpotify();
 
         // Check for URL params from Spotify redirect
         const params = new URLSearchParams(window.location.search);
@@ -187,9 +203,10 @@ const MediaHub = ({ onReady }) => {
         }
 
         return () => {
+            mounted = false;
             clearTimeouts();
         };
-    }, [refreshSpotifyStatus, onReady]);
+    }, [refreshSpotifyStatus, fetchSpotify, onReady]);
 
     // Polling effect: ONLY active when Spotify is actually connected
     useEffect(() => {
@@ -419,7 +436,31 @@ const MediaHub = ({ onReady }) => {
     };
 
     const renderSpotify = () => {
-        if (spotifyLoading) return <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Loading Spotify...</div>;
+        if (isCheckingStatus || (spotifyLoading && !spotifyData)) {
+            return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0.25rem 0' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <SkeletonBox width="100%" height="32px" borderRadius="0.5rem" />
+                        <SkeletonBox width="32px" height="32px" borderRadius="0.5rem" />
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                        <SkeletonBox width="48px" height="48px" borderRadius="0.4rem" />
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.45rem', minWidth: 0 }}>
+                            <SkeletonBox width="65%" height="15px" />
+                            <SkeletonBox width="40%" height="12px" />
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
+                            <SkeletonCircle size={24} />
+                            <SkeletonCircle size={32} />
+                            <SkeletonCircle size={24} />
+                        </div>
+                        <SkeletonBox width="100%" height="4px" borderRadius="2px" />
+                    </div>
+                </div>
+            );
+        }
 
         if (!spotifyConnected) {
             return (

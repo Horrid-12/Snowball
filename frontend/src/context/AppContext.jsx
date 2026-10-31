@@ -40,6 +40,7 @@ const sortHabits = (habits = []) => [...habits].sort((a, b) => {
 export const AppProvider = ({ children }) => {
     const [heatmapRefreshKey, setHeatmapRefreshKey] = useState(0);
     const [globalHabits, setGlobalHabits] = useState([]);
+    const [habitsLoading, setHabitsLoading] = useState(true);
     const [lifetimeStats, setLifetimeStats] = useState(null);
     const isOnline = useOnline();
 
@@ -49,15 +50,24 @@ export const AppProvider = ({ children }) => {
     }, []);
 
     const fetchHabits = useCallback(async () => {
-        if (!hasPersistedSession()) return;
-
-        // Load from DB first (Offline-First)
-        const cached = await db.habits.toArray();
-        if (cached.length > 0) setGlobalHabits(sortHabits(cached));
-
-        if (!isOnline) return;
+        if (!hasPersistedSession()) {
+            setHabitsLoading(false);
+            return;
+        }
 
         try {
+            // Load from DB first (Offline-First)
+            const cached = await db.habits.toArray();
+            if (cached.length > 0) {
+                setGlobalHabits(sortHabits(cached));
+                setHabitsLoading(false);
+            }
+
+            if (!isOnline) {
+                setHabitsLoading(false);
+                return;
+            }
+
             const response = await apiFetch('/api/habits');
             if (response.ok) {
                 const data = await response.json();
@@ -69,6 +79,8 @@ export const AppProvider = ({ children }) => {
             }
         } catch (err) {
             console.error("Failed to fetch global habits:", err.message);
+        } finally {
+            setHabitsLoading(false);
         }
     }, [isOnline]);
 
@@ -166,12 +178,13 @@ export const AppProvider = ({ children }) => {
         heatmapRefreshKey,
         triggerHeatmapRefresh,
         globalHabits,
+        habitsLoading,
         setGlobalHabits,
         fetchHabits,
         lifetimeStats,
         fetchStats,
         sortHabits
-    }), [heatmapRefreshKey, globalHabits, lifetimeStats, fetchHabits, fetchStats, triggerHeatmapRefresh]);
+    }), [heatmapRefreshKey, globalHabits, habitsLoading, lifetimeStats, fetchHabits, fetchStats, triggerHeatmapRefresh]);
 
     return (
         <AppContext.Provider value={contextValue}>

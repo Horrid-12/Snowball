@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext.jsx';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { calculateProductivityScore } from '../utils/productivityScore.js';
+import { DashboardSkeleton } from './Skeletons.jsx';
 
-const ProductivityDashboard = ({ tasks }) => {
-    const { globalHabits } = useAppContext();
+const ProductivityDashboard = ({ tasks, loading = false }) => {
+    const { globalHabits, habitsLoading } = useAppContext();
     const [isExpanded, setIsExpanded] = useState(() => {
         const saved = localStorage.getItem('snowball_productivity_expanded');
         return saved !== null ? JSON.parse(saved) : true;
@@ -13,6 +14,12 @@ const ProductivityDashboard = ({ tasks }) => {
     useEffect(() => {
         localStorage.setItem('snowball_productivity_expanded', JSON.stringify(isExpanded));
     }, [isExpanded]);
+
+    const isActuallyLoading = loading || (habitsLoading && (!tasks || tasks.length === 0));
+
+    if (isActuallyLoading) {
+        return <DashboardSkeleton />;
+    }
 
     const { totals, displayScore, bonusAdjustment, overduePenalty } = calculateProductivityScore(tasks, globalHabits);
 
