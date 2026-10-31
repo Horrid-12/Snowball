@@ -1,7 +1,7 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { supabase } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { createRateLimiter } from '../middleware/rateLimit.js';
@@ -17,7 +17,6 @@ const getEnv = (name) => {
     return undefined;
 };
 const router = express.Router();
-const MIN_PASSWORD_LENGTH = 8;
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const authRateLimit = createRateLimiter({
     windowMs: 15 * 60 * 1000,
@@ -90,7 +89,7 @@ const selectUserWithFallback = async (userId, optionalFields = USER_OPTIONAL_FIE
             .eq('id', userId)
             .single();
 
-        if (!result.error || result.error.code !== '42703') {
+        if (result.error?.code !== '42703') {
             return result;
         }
 
@@ -115,7 +114,7 @@ const updateUserWithFallback = async (userId, updateFields, optionalFields = USE
             .select(getUserSelectClause(remainingFields))
             .single();
 
-        if (!result.error || result.error.code !== '42703') {
+        if (result.error?.code !== '42703') {
             return result;
         }
 

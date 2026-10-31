@@ -1,5 +1,4 @@
-import React, { useState, useRef } from 'react';
-import { API_URL } from '../config.js';
+import React, { useState } from 'react';
 import { Pin, Lock, Repeat, Calendar, Clock } from 'lucide-react';
 import { getTagColor, loadTagColors, normalizeHexColor, parseTags, saveTagColors, syncTagColorsToServer } from '../utils/tagColors.js';
 import TagColorInput from './TagColorInput.jsx';
@@ -22,8 +21,6 @@ const TaskForm = ({ onTaskAdded }) => {
 
     const [loading, setLoading] = useState(false);
     const [tagColors, setTagColors] = useState(() => loadTagColors());
-    const dateRef = useRef(null);
-    const timeRef = useRef(null);
 
     React.useEffect(() => {
         const syncTagColors = () => setTagColors(loadTagColors());
@@ -49,7 +46,7 @@ const TaskForm = ({ onTaskAdded }) => {
 
         setLoading(true);
         try {
-            const combinedDate = formData.date ? `${formData.date}${formData.time ? ' ' + formData.time : ''}` : '';
+            const combinedDate = formData.date ? `${formData.date}${formData.time ? ` ${formData.time}` : ''}` : '';
             const newTask = {
                 ...formData,
                 date: combinedDate,
@@ -153,7 +150,7 @@ const TaskForm = ({ onTaskAdded }) => {
                             name="date"
                             value={formData.date}
                             onChange={handleChange}
-                            onClick={(e) => e.target.showPicker && e.target.showPicker()}
+                            onClick={(e) => e.target.showPicker?.()}
                             style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', zIndex: 2 }}
                         />
                     </div>
@@ -306,8 +303,8 @@ const TaskForm = ({ onTaskAdded }) => {
                             else if (prev.recurring === 'monthly') {
                                 try {
                                     const days = window.prompt("Enter integer days for custom recurrence (e.g., 5 for every 5 days):", "5");
-                                    if (days && !isNaN(parseInt(days))) {
-                                        newVal = `custom:${parseInt(days)}`;
+                                    if (days && !Number.isNaN(parseInt(days, 10))) {
+                                        newVal = `custom:${parseInt(days, 10)}`;
                                     } else {
                                         newVal = 'none';
                                     }

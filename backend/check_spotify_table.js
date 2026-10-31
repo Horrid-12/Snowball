@@ -13,7 +13,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function checkTable() {
     console.log('🔍 Checking if spotify_tokens table exists...');
-    const { data, error } = await supabase
+    const { error } = await supabase
         .from('spotify_tokens')
         .select('count', { count: 'exact', head: true });
 

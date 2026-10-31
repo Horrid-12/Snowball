@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Music, Video, Play, Pause, SkipForward, SkipBack, Search, ChevronDown, ChevronUp } from 'lucide-react';
 import { AppLauncher } from '@capacitor/app-launcher';
 import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import { apiFetch } from '../utils/apiClient';
 import { isTauriDesktop } from '../config.js';
 import YouTubePanel from './YouTubePanel.jsx';
@@ -38,7 +39,6 @@ const MediaHub = ({ onReady }) => {
     const [syncedLyrics, setSyncedLyrics] = useState(null); // [{ time: ms, text: string }]
     const [currentLyricIndex, setCurrentLyricIndex] = useState(-1);
     const lyricsContainerRef = useRef(null);
-    const [isHovered, setIsHovered] = useState(false);
     const [spotifySearching, setSpotifySearching] = useState(false);
     const [hasAttemptedPlaylists, setHasAttemptedPlaylists] = useState(false);
     const [spotifyCredentialSource, setSpotifyCredentialSource] = useState('shared');
@@ -164,7 +164,6 @@ const MediaHub = ({ onReady }) => {
     }, [hasAttemptedPlaylists, playlists.length, refreshSpotifyStatus]);
 
     useEffect(() => {
-        let visibilityInterval = null;
         let appStateListener = null;
 
         const startPolling = () => {
@@ -263,11 +262,11 @@ const MediaHub = ({ onReady }) => {
                         syncedLyrics = data.syncedLyrics.split('\n').map(line => {
                             const match = line.match(/\[(\d+):(\d+\.\d+)\](.*)/);
                             if (match) {
-                                const ms = (parseInt(match[1]) * 60 + parseFloat(match[2])) * 1000;
+                                const ms = (parseInt(match[1], 10) * 60 + parseFloat(match[2])) * 1000;
                                 return { time: ms, text: match[3].trim() };
                             }
                             return null;
-                        }).filter(l => l && l.text);
+                        }).filter(l => l?.text);
                     }
 
                     lyricsCacheRef.current.set(cacheKey, { lyrics, syncedLyrics });
@@ -322,7 +321,7 @@ const MediaHub = ({ onReady }) => {
             } else {
                 window.open('https://open.spotify.com', '_blank');
             }
-        } catch (err) {
+        } catch (_err) {
             window.open('https://open.spotify.com', '_blank');
         }
     };
@@ -555,7 +554,7 @@ const MediaHub = ({ onReady }) => {
                         </div>
                         <a 
                             href="spotify://"
-                            onClick={(e) => {
+                            onClick={(_e) => {
                                 setTimeout(() => {
                                     window.open("https://open.spotify.com", "_blank");
                                 }, 500);
@@ -618,7 +617,7 @@ const MediaHub = ({ onReady }) => {
                                         {lyrics.includes('Lyrics not found') && (
                                             <div style={{ marginTop: '0.5rem' }}>
                                                 <a 
-                                                    href={`https://www.google.com/search?q=${encodeURIComponent(spotifyData.item.artists[0]?.name + ' ' + spotifyData.item.name + ' lyrics')}`} 
+                                                    href={`https://www.google.com/search?q=${encodeURIComponent(`${spotifyData.item.artists[0]?.name} ${spotifyData.item.name} lyrics`)}`} 
                                                     target="_blank" 
                                                     rel="noopener noreferrer"
                                                     style={{ color: 'var(--accent-color)', textDecoration: 'underline' }}

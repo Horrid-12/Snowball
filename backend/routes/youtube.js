@@ -83,7 +83,7 @@ router.get('/playlist-import', async (req, res, next) => {
         }
 
         const videos = [];
-        let pageToken = undefined;
+        let pageToken;
 
         do {
             const response = await youtube.playlistItems.list({

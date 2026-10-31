@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ChevronDown,
     ChevronUp,
@@ -641,12 +641,15 @@ function YouTubePanel({ backgroundPlayback = false, onBackgroundPlaybackChange =
         const container = fullscreenContainerRef.current;
         if (!container) return;
 
-        if (document.fullscreenElement) {
-            await document.exitFullscreen().catch(() => {});
-            return;
+        try {
+            if (document.fullscreenElement) {
+                await document.exitFullscreen();
+                return;
+            }
+            await container.requestFullscreen?.();
+        } catch {
+            // Fullscreen is unavailable in this WebView — ignore.
         }
-
-        await container.requestFullscreen?.().catch(() => {});
     };
 
     const queueCountLabel = useMemo(

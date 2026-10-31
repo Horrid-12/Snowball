@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { StickyNote, Save, Trash2, ChevronDown, ChevronUp, Maximize2, Lock } from 'lucide-react';
 import { clearNoteDeletionMark, db, getPendingNoteDeleteIds, getPendingNoteUpdateIds, queueMutation } from '../db/db';
 import { useOnline } from '../context/OnlineContext';
@@ -12,7 +12,7 @@ import DOMPurify from 'dompurify';
 const stripHtml = (html) => {
     const tmp = document.createElement("DIV");
     tmp.innerHTML = html;
-    return tmp.textContent || tmp.innerText || "";
+    return tmp.textContent || '';
 };
 
 const hasRichNoteContent = (html) => /<(img|figure|a|strong|b|em|i|u|ul|ol|li|blockquote|h[1-6]|code|pre|p|br)\b/i.test(html || '');

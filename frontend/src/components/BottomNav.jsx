@@ -1,5 +1,4 @@
-import React from 'react';
-import { Layout, CheckSquare, BarChart2, Grid2x2, Settings, Users, CalendarDays } from 'lucide-react';
+import { Layout, CheckSquare, BarChart2, Grid2x2, Settings, Users } from 'lucide-react';
 
 const BottomNav = ({ activeTab, setActiveTab, setShowSettings }) => {
     const navItems = [

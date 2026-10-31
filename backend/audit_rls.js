@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import jwt from 'jsonwebtoken';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 const URL_ = process.env.SUPABASE_URL;
 const ANON = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
@@ -20,8 +20,6 @@ const SERVICE_ONLY = new Set([
     'spotify_tokens', 'spotify_credentials', 'token_blacklist',
     'rate_limits', 'study_sessions', 'support_requests'
 ]);
-
-const svcHeaders = { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, Accept: 'application/json' };
 
 const req_ = async (path, key, bearer, extra = {}) => {
     try {

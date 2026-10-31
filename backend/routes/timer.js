@@ -67,7 +67,7 @@ router.post('/sessions', requireAuth, validate(schemas.studySession), async (req
         if (error && error.code === '23505') {
             // Unique violation — this session already exists. Treat as success so
             // outbox replays / lost-response retries don't surface as failures.
-            let lookup = supabase
+            const lookup = supabase
                 .from('study_sessions')
                 .select('*')
                 .eq('user_id', req.user.id)

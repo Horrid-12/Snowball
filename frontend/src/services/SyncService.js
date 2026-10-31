@@ -18,7 +18,7 @@ if (isCapacitorAndroid) {
     try {
         const mod = await import('@capacitor/network');
         Network = mod.Network;
-    } catch (e) {
+    } catch (_e) {
         console.warn('SyncService: @capacitor/network unavailable on this platform');
     }
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { normalizeHexColor } from '../utils/tagColors.js';
 
 const isHexDraft = (value) => /^#?[0-9a-fA-F]{0,6}$/.test(value);

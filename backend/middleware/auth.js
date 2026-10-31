@@ -36,7 +36,7 @@ const parseCookies = (cookieHeader = '') => cookieHeader
 export const requireAuth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     const cookies = parseCookies(req.headers.cookie);
-    const bearerToken = authHeader && authHeader.startsWith('Bearer ')
+    const bearerToken = authHeader?.startsWith('Bearer ')
         ? authHeader.split(' ')[1]
         : null;
     const token = bearerToken || cookies.snowball_token;
@@ -64,7 +64,7 @@ export const requireAuth = async (req, res, next) => {
         }
 
         next();
-    } catch (err) {
+    } catch (_err) {
         return res.status(401).json({ error: 'Unauthorized: Invalid token' });
     }
 };

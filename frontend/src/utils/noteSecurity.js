@@ -25,9 +25,9 @@ const bytesToBase64 = (bytes) => {
 
 const base64ToBytes = (value) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
 
-const bytesToBase64Url = (bytes) => bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+const _bytesToBase64Url = (bytes) => bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 
-const base64UrlToBytes = (value) => {
+const _base64UrlToBytes = (value) => {
     const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
     const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
     return base64ToBytes(padded);
@@ -39,7 +39,7 @@ const randomBytes = (size) => {
     return bytes;
 };
 
-const importAesKey = async (rawKeyBytes) => cryptoObject().subtle.importKey(
+const _importAesKey = async (rawKeyBytes) => cryptoObject().subtle.importKey(
     'raw',
     rawKeyBytes,
     { name: 'AES-GCM' },

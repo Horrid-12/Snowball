@@ -17,7 +17,7 @@ async function fixTable() {
     // We can't run DDL via anon key, so we'll just check if it's correct
     // If not, we'll provide the EXACT SQL for the user.
 
-    const { data: columns, error } = await supabase
+    const { error } = await supabase
         .from('spotify_tokens')
         .select('*')
         .limit(1);

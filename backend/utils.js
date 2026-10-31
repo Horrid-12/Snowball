@@ -59,13 +59,11 @@ export const getPastDateWithOffset = async (userId, daysAgo) => {
         const tzOffset = user?.timezone_offset_minutes || 0;
         
         const target = new Date();
-        const shifted = new Date(target.getTime() - (tzOffset * 60 * 1000) - (offset * 60 * 1000) - (offset * 60 * 60 * 1000));
-        // Correction: shifted timezone calculation same as above
         const fixedShifted = new Date(target.getTime() - (tzOffset * 60 * 1000) - (offset * 60 * 60 * 1000));
         fixedShifted.setDate(fixedShifted.getDate() - daysAgo);
         
         return fixedShifted.toISOString().split('T')[0];
-    } catch (err) {
+    } catch (_err) {
         const target = new Date();
         target.setDate(target.getDate() - daysAgo);
         return target.toISOString().split('T')[0];

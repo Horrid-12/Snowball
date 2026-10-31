@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, ChevronDown, ChevronUp, Clock, Edit3, Play, Plus, RotateCcw, Square, Trash2, X } from 'lucide-react';
 import { apiFetch } from '../utils/apiClient.js';
 import { queueMutation } from '../db/db';
@@ -416,7 +416,9 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
     const taskSubjects = useMemo(() => buildSubjectsFromTasks(tasks), [tasks]);
     const subjects = useMemo(() => {
         const counts = {};
-        taskSubjects.forEach(s => counts[s] = (counts[s] || 0) + 1);
+        taskSubjects.forEach((s) => {
+            counts[s] = (counts[s] || 0) + 1;
+        });
         
         const next = [...new Set([...taskSubjects, ...storedSubjects, ...customSubjects])].sort((a, b) => {
             if (counts[b] !== counts[a]) return (counts[b] || 0) - (counts[a] || 0);
@@ -675,7 +677,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
     const dayStart = useMemo(() => getStudyDayStart(new Date(now), resetOffsetHours), [now, resetOffsetHours]);
     const dayEnd = useMemo(() => getNextStudyDayStart(new Date(now), resetOffsetHours), [now, resetOffsetHours]);
     // eslint-disable-next-line no-unused-vars
-    const dayKey = useMemo(() => getDayKey(new Date(now), resetOffsetHours), [now, resetOffsetHours]);
+    const _dayKey = useMemo(() => getDayKey(new Date(now), resetOffsetHours), [now, resetOffsetHours]);
 
     const totals = useMemo(() => {
         const bySubject = {};
@@ -746,7 +748,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                 body: JSON.stringify(payload)
             });
             if (!res.ok) throw new Error();
-        } catch (error) {
+        } catch (_error) {
             await queueMutation('study_session_create', 'POST', '/api/timer/sessions', payload);
         }
     };

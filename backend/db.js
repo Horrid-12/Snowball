@@ -64,7 +64,7 @@ export const getAnonClient = (token) => {
 
 // Legacy default export — points to the service client for backward compatibility
 export const supabase = new Proxy({}, {
-    get: (target, prop) => getServiceClient()[prop]
+    get: (_target, prop) => getServiceClient()[prop]
 });
 
 export const initDB = async () => {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { Check, MessageCircle, Search, Send, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { apiFetch, getUserData } from '../utils/apiClient.js';
 import { getApiErrorMessage } from '../utils/api.js';

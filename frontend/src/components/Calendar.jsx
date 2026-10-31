@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     ChevronLeft, ChevronRight, Calendar as CalendarIcon,
-    Cloud, Check, X, Plus, Trash2, Edit2, Clock, MapPin,
+    Cloud, Check, X, Plus, Trash2, Edit2, Clock,
     RefreshCw, RefreshCcw, LogOut, Repeat
 } from 'lucide-react';
 import { apiFetch } from '../utils/apiClient.js';
@@ -164,7 +164,7 @@ const makeEventPayload = (data) => {
         dday_target_date: data.dday_target_date || null,
         recurrence_rule: data.recurrence_rule || null
     };
-    if (data._import && data._import.google_event_id) {
+    if (data._import?.google_event_id) {
         payload.google_event_id = data._import.google_event_id;
         payload.source = 'google';
     }
@@ -425,7 +425,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                     >
                     <h2 style={{ marginTop: 0, marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: '1.25rem' }}>
-                            {initialData && initialData.id ? 'Edit Event' : (initialData && initialData._import
+                            {initialData?.id ? 'Edit Event' : (initialData?._import
                                 ? `Import Event — edit before saving${importRemaining > 0 ? ` (${importRemaining} more behind it)` : ''}`
                                 : 'Add Event')}
                         </span>
@@ -654,13 +654,13 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
 
                         <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
                             <button type="button" onClick={onClose} style={{ flex: 1, padding: '0.75rem', borderRadius: '0.5rem', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', cursor: 'pointer' }}>
-                                {initialData && initialData._import ? 'Skip' : 'Cancel'}
+                                {initialData?._import ? 'Skip' : 'Cancel'}
                             </button>
                             <button type="submit" style={{ flex: 1, padding: '0.75rem', borderRadius: '0.5rem', backgroundColor: 'var(--accent-color)', color: '#fff', border: 'none', cursor: 'pointer' }}>
                                 Save Event
                             </button>
                         </div>
-                        {initialData && initialData._import && importRemaining > 0 && onSaveAll && (
+                        {initialData?._import && importRemaining > 0 && onSaveAll && (
                             <button
                                 type="button"
                                 onClick={() => onSaveAll(formData)}
@@ -673,7 +673,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                                 Import all with these settings ({importRemaining + 1}) — no more windows
                             </button>
                         )}
-                        {initialData && initialData._import && importRemaining > 0 && (
+                        {initialData?._import && importRemaining > 0 && (
                             <div style={{ textAlign: 'center', marginTop: '0.75rem' }}>
                                 <button
                                     type="button"
@@ -694,7 +694,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
 const Calendar = () => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [events, setEvents] = useState([]);
-    const [fetchError, setFetchError] = useState(false);
+    const [_fetchError, setFetchError] = useState(false);
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [showEventForm, setShowEventForm] = useState(false);
     const [editingEvent, setEditingEvent] = useState(null);
@@ -764,7 +764,7 @@ const Calendar = () => {
         setFetchError(false);
         try {
             const res = await apiFetch('/api/calendar/events');
-            if (res && res.ok) {
+            if (res?.ok) {
                 const data = await res.json();
                 if (Array.isArray(data)) {
                     setEvents(data);
@@ -785,7 +785,7 @@ const Calendar = () => {
     const checkGoogleStatus = useCallback(async () => {
         try {
             const res = await apiFetch('/api/calendar/google/status');
-            if (res && res.ok) {
+            if (res?.ok) {
                 const data = await res.json();
                 if (data && data.connected !== undefined) {
                     setGoogleStatus(data);
@@ -799,9 +799,9 @@ const Calendar = () => {
     const handleConnectGoogle = useCallback(async () => {
         try {
             const res = await apiFetch('/api/calendar/google/auth-url');
-            if (res && res.ok) {
+            if (res?.ok) {
                 const data = await res.json();
-                if (data && data.url) {
+                if (data?.url) {
                     window.location.href = data.url;
                     return;
                 }
@@ -818,7 +818,7 @@ const Calendar = () => {
         setSyncing(true);
         try {
             const res = await apiFetch('/api/calendar/google/disconnect', { method: 'DELETE' });
-            if (res && res.ok) {
+            if (res?.ok) {
                 setGoogleStatus({ connected: false, email: null });
                 setShowGoogleSync(false);
             }
@@ -836,7 +836,7 @@ const Calendar = () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ calendarId: calendarId || 'primary' })
             });
-            if (!res || !res.ok) {
+            if (!res?.ok) {
                 if (res && res.status === 401) {
                     setGoogleStatus({ connected: false, email: null });
                     setNotice('Google authorization expired. Reconnect your Google Calendar to sync again.');
@@ -845,7 +845,7 @@ const Calendar = () => {
                 }
             } else {
                 const data = await res.json();
-                const eventsList = Array.isArray(data) ? data : (data && data.events) || [];
+                const eventsList = Array.isArray(data) ? data : (data?.events) || [];
                 const importedIds = new Set(events.filter(e => e.google_event_id).map(e => e.google_event_id));
                 setGoogleEvents(eventsList.map(ev => ({ ...ev, already_imported: importedIds.has(ev.google_event_id) })));
                 setSelectedGoogleEvents(new Set());
@@ -862,7 +862,7 @@ const Calendar = () => {
     const loadGoogleCalendars = useCallback(async () => {
         try {
             const res = await apiFetch('/api/calendar/google/calendars');
-            if (!res || !res.ok) return null;
+            if (!res?.ok) return null;
             const data = await res.json();
             const list = Array.isArray(data) ? data : [];
             setGoogleCalendars(list);
@@ -957,8 +957,8 @@ const importSelectedGoogleEvents = useCallback(() => {
                 });
             }
 
-            if (!res || !res.ok) {
-                console.error("[apiFetch] save event failed:", res && res.status);
+            if (!res?.ok) {
+                console.error("[apiFetch] save event failed:", res?.status);
                 setNotice('Failed to save event. Please try again.');
                 return;
             }
@@ -1013,7 +1013,7 @@ const importSelectedGoogleEvents = useCallback(() => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(makeEventPayload(formData))
                 });
-                if (res && res.ok) saved += 1; else failed += 1;
+                if (res?.ok) saved += 1; else failed += 1;
             } catch (error) {
                 console.error("Failed to bulk-import event:", error);
                 failed += 1;
@@ -1073,7 +1073,7 @@ const importSelectedGoogleEvents = useCallback(() => {
     // Non-recurring events delete outright (after a confirm). Recurring events
     // open a popup to choose between "only this occurrence" and "all occurrences".
     const deleteEvent = useCallback((ev) => {
-        const isRecurring = /FREQ=/.test(String((ev && ev.recurrence_rule) || ''));
+        const isRecurring = /FREQ=/.test(String((ev?.recurrence_rule) || ''));
         if (!isRecurring) {
             if (!window.confirm('Delete this event?')) return;
             deleteEventById(ev.id);
@@ -1580,7 +1580,7 @@ const importSelectedGoogleEvents = useCallback(() => {
 
             <EventFormModal
                 key={importQueue && importQueue.length > 0
-                    ? `import-${importQueue.length}-${(importQueue[0]._import || {}).google_event_id || 'x'}`
+                    ? `import-${importQueue.length}-${importQueue[0]._import?.google_event_id || 'x'}`
                     : (editingEvent ? `edit-${editingEvent.id}` : `new-${formatDateStr(selectedDate)}`)}
                 open={showEventForm}
                 initialData={formInitialData}

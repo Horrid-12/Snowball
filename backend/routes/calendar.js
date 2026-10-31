@@ -149,7 +149,7 @@ router.get('/google/callback', async (req, res) => {
         let decoded;
         try {
             decoded = jwt.verify(state, jwtSecret);
-        } catch (err) {
+        } catch (_err) {
             return res.status(401).json({ error: 'Invalid or expired state token' });
         }
         
@@ -453,7 +453,7 @@ router.get('/google/auth-url', async (req, res) => {
         
         // Use the auth token from req headers as state
         const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        if (!authHeader?.startsWith('Bearer ')) {
             return res.status(401).json({ error: 'Missing authorization header' });
         }
         const token = authHeader.split(' ')[1];
@@ -496,7 +496,7 @@ router.get('/google/calendars', async (req, res) => {
 router.post('/google/sync', async (req, res) => {
     try {
         const { calendar, clearStoredTokens } = await loadGoogleClient(req);
-        const calendarId = (req.body && req.body.calendarId) || 'primary';
+        const calendarId = (req.body?.calendarId) || 'primary';
 
         let response;
         try {

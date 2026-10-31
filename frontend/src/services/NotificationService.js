@@ -111,7 +111,9 @@ class NotificationService {
     }
 
     clearWebTimers() {
-        this.webTimers.forEach((timer) => clearTimeout(timer));
+        this.webTimers.forEach((timer) => {
+            clearTimeout(timer);
+        });
         this.webTimers = [];
     }
 

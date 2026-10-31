@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAppContext } from '../context/AppContext.jsx';
 import { useOnline } from '../context/OnlineContext';
@@ -568,7 +568,7 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
                 const historyData = await historyResponse.json();
                 setArchivedTasks(Array.isArray(historyData) ? historyData : []);
             }
-            if (habitHistoryResponse && habitHistoryResponse.ok) {
+            if (habitHistoryResponse?.ok) {
                 const hLogs = await habitHistoryResponse.json();
                 setHabitLogs(Array.isArray(hLogs) ? hLogs : []);
             }

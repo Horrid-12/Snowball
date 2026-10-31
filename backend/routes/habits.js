@@ -58,7 +58,9 @@ router.get('/history', async (req, res, next) => {
         if (!habits || habits.length === 0) return res.json([]);
         
         const habitMap = {};
-        habits.forEach(h => habitMap[h.id] = h);
+        habits.forEach((h) => {
+            habitMap[h.id] = h;
+        });
 
         const todayStr = await getTodayWithOffset(req.user.id);
         const todayDate = new Date(todayStr);
@@ -133,6 +135,11 @@ router.post('/:id/toggle', async (req, res, next) => {
             .eq('habit_id', habitId)
             .eq('date', today)
             .maybeSingle();
+
+        if (logError) {
+            console.error('Habit log lookup failed:', logError);
+            return res.status(500).json({ error: 'Failed to toggle habit' });
+        }
 
         if (existingLog) {
             await getDb(req).from('habit_logs').delete().eq('id', existingLog.id);

@@ -26,7 +26,9 @@ class DesktopUpdateService {
 
     emit(nextState) {
         this.state = { ...this.state, ...nextState };
-        this.listeners.forEach((listener) => listener(this.state));
+        this.listeners.forEach((listener) => {
+            listener(this.state);
+        });
     }
 
     async hydrateVersion() {

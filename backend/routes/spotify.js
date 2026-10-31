@@ -1,6 +1,6 @@
 import express from 'express';
 import axios from 'axios';
-import querystring from 'querystring';
+import querystring from 'node:querystring';
 import jwt from 'jsonwebtoken';
 import { supabase as serviceDb } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -14,8 +14,6 @@ const getEnv = (name) => {
     return undefined;
 };
 const router = express.Router();
-
-const getDb = () => serviceDb;
 
 const CLIENT_ID = getEnv('SPOTIFY_CLIENT_ID');
 const CLIENT_SECRET = getEnv('SPOTIFY_CLIENT_SECRET');
@@ -137,7 +135,7 @@ const refreshAccessToken = async (userId) => {
             }),
             headers: {
                 'content-type': 'application/x-www-form-urlencoded',
-                Authorization: 'Basic ' + (Buffer.from(credentials.clientId + ':' + credentials.clientSecret).toString('base64'))
+                Authorization: `Basic ${Buffer.from(`${credentials.clientId}:${credentials.clientSecret}`).toString('base64')}`
             }
         });
 
@@ -253,7 +251,7 @@ router.delete('/credentials', requireAuth, async (req, res, next) => {
     }
 });
 
-router.get('/auth', requireAuth, async (req, res, next) => {
+router.get('/auth', requireAuth, async (req, res, _next) => {
     const userId = req.user.id;
     const state = createSpotifyState(userId);
     console.log(`[Spotify] Initiating auth for user: ${userId}`);
@@ -305,7 +303,7 @@ router.get('/callback', async (req, res) => {
             }),
             headers: {
                 'content-type': 'application/x-www-form-urlencoded',
-                Authorization: 'Basic ' + (Buffer.from(credentials.clientId + ':' + credentials.clientSecret).toString('base64'))
+                Authorization: `Basic ${Buffer.from(`${credentials.clientId}:${credentials.clientSecret}`).toString('base64')}`
             }
         });
 
@@ -333,7 +331,7 @@ router.get('/now-playing', requireAuth, async (req, res) => {
         return res.json(cached.data);
     }
 
-    let tokens = await getTokens(userId);
+    const tokens = await getTokens(userId);
  
     if (!tokens) {
         return res.status(401).json({ error: 'Not connected to Spotify' });
@@ -370,7 +368,7 @@ router.get('/now-playing', requireAuth, async (req, res) => {
         if (status === 429) {
             const retryAfter = error.response.headers['retry-after'] || 5;
             console.warn(`[Spotify] Rate limited on Now Playing. Retry after ${retryAfter}s`);
-            return res.status(429).json({ error: 'Too many requests', retryAfter: parseInt(retryAfter), detail: `Spotify is rate limiting your account. Please wait ${retryAfter} seconds.` });
+            return res.status(429).json({ error: 'Too many requests', retryAfter: parseInt(retryAfter, 10), detail: `Spotify is rate limiting your account. Please wait ${retryAfter} seconds.` });
         }
         console.error('❌ [Spotify] Now Playing Error:', error.response?.data || error.message);
         res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
@@ -384,7 +382,7 @@ const withRefresh = async (apiCall, req, res, bustCache = false) => {
     if (bustCache) {
         nowPlayingCache.delete(userId); // ⚡ Clear cache immediately on control action
     }
-    let tokens = await getTokens(userId);
+    const tokens = await getTokens(userId);
     if (!tokens) return res.status(401).json({ error: 'Not connected' });
 
     try {
@@ -394,7 +392,7 @@ const withRefresh = async (apiCall, req, res, bustCache = false) => {
         const status = error.response?.status || 500;
         if (status === 429) {
             const retryAfter = error.response.headers['retry-after'] || 5;
-            return res.status(429).json({ error: 'Too many requests', retryAfter: parseInt(retryAfter) });
+            return res.status(429).json({ error: 'Too many requests', retryAfter: parseInt(retryAfter, 10) });
         }
         if (status === 401) {
             const newAccessToken = await refreshAccessToken(userId);
@@ -451,7 +449,7 @@ router.put('/volume', requireAuth, async (req, res) => {
 
 router.get('/search', requireAuth, requireString('q', { source: 'query' }), async (req, res) => {
     const userId = req.user.id;
-    let tokens = await getTokens(userId);
+    const tokens = await getTokens(userId);
     if (!tokens) return res.status(401).json({ error: 'Not connected' });
 
     const q = req.query.q;
@@ -486,7 +484,7 @@ router.get('/search', requireAuth, requireString('q', { source: 'query' }), asyn
 
 router.get('/playlists', requireAuth, async (req, res) => {
     const userId = req.user.id;
-    let tokens = await getTokens(userId);
+    const tokens = await getTokens(userId);
     if (!tokens) return res.status(401).json({ error: 'Not connected' });
 
     const fetchPlaylists = (token) => axios.get(`https://api.spotify.com/v1/me/playlists?limit=20`, {
@@ -526,7 +524,7 @@ router.get('/playlists', requireAuth, async (req, res) => {
         const detail = error.response?.data || error.message;
         if (status === 429) {
             const retryAfter = error.response.headers['retry-after'] || 5;
-            return res.status(429).json({ error: 'Too many requests', retryAfter: parseInt(retryAfter), detail: `Spotify is rate limiting your account. Please wait ${retryAfter} seconds.` });
+            return res.status(429).json({ error: 'Too many requests', retryAfter: parseInt(retryAfter, 10), detail: `Spotify is rate limiting your account. Please wait ${retryAfter} seconds.` });
         }
         console.error(`❌ [Spotify] Playlists Error (${status}):`, detail);
         res.status(status).json({ 
@@ -561,7 +559,7 @@ router.get('/lyrics', requireAuth, requireString('artist', { source: 'query' }),
                     syncedLyrics: lrcRes.data.syncedLyrics || null
                 });
             }
-        } catch (lrcErr) {
+        } catch (_lrcErr) {
             console.warn(`[Spotify] LRCLIB failed for: ${artistClean} - ${trackTitleClean}. Trying fallbacks...`);
         }
 
@@ -569,24 +567,24 @@ router.get('/lyrics', requireAuth, requireString('artist', { source: 'query' }),
         try {
             const response = await axios.get(`https://api.lyrics.ovh/v1/${encodeURIComponent(artistClean)}/${encodeURIComponent(trackTitleClean)}`);
             if (response.data.lyrics) return res.json({ lyrics: response.data.lyrics });
-        } catch (err) {
+        } catch (_err) {
             // Secondary effort with original title
             try {
                 const responseOriginal = await axios.get(`https://api.lyrics.ovh/v1/${encodeURIComponent(artistClean)}/${encodeURIComponent(title)}`);
                 if (responseOriginal.data.lyrics) return res.json({ lyrics: responseOriginal.data.lyrics });
-            } catch (err2) {}
+            } catch (_err2) {}
         }
 
         // Fallback 2: ChartLyrics 🎤
         try {
             const chartRes = await axios.get(`http://api.chartlyrics.com/apiv1.asmx/SearchLyricDirect?artist=${encodeURIComponent(artistClean)}&song=${encodeURIComponent(trackTitleClean)}`);
-            if (chartRes.data && chartRes.data.includes('<Lyric>')) {
+            if (chartRes.data?.includes('<Lyric>')) {
                 const lyricMatch = chartRes.data.match(/<Lyric>(.*?)<\/Lyric>/s);
-                if (lyricMatch && lyricMatch[1]) return res.json({ lyrics: lyricMatch[1].replace(/\\n/g, '\n') });
+                if (lyricMatch?.[1]) return res.json({ lyrics: lyricMatch[1].replace(/\\n/g, '\n') });
             }
-        } catch (err3) {}
+        } catch (_err3) {}
 
-        res.json({ lyrics: "Lyrics not found for this track. Try searching '" + title + " lyrics' on Google." });
+        res.json({ lyrics: `Lyrics not found for this track. Try searching '${title} lyrics' on Google.` });
     } catch (err) {
         console.error("Lyrics fetch error:", err.message);
         res.json({ lyrics: `Lyrics unavailable right now. Try searching on Google or check back later.` });

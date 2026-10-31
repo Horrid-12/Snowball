@@ -1,10 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, Suspense, useMemo } from 'react';
 import './index.css';
 
-// Components — statically imported (small, always needed)
-import TaskForm from './components/TaskForm.jsx';
 import AuthModal from './components/AuthModal.jsx';
-import ThemeManager from './components/ThemeManager.jsx';
 import BottomNav from './components/BottomNav.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { Settings as SettingsIcon, History as HistoryIcon, Calculator as CalculatorIcon, Plus, BarChart3, ChevronDown, ChevronUp, Users, CalendarDays } from 'lucide-react';
@@ -19,7 +16,7 @@ import { notificationService } from './services/NotificationService.js';
 import { syncService } from './services/SyncService.js';
 import { desktopUpdateService } from './services/DesktopUpdateService.js';
 import { discordPresenceService } from './services/DiscordPresenceService.js';
-import { apiFetch, hasPersistedSession, setAuthToken, setUserData, clearUserData, clearSession, initAuthFromStorage } from './utils/apiClient.js';
+import { apiFetch, hasPersistedSession, setUserData, clearSession, initAuthFromStorage } from './utils/apiClient.js';
 import { calculateProductivityScore, filterTasksForDate, formatLocalDate } from './utils/productivityScore.js';
 import { registerPlugin, Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -120,7 +117,7 @@ function App() {
         if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
             return 'dynamic';
         }
-        return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light';
     });
 
     const [customColors, setCustomColors] = useState(() => {
@@ -130,7 +127,7 @@ function App() {
                 ...DEFAULT_CUSTOM_COLORS,
                 ...JSON.parse(saved)
             } : DEFAULT_CUSTOM_COLORS;
-        } catch (e) {
+        } catch (_e) {
             return DEFAULT_CUSTOM_COLORS;
         }
     });
@@ -216,7 +213,7 @@ function App() {
     }, [isNativeAndroid]);
 
     const [tasks, setTasks] = useState([]);
-    const [checkingAuth, setCheckingAuth] = useState(token ? true : false);
+    const [checkingAuth, setCheckingAuth] = useState(!!token);
     const [initialLoadComplete, setInitialLoadComplete] = useState(!token);
     const [mediaHubReady, setMediaHubReady] = useState(false);
     const handleMediaHubReady = useCallback(() => setMediaHubReady(true), []);
@@ -253,8 +250,8 @@ function App() {
 
     const todaysTasks = useMemo(() => filterTasksForDate(tasks), [tasks]);
     const { displayScore } = useMemo(() => calculateProductivityScore(tasks, globalHabits), [tasks, globalHabits]);
-    const remainingTasks = useMemo(() => tasks.filter(isTaskIncomplete).length, [tasks]);
-    const todaysRemainingTasks = useMemo(() => todaysTasks.filter(isTaskIncomplete).length, [todaysTasks]);
+    const remainingTasks = useMemo(() => tasks.filter(isTaskIncomplete).length, [tasks, isTaskIncomplete]);
+    const todaysRemainingTasks = useMemo(() => todaysTasks.filter(isTaskIncomplete).length, [todaysTasks, isTaskIncomplete]);
 
     useEffect(() => {
         const handleNotesVisibility = (event) => {
@@ -432,7 +429,7 @@ function App() {
                     setSystemAccentColor(value);
                     console.log("Got native Material You seed:", value);
                 }
-            } catch (e) {
+            } catch (_e) {
                 console.log("No native dynamic color available.");
             }
         };
@@ -509,8 +506,8 @@ function App() {
                 root.style.setProperty('--custom-notes', customColors.notes);
                 // Derive subtle variations
                 root.style.setProperty('--custom-secondary', customColors.bg);
-                root.style.setProperty('--custom-text-sec', customColors.text + 'aa');
-                root.style.setProperty('--custom-border', customColors.text + '22');
+                root.style.setProperty('--custom-text-sec', `${customColors.text}aa`);
+                root.style.setProperty('--custom-border', `${customColors.text}22`);
                 localStorage.setItem('snowball_custom_colors', JSON.stringify(customColors));
             } else {
                 ['bg', 'text', 'accent', 'accent-rgb', 'card', 'notes', 'secondary', 'text-sec', 'border'].forEach(p => {
@@ -556,62 +553,66 @@ function App() {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
+    // Reset recurring task counters when the logical day changes. Lives at component
+    // scope because the notification heartbeat effect also calls it - it used to be
+    // declared inside the auth effect, so `heartbeat` threw ReferenceError.
+
+    const isDifferentWeek = (dateStr1, dateStr2) => {
+        const d1 = new Date(dateStr1);
+        const d2 = new Date(dateStr2);
+        d1.setHours(0, 0, 0, 0);
+        d2.setHours(0, 0, 0, 0);
+        const day1 = d1.getDay() || 7;
+        d1.setDate(d1.getDate() - day1 + 1);
+        const day2 = d2.getDay() || 7;
+        d2.setDate(d2.getDate() - day2 + 1);
+        return d1.getTime() !== d2.getTime();
+    };
+
+    const checkAndResetTasks = useCallback(async (userOffset) => {
+        const now = new Date();
+        const shifted = new Date(now.getTime() - (userOffset * 60 * 60 * 1000));
+        const logicalToday = formatLocalDate(shifted);
+        const lastReset = localStorage.getItem('snowball_tasks_last_reset');
+
+        if (lastReset && lastReset !== logicalToday) {
+            console.log(`🌙 (Tasks) Day changed. Resetting recurring tasks locally...`);
+            const allTasks = await db.tasks.toArray();
+            const resetTasks = allTasks.map(t => {
+                const taskDateStr = (t.date || lastReset || logicalToday).split(' ')[0];
+                const diffDays = Math.floor((new Date(logicalToday) - new Date(taskDateStr)) / (1000 * 60 * 60 * 24));
+                
+                let shouldReset = false;
+                if (t.recurring === 'daily' && diffDays >= 1) shouldReset = true;
+                else if (t.recurring === 'weekly' && isDifferentWeek(logicalToday, taskDateStr)) shouldReset = true;
+                else if (t.recurring === 'monthly') {
+                    const tDate = new Date(taskDateStr);
+                    const todayDate = new Date(logicalToday);
+                    if (todayDate.getMonth() !== tDate.getMonth() || todayDate.getFullYear() !== tDate.getFullYear()) {
+                        shouldReset = true;
+                    }
+                }
+                else if (t.recurring?.startsWith('custom:')) {
+                    const n = parseInt(t.recurring.split(':')[1], 10) || 1;
+                    if (diffDays >= n) shouldReset = true;
+                }
+
+                if (shouldReset) {
+                    return { ...t, tasksCompleted: 0, date: logicalToday + (t.date?.includes(' ') ? ` ${t.date.split(' ')[1]}` : '') };
+                }
+                return t;
+            });
+            await db.tasks.bulkPut(resetTasks);
+            setTasks(resetTasks);
+            localStorage.setItem('snowball_tasks_last_reset', logicalToday);
+        } else if (!lastReset) {
+            localStorage.setItem('snowball_tasks_last_reset', logicalToday);
+        }
+    }, []);
+
     // Check auth session on mount — initAuthFromStorage runs first to restore token from IndexedDB
     // before making the API call, preventing a race where the Bearer header is missing.
     useEffect(() => {
-        const isDifferentWeek = (dateStr1, dateStr2) => {
-            const d1 = new Date(dateStr1);
-            const d2 = new Date(dateStr2);
-            d1.setHours(0, 0, 0, 0);
-            d2.setHours(0, 0, 0, 0);
-            const day1 = d1.getDay() || 7;
-            d1.setDate(d1.getDate() - day1 + 1);
-            const day2 = d2.getDay() || 7;
-            d2.setDate(d2.getDate() - day2 + 1);
-            return d1.getTime() !== d2.getTime();
-        };
-
-        const checkAndResetTasks = async (userOffset) => {
-            const now = new Date();
-            const shifted = new Date(now.getTime() - (userOffset * 60 * 60 * 1000));
-            const logicalToday = formatLocalDate(shifted);
-            const lastReset = localStorage.getItem('snowball_tasks_last_reset');
-
-            if (lastReset && lastReset !== logicalToday) {
-                console.log(`🌙 (Tasks) Day changed. Resetting recurring tasks locally...`);
-                const allTasks = await db.tasks.toArray();
-                const resetTasks = allTasks.map(t => {
-                    const taskDateStr = (t.date || lastReset || logicalToday).split(' ')[0];
-                    const diffDays = Math.floor((new Date(logicalToday) - new Date(taskDateStr)) / (1000 * 60 * 60 * 24));
-                    
-                    let shouldReset = false;
-                    if (t.recurring === 'daily' && diffDays >= 1) shouldReset = true;
-                    else if (t.recurring === 'weekly' && isDifferentWeek(logicalToday, taskDateStr)) shouldReset = true;
-                    else if (t.recurring === 'monthly') {
-                        const tDate = new Date(taskDateStr);
-                        const todayDate = new Date(logicalToday);
-                        if (todayDate.getMonth() !== tDate.getMonth() || todayDate.getFullYear() !== tDate.getFullYear()) {
-                            shouldReset = true;
-                        }
-                    }
-                    else if (t.recurring?.startsWith('custom:')) {
-                        const n = parseInt(t.recurring.split(':')[1]) || 1;
-                        if (diffDays >= n) shouldReset = true;
-                    }
-
-                    if (shouldReset) {
-                        return { ...t, tasksCompleted: 0, date: logicalToday + (t.date?.includes(' ') ? ' ' + t.date.split(' ')[1] : '') };
-                    }
-                    return t;
-                });
-                await db.tasks.bulkPut(resetTasks);
-                setTasks(resetTasks);
-                localStorage.setItem('snowball_tasks_last_reset', logicalToday);
-            } else if (!lastReset) {
-                localStorage.setItem('snowball_tasks_last_reset', logicalToday);
-            }
-        };
-
         if (token) {
             // Await IndexedDB token restoration before hitting /api/auth/me
             const doAuth = async () => {
@@ -628,7 +629,7 @@ function App() {
                             throw new Error(payload?.error?.message || payload?.error || payload?.message || `Session check failed (${res.status})`);
                         }
                         const data = await res.json();
-                        if (data && data.id) {
+                        if (data?.id) {
                             setUser(data);
                             setUserData(data);
                             setProfileSyncStatus('ok');
@@ -1247,7 +1248,7 @@ function App() {
                 if (!response.ok) {
                     await queueMutation('task_delete', 'DELETE', `${API_URL}/api/tasks/${id}`, null);
                 }
-            } catch (err) {
+            } catch (_err) {
                 await queueMutation('task_delete', 'DELETE', `${API_URL}/api/tasks/${id}`, null);
             }
         } else {
@@ -1258,7 +1259,9 @@ function App() {
     const handleBulkTasksUpdate = useCallback(async (updatedTasks) => {
         setTasks(prev => {
             const byId = new Map(prev.map(t => [t.id, t]));
-            updatedTasks.forEach(t => byId.set(t.id, t));
+            updatedTasks.forEach((t) => {
+                byId.set(t.id, t);
+            });
             return [...byId.values()];
         });
         await db.tasks.bulkPut(updatedTasks);
@@ -1285,7 +1288,7 @@ function App() {
                         tasks: reorderedTasks.map(t => ({ id: t.id, position: t.position }))
                     });
                 }
-            } catch (err) {
+            } catch (_err) {
                 await queueMutation('tasks_reorder', 'PUT', `${API_URL}/api/tasks/reorder/all`, {
                     tasks: reorderedTasks.map(t => ({ id: t.id, position: t.position }))
                 });
@@ -1693,21 +1696,19 @@ function App() {
                                             )}
                                         </div>
                                         {isTasksExpanded && (
-                                            <>
-                                                {checkingAuth && tasks.length === 0 ? (
-                                                    <p style={{ color: 'var(--text-secondary)' }}>Loading tasks...</p>
-                                                ) : (
-                                                    <Suspense fallback={<LoadingFallback height="200px" />}>
-                                                        <TaskBoard
-                                                            tasks={tasks}
-                                                            onTaskUpdate={handleTaskUpdate}
-                                                            onTaskDelete={handleTaskDelete}
-                                                            onClearAll={handleClearAll}
-                                                            onReorder={handleTasksReorder}
-                                                        />
-                                                    </Suspense>
-                                                )}
-                                            </>
+                                            checkingAuth && tasks.length === 0 ? (
+                                                <p style={{ color: 'var(--text-secondary)' }}>Loading tasks...</p>
+                                            ) : (
+                                                <Suspense fallback={<LoadingFallback height="200px" />}>
+                                                    <TaskBoard
+                                                        tasks={tasks}
+                                                        onTaskUpdate={handleTaskUpdate}
+                                                        onTaskDelete={handleTaskDelete}
+                                                        onClearAll={handleClearAll}
+                                                        onReorder={handleTasksReorder}
+                                                    />
+                                                </Suspense>
+                                            )
                                         )}
                                     </div>
                                 )}
@@ -1810,21 +1811,19 @@ function App() {
                                                 )}
                                             </div>
                                             {isTasksExpanded && (
-                                                <>
-                                                    {checkingAuth && tasks.length === 0 ? (
-                                                        <p style={{ color: 'var(--text-secondary)' }}>Loading tasks...</p>
-                                                    ) : (
-                                                        <Suspense fallback={<LoadingFallback height="200px" />}>
-                                                            <TaskBoard
-                                                                tasks={tasks}
-                                                                onTaskUpdate={handleTaskUpdate}
-                                                                onTaskDelete={handleTaskDelete}
-                                                                onClearAll={handleClearAll}
-                                                                onReorder={handleTasksReorder}
-                                                            />
-                                                        </Suspense>
-                                                    )}
-                                                </>
+                                                checkingAuth && tasks.length === 0 ? (
+                                                    <p style={{ color: 'var(--text-secondary)' }}>Loading tasks...</p>
+                                                ) : (
+                                                    <Suspense fallback={<LoadingFallback height="200px" />}>
+                                                        <TaskBoard
+                                                            tasks={tasks}
+                                                            onTaskUpdate={handleTaskUpdate}
+                                                            onTaskDelete={handleTaskDelete}
+                                                            onClearAll={handleClearAll}
+                                                            onReorder={handleTasksReorder}
+                                                        />
+                                                    </Suspense>
+                                                )
                                             )}
                                         </div>
                                     </ErrorBoundary>

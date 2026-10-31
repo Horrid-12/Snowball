@@ -169,7 +169,7 @@ export const AppProvider = ({ children }) => {
         lifetimeStats,
         fetchStats,
         sortHabits
-    }), [heatmapRefreshKey, globalHabits, lifetimeStats, fetchHabits, fetchStats]);
+    }), [heatmapRefreshKey, globalHabits, lifetimeStats, fetchHabits, fetchStats, triggerHeatmapRefresh]);
 
     return (
         <AppContext.Provider value={contextValue}>

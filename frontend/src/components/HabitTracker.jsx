@@ -129,7 +129,7 @@ const HabitTracker = () => {
     const isOnline = useOnline();
     const { globalHabits, setGlobalHabits, fetchHabits, triggerHeatmapRefresh, sortHabits } = useAppContext();
     const [newHabitName, setNewHabitName] = useState('');
-    const [editingHabitId, setEditingHabitId] = useState(null);
+    const [_editingHabitId, _setEditingHabitId] = useState(null);
 
     const handleAddHabit = useCallback(async (e) => {
         if (e) e.preventDefault();

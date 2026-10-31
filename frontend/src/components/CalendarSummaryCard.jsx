@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-    CalendarDays, ChevronDown, ChevronUp, Clock,
+    CalendarDays, ChevronDown, ChevronUp,
     Repeat, Plus, ExternalLink, Timer, Sparkles
 } from 'lucide-react';
 import { apiFetch } from '../utils/apiClient.js';
@@ -27,7 +27,7 @@ const CalendarSummaryCard = ({ onOpenCalendar }) => {
     const fetchEvents = useCallback(async () => {
         try {
             const res = await apiFetch('/api/calendar/events');
-            if (res && res.ok) {
+            if (res?.ok) {
                 const data = await res.json();
                 if (Array.isArray(data)) setEvents(data);
             }

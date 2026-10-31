@@ -13,7 +13,7 @@ const safeEvaluate = (expression) => {
                 let num = '';
                 while (i < expression.length && /[\d.]/.test(expression[i])) { num += expression[i++]; }
                 if (!num) throw new Error('Invalid expression');
-                tokens.push('-' + num);
+                tokens.push(`-${num}`);
             } else {
                 tokens.push(expression[i++]);
             }
@@ -36,7 +36,7 @@ const safeEvaluate = (expression) => {
         }
         if (token === '-') return -parseFactor();
         const num = parseFloat(token);
-        if (isNaN(num)) throw new Error('Invalid number');
+        if (Number.isNaN(num)) throw new Error('Invalid number');
         return num;
     };
 
@@ -90,10 +90,10 @@ const CalculatorWidget = ({ onClose }) => {
 
     const handleOperator = (op) => {
         if (!isNewNumber) {
-            setEquation(equation + display + ' ' + op + ' ');
+            setEquation(`${equation + display} ${op} `);
             setIsNewNumber(true);
         } else if (equation) {
-            setEquation(equation.slice(0, -2) + op + ' ');
+            setEquation(`${equation.slice(0, -2) + op} `);
         }
     };
 
@@ -109,7 +109,7 @@ const CalculatorWidget = ({ onClose }) => {
             setDisplay(formattedResult);
             setEquation('');
             setIsNewNumber(true);
-        } catch (e) {
+        } catch (_e) {
             setDisplay('Error');
             setEquation('');
             setIsNewNumber(true);

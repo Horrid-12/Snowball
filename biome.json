@@ -1,0 +1,120 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true,
+		"defaultBranch": "main"
+	},
+	"files": {
+		"ignoreUnknown": true,
+		"includes": [
+			"**",
+			"!**/node_modules",
+			"!**/dist",
+			"!**/build",
+			"!**/.vercel",
+			"!**/.github",
+			"!frontend_backup_pre_offline",
+			"!frontend/android",
+			"!frontend/src-tauri/target",
+			"!frontend/src-tauri/gen",
+			"!frontend/public",
+			"!frontend/~",
+			"!backend/database.sqlite",
+			"!backend/uploads",
+			"!scripts",
+			"!tmp",
+			"!docs",
+			"!**/*.sql"
+		]
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "space",
+		"indentWidth": 4,
+		"lineWidth": 120,
+		"lineEnding": "auto",
+		"attributePosition": "auto",
+		"bracketSameLine": false,
+		"expand": "auto",
+		"useEditorconfig": true
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"a11y": {
+				"noAutofocus": "warn",
+				"noLabelWithoutControl": "warn",
+				"noStaticElementInteractions": "warn",
+				"noSvgWithoutTitle": "warn",
+				"useButtonType": "warn",
+				"useKeyWithClickEvents": "warn"
+			},
+			"complexity": {
+				"noImportantStyles": "off",
+				"noUselessFragments": "error",
+				"useOptionalChain": "error"
+			},
+			"correctness": {
+				"noUnusedFunctionParameters": "warn",
+				"noUnusedImports": "error",
+				"noUnusedVariables": "warn",
+				"useExhaustiveDependencies": "warn"
+			},
+			"performance": {
+				"useDomNodeTextContent": "error"
+			},
+			"security": {
+				"noDangerouslySetInnerHtml": "warn"
+			},
+			"style": {
+				"useConst": "error",
+				"useNodejsImportProtocol": "error",
+				"useTemplate": "error"
+			},
+			"suspicious": {
+				"noArrayIndexKey": "warn",
+				"noExplicitAny": "warn",
+				"useIterableCallbackReturn": "error"
+			}
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "single",
+			"jsxQuoteStyle": "double",
+			"trailingCommas": "none",
+			"semicolons": "always",
+			"arrowParentheses": "always",
+			"quoteProperties": "asNeeded",
+			"bracketSpacing": true
+		},
+		"globals": []
+	},
+	"json": {
+		"formatter": {
+			"enabled": true,
+			"indentWidth": 2
+		}
+	},
+	"css": {
+		"formatter": {
+			"enabled": true,
+			"indentWidth": 4
+		},
+		"linter": {
+			"enabled": true
+		}
+	},
+	"assist": {
+		"enabled": true,
+		"actions": {
+			"source": {
+				"organizeImports": "on",
+				"useSortedKeys": "off"
+			}
+		}
+	}
+}

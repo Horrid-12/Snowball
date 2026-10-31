@@ -30,7 +30,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { saveAs } from 'file-saver';
 import {
     getBiometricUnlockStatus,
-    isBiometricUnlockSupported,
     lockNoteWithPassword,
     noteLockTypes,
     parseLockedNoteContent,
@@ -523,7 +522,7 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
 
             try {
                 syncService.sync();
-            } catch (ignore) {}
+            } catch (_ignore) {}
         } catch (err) {
             console.error("Cloud sync failed for note", currentActiveId, err);
             if (err.queued) {
@@ -905,7 +904,7 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
     };
 
     const exportAsMd = () => {
-        let text = editor.storage.markdown.getMarkdown();
+        const text = editor.storage.markdown.getMarkdown();
         if (!text) return alert("Note is empty!");
         const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
         downloadFile(blob, `${notes.find(n => n.id === activeNoteId)?.title || 'note'}.md`);
@@ -920,7 +919,7 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
             const blob = await Packer.toBlob(doc);
             downloadFile(blob, `${notes.find(n => n.id === activeNoteId)?.title || 'note'}.docx`);
         } catch (err) {
-            alert("Error generating DOCX: " + err.message);
+            alert(`Error generating DOCX: ${err.message}`);
         }
     };
 
@@ -936,21 +935,21 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
             doc.save(`${title}.pdf`);
             setShowExportMenu(false);
         } catch (err) {
-            alert("Error generating PDF: " + err.message);
+            alert(`Error generating PDF: ${err.message}`);
         }
     };
 
     const exportAsPptx = async () => {
         try {
             const { default: PptxGenJS } = await import('pptxgenjs');
-            let pptx = new PptxGenJS();
-            let slide = pptx.addSlide();
+            const pptx = new PptxGenJS();
+            const slide = pptx.addSlide();
             const title = notes.find(n => n.id === activeNoteId)?.title || "Note";
             slide.addText(title, { x: 0.5, y: 0.5, w: 9, h: 1, fontSize: 32, bold: true, color: '363636' });
             slide.addText(editor.getText(), { x: 0.5, y: 1.5, w: 9, h: 5, fontSize: 16, verticalAlign: 'top' });
             pptx.writeFile({ fileName: `${title}.pptx` }).then(() => setShowExportMenu(false));
         } catch (err) {
-            alert("Error generating PPTX: " + err.message);
+            alert(`Error generating PPTX: ${err.message}`);
         }
     };
 
@@ -972,14 +971,14 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
                         const result = await mammoth.convertToHtml({ arrayBuffer });
                         editor.commands.setContent(result.value);
                     } catch (err) {
-                        alert("Error importing DOCX: " + err.message);
+                        alert(`Error importing DOCX: ${err.message}`);
                     }
                 };
                 reader.readAsArrayBuffer(file);
             } else {
                 const reader = new FileReader();
                 reader.onload = (event) => {
-                    let content = event.target.result;
+                    const content = event.target.result;
                     if (type === 'md') {
                         editor.commands.setContent(content);
                     } else {
@@ -1674,7 +1673,7 @@ const EditableTitle = ({ title, onUpdate, active }) => {
     const [val, setVal] = useState(title);
 
     if (isEditing) {
-        return <input 
+        return <input
             autoFocus value={val} 
             onChange={(e) => setVal(e.target.value)} 
             onBlur={() => { setIsEditing(false); onUpdate(val); }}

@@ -4,7 +4,6 @@ import App from './App.jsx'
 import './index.css'
 import { AppProvider } from './context/AppContext.jsx'
 import { OnlineProvider } from './context/OnlineContext.jsx'
-import { syncService } from './services/SyncService.js'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { Capacitor } from '@capacitor/core'
 import { isTauriDesktop } from './config.js'
@@ -16,7 +15,7 @@ const isNativeApp =
 if (isNativeApp) {
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then((registrations) => {
-            for (let registration of registrations) {
+            for (const registration of registrations) {
                 registration.unregister();
             }
         });

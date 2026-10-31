@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { API_URL } from '../config.js';
 import { Calendar, Clock, CheckCircle2, Circle, GripVertical, Pin, Lock, Repeat, ChevronDown, ChevronUp } from 'lucide-react';
 import { Reorder, useDragControls } from 'framer-motion';
 import { getTagColor, loadTagColors, normalizeHexColor, parseTags, saveTagColors } from '../utils/tagColors.js';
@@ -9,7 +8,7 @@ const getNextOccurrence = (dateStr, recurring) => {
     if (!dateStr || !recurring || recurring === 'none') return '';
     const parts = dateStr.split('T')[0].split('-');
     const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-    if (isNaN(d.getTime())) return '';
+    if (Number.isNaN(d.getTime())) return '';
     if (recurring === 'daily') {
         d.setDate(d.getDate() + 1);
     } else if (recurring === 'weekly') {
@@ -17,7 +16,7 @@ const getNextOccurrence = (dateStr, recurring) => {
     } else if (recurring === 'monthly') {
         d.setMonth(d.getMonth() + 1);
     } else if (recurring.startsWith('custom:')) {
-        const n = parseInt(recurring.split(':')[1]) || 1;
+        const n = parseInt(recurring.split(':')[1], 10) || 1;
         d.setDate(d.getDate() + n);
     } else {
         return '';
@@ -70,7 +69,9 @@ const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, o
     const handleClearCompletedInternal = () => {
         if (!window.confirm("Are you sure you want to clear all completed tasks?")) return;
         const completedTasks = tasks.filter(t => t.tasksCompleted >= t.tasksAllocated && t.tasksAllocated > 0 && !t.isSticky && (!t.recurring || t.recurring === 'none'));
-        completedTasks.forEach(t => onTaskDelete(t.id));
+        completedTasks.forEach((t) => {
+            onTaskDelete(t.id);
+        });
     };
 
     if (!tasks || tasks.length === 0) {
@@ -200,8 +201,6 @@ const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, o
 const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compactMode }) => {
     // Shared debounce timer for all inputs in this specific task
     const saveTimerRef = React.useRef(null);
-    const dateRef = React.useRef(null);
-    const timeRef = React.useRef(null);
 
     // Parse date and time from combined string
     const parseDatePart = (dateStr) => {
@@ -484,8 +483,8 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                             else if (localRecurring === 'monthly') {
                                 try {
                                     const days = window.prompt("Enter integer days for custom recurrence (e.g., 5 for every 5 days):", "5");
-                                    if (days && !isNaN(parseInt(days))) {
-                                        newVal = `custom:${parseInt(days)}`;
+                                    if (days && !Number.isNaN(parseInt(days, 10))) {
+                                        newVal = `custom:${parseInt(days, 10)}`;
                                     } else {
                                         newVal = 'none';
                                     }
@@ -651,10 +650,10 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                         </span>
                         <input
                             type="date" value={localDate}
-                            onClick={(e) => e.target.showPicker && e.target.showPicker()}
+                            onClick={(e) => e.target.showPicker?.()}
                             onChange={(e) => {
                                 setLocalDate(e.target.value);
-                                const combined = e.target.value ? `${e.target.value}${localTime ? ' ' + localTime : ''}` : '';
+                                const combined = e.target.value ? `${e.target.value}${localTime ? ` ${localTime}` : ''}` : '';
                                 handleLocalUpdate({ ...task, date: combined });
                             }}
                             style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', zIndex: 2 }}
@@ -670,7 +669,7 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                         placeholder="HH:MM"
                         onChange={(e) => {
                             setLocalTime(e.target.value);
-                            const combined = localDate ? `${localDate}${e.target.value ? ' ' + e.target.value : ''}` : '';
+                            const combined = localDate ? `${localDate}${e.target.value ? ` ${e.target.value}` : ''}` : '';
                             handleLocalUpdate({ ...task, date: combined });
                         }}
                         style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'transparent', border: 'none', padding: 0, width: '45px', outline: 'none' }}
@@ -683,7 +682,7 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                         <input
                             type="number" value={localTasksCompleted}
                             onChange={(e) => {
-                                const val = parseInt(e.target.value) || 0;
+                                const val = parseInt(e.target.value, 10) || 0;
                                 setLocalTasksCompleted(val);
                                 handleLocalUpdate({ ...task, tasksCompleted: val });
                             }}
@@ -693,7 +692,7 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                         <input
                             type="number" value={localTasksAllocated}
                             onChange={(e) => {
-                                const val = parseInt(e.target.value) || 0;
+                                const val = parseInt(e.target.value, 10) || 0;
                                 setLocalTasksAllocated(val);
                                 handleLocalUpdate({ ...task, tasksAllocated: val });
                             }}

@@ -28,7 +28,7 @@ router.get('/', (_req, res) => {
  */
 router.get('/db', async (_req, res) => {
     try {
-        const { data, error, count } = await supabase
+        const { error, count } = await supabase
             .from('users')
             .select('id', { count: 'exact', head: true });
 

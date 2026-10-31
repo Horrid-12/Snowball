@@ -135,7 +135,7 @@ app.use((req, res, next) => {
     return generalRateLimiter(req, res, next);
 });
 app.use(csrfProtection);
-app.use((req, res, next) => {
+app.use((req, _res, next) => {
     const origin = req.headers.origin || 'No Origin';
     const auth = req.headers.authorization ? 'Present' : 'Missing';
     const userAgent = req.headers['user-agent'] || 'Unknown';

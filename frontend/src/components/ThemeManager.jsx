@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Palette, X, RotateCcw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Palette, X } from 'lucide-react';
 
 const normalizeHex = (value, fallback = '#000000') => {
     const trimmed = String(value || '').trim();
@@ -19,7 +19,7 @@ const ThemeManager = ({ currentTheme, onThemeChange }) => {
                 accent: '#3b82f6',
                 card: '#ffffff'
             };
-        } catch (e) {
+        } catch (_e) {
             return { bg: '#ffffff', text: '#1e293b', accent: '#3b82f6', card: '#ffffff' };
         }
     });
@@ -41,8 +41,8 @@ const ThemeManager = ({ currentTheme, onThemeChange }) => {
             root.style.setProperty('--custom-card', customColors.card);
             // Derive subtle variations
             root.style.setProperty('--custom-secondary', customColors.bg);
-            root.style.setProperty('--custom-text-sec', customColors.text + 'aa');
-            root.style.setProperty('--custom-border', customColors.text + '22');
+            root.style.setProperty('--custom-text-sec', `${customColors.text}aa`);
+            root.style.setProperty('--custom-border', `${customColors.text}22`);
             localStorage.setItem('snowball_custom_colors', JSON.stringify(customColors));
         } else {
             const root = document.documentElement;

@@ -55,16 +55,7 @@ const SETTINGS_SECTIONS = [
     { id: 'account', title: 'Account', description: 'Save preferences or sign out.' }
 ];
 
-const stableStringifyTagColors = (tagColorMap = {}) => JSON.stringify(
-    Object.keys(tagColorMap)
-        .sort((a, b) => a.localeCompare(b))
-        .reduce((acc, key) => {
-            acc[key] = tagColorMap[key];
-            return acc;
-        }, {})
-);
-
-const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksUpdate, showSidebar, setShowSidebar, showHeatmap, setShowHeatmap, showMediaHub, setShowMediaHub, theme, setTheme, customColors, setCustomColors, profileSyncStatus, profileSyncMessage, setProfileSyncStatus, onLogout }) => {
+const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksUpdate, theme, setTheme, customColors, setCustomColors, profileSyncStatus, profileSyncMessage, setProfileSyncStatus, onLogout }) => {
     const [offset, setOffset] = useState(user?.reset_offset_hours || 0);
     const [penaltyBuffer, setPenaltyBuffer] = useState(
         user?.penalty_buffer_hours !== undefined && user?.penalty_buffer_hours !== null
@@ -190,7 +181,9 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
             }
         );
 
-        headerElements.forEach((el) => observer.observe(el));
+        headerElements.forEach((el) => {
+            observer.observe(el);
+        });
 
         return () => observer.disconnect();
     }, []);
@@ -233,7 +226,9 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
 
                 const storedTags = Object.keys(cloudTagColors);
                 const counts = {};
-                taskTags.forEach(t => counts[t] = (counts[t] || 0) + 1);
+                taskTags.forEach((t) => {
+                    counts[t] = (counts[t] || 0) + 1;
+                });
                 setKnownTags([...new Set([...taskTags, ...storedTags])].sort((a, b) => {
                     if (counts[b] !== counts[a]) return (counts[b] || 0) - (counts[a] || 0);
                     return a.localeCompare(b);
@@ -675,7 +670,7 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
         const allTasks = await db.tasks.toArray();
         const updatedTasks = [];
         for (const t of allTasks) {
-            if (t.tags && t.tags.includes(searchTag)) {
+            if (t.tags?.includes(searchTag)) {
                 t.tags = transformTags(t.tags);
                 updatedTasks.push(t);
             }
@@ -709,12 +704,14 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
             const keysToRemove = [];
             for (let index = 0; index < localStorage.length; index += 1) {
                 const key = localStorage.key(index);
-                if (key && key.startsWith('snowball_')) {
+                if (key?.startsWith('snowball_')) {
                     keysToRemove.push(key);
                 }
             }
 
-            keysToRemove.forEach((key) => localStorage.removeItem(key));
+            keysToRemove.forEach((key) => {
+                localStorage.removeItem(key);
+            });
 
             await db.delete();
 
@@ -1036,8 +1033,8 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
                                         min="0"
                                         max="23"
                                         value={offset}
-                                        onChange={(e) => setOffset(parseInt(e.target.value) || 0)}
-                                        onBlur={(e) => handleSave({ reset_offset_hours: parseInt(e.target.value) || 0 })}
+                                        onChange={(e) => setOffset(parseInt(e.target.value, 10) || 0)}
+                                        onBlur={(e) => handleSave({ reset_offset_hours: parseInt(e.target.value, 10) || 0 })}
                                         style={{
                                             flex: 1, padding: '0.75rem', borderRadius: '0.5rem',
                                             border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',

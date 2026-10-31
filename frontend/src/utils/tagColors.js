@@ -41,7 +41,7 @@ const getActivePalette = () => {
                 .trim();
         }
 
-        if (!accentColor || !accentColor.startsWith('#')) {
+        if (!accentColor?.startsWith('#')) {
             return fallbackPalette;
         }
 

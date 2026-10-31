@@ -80,7 +80,7 @@ export const isTokenRevoked = async (jti) => {
             return false;
         }
 
-        if (data && data.jti) {
+        if (data?.jti) {
             revokedTokens.set(data.jti, data.exp);
             knownGoodTokens.delete(jti);
             return true;

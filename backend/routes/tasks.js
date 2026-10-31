@@ -90,7 +90,7 @@ router.get('/', async (req, res, next) => {
                         shouldReset = true;
                     }
                 } else if (task.recurring.startsWith('custom:')) {
-                    const n = parseInt(task.recurring.split(':')[1]) || 1;
+                    const n = parseInt(task.recurring.split(':')[1], 10) || 1;
                     if (diffDays >= n) shouldReset = true;
                 }
 
@@ -236,7 +236,7 @@ router.put('/bulk-remove-tag', async (req, res, next) => {
 
         console.log(`🏷️ Bulk removing tag "${tag}" for user: ${req.user.id}`);
 
-        let { data: tasks, error: fetchError } = await getDb(req)
+        const { data: tasks, error: fetchError } = await getDb(req)
             .from('tasks')
             .select('*')
             .eq('user_id', req.user.id)
@@ -249,7 +249,7 @@ router.put('/bulk-remove-tag', async (req, res, next) => {
 
         const cleanTag = tag.trim();
         const affected = (tasks || []).filter(t =>
-            t.tags && t.tags.split(',').map(s => s.trim()).includes(cleanTag)
+            t.tags?.split(',').map(s => s.trim()).includes(cleanTag)
         );
 
         if (affected.length === 0) {
@@ -297,7 +297,7 @@ router.put('/bulk-rename-tag', async (req, res, next) => {
 
         console.log(`🏷️ Bulk renaming tag "${oldTag}" to "${newTag}" for user: ${req.user.id}`);
 
-        let { data: tasks, error: fetchError } = await getDb(req)
+        const { data: tasks, error: fetchError } = await getDb(req)
             .from('tasks')
             .select('*')
             .eq('user_id', req.user.id)
@@ -311,7 +311,7 @@ router.put('/bulk-rename-tag', async (req, res, next) => {
         const cleanOld = oldTag.trim();
         const cleanNew = newTag.trim();
         const affected = (tasks || []).filter(t =>
-            t.tags && t.tags.split(',').map(s => s.trim()).includes(cleanOld)
+            t.tags?.split(',').map(s => s.trim()).includes(cleanOld)
         );
 
         if (affected.length === 0) {

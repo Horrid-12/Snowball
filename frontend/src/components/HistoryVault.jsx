@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Archive, X, CheckSquare, Activity, Calendar, Award, Clock } from 'lucide-react';
 import { useAppContext } from '../context/AppContext.jsx';
 import { calculateProductivityScore, getTodayDateString } from '../utils/productivityScore.js';
