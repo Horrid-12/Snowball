@@ -55,6 +55,7 @@ Snowball replaces the daily juggle of a task manager, habit tracker, focus timer
 ## <img src="./docs/assets/icons/layers.svg" width="18" alt=""> Architecture
 
 Snowball is built on a **local-first** philosophy: immediate responsiveness and offline availability come before constant network connectivity. For a deeper dive, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+[![Architecture diagram](https://gitdiagram.com/horrid-12/snowball/diagram.png)](https://gitdiagram.com/horrid-12/snowball?utm_source=readme&utm_medium=picture)
 
 ### <img src="./docs/assets/icons/refresh-cw.svg" width="16" alt=""> Sync Engine
 
