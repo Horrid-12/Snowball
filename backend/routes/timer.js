@@ -5,6 +5,32 @@ import { validate, schemas } from '../middleware/validate.js';
 
 const router = express.Router();
 
+// Lightweight timer-state poll target. Other devices poll this every 15s so a
+// start/stop lands everywhere quickly (a full /api/auth/me + /timer/sessions
+// sync is only needed on mount/resume).
+router.get('/state', requireAuth, async (req, res, next) => {
+    try {
+        const { data, error } = await supabase
+            .from('users')
+            .select('study_timer_state')
+            .eq('id', req.user.id)
+            .single();
+
+        if (error) {
+            // Column not migrated yet or no user row: report "no state" instead of
+            // failing every poll — the client then simply has nothing to adopt.
+            if (error.code === '42703' || error.code === 'PGRST116') {
+                return res.json({ study_timer_state: null });
+            }
+            throw error;
+        }
+
+        res.json({ study_timer_state: data?.study_timer_state ?? null });
+    } catch (err) {
+        next(err);
+    }
+});
+
 // Get recent study sessions
 router.get('/sessions', requireAuth, async (req, res, next) => {
     try {

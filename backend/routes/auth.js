@@ -272,6 +272,73 @@ router.put('/me', requireAuth, validate(schemas.userSettings), async (req, res, 
         if (tag_colors !== undefined) updateFields.tag_colors = tag_colors;
         if (study_timer_state !== undefined) updateFields.study_timer_state = study_timer_state;
 
+        // Timer-state synchronization. Two devices can write this field concurrently.
+        // A stop is terminal and must NEVER be dropped due to minor clock differences.
+        if (updateFields.study_timer_state !== undefined) {
+            const { data: storedUser } = await selectUserWithFallback(req.user.id, ['study_timer_state']);
+            const storedState = storedUser?.study_timer_state ?? null;
+            const incomingAt = Date.parse(study_timer_state?.updatedAt);
+            const storedAt = Date.parse(storedState?.updatedAt);
+            const now = Date.now();
+
+            const storedStopped = Array.isArray(storedState?.stoppedIds) ? storedState.stoppedIds : [];
+            const incomingStopped = Array.isArray(study_timer_state?.stoppedIds) ? study_timer_state.stoppedIds : [];
+            const stoppedIds = [...new Set([...incomingStopped, ...storedStopped].filter(Boolean))].slice(0, 50);
+            const stopped = new Set(stoppedIds);
+
+            const isSessionStopped = (s) => {
+                if (!s?.startedAt) return true;
+                if (s.id && stopped.has(s.id)) return true;
+                const canonical = s.subject ? `active_${new Date(s.startedAt).getTime() || 0}_${String(s.subject).trim()}` : null;
+                if (canonical && stopped.has(canonical)) return true;
+                return false;
+            };
+
+            const incomingActive = Array.isArray(study_timer_state?.activeSessions)
+                ? study_timer_state.activeSessions.filter((s) => !isSessionStopped(s)).map((s) => ({
+                    id: s.id || `active_${new Date(s.startedAt).getTime() || 0}_${String(s.subject).trim()}`,
+                    subject: String(s.subject).trim(),
+                    startedAt: new Date(s.startedAt).toISOString()
+                }))
+                : [];
+
+            const storedActive = Array.isArray(storedState?.activeSessions)
+                ? storedState.activeSessions.filter((s) => !isSessionStopped(s))
+                : [];
+
+            const hasNewStops = incomingStopped.some((id) => !storedStopped.includes(id));
+            // A write is considered truly stale only if it is older than stored by more than 10 seconds AND brings no new stops
+            const isStaleWrite = Number.isFinite(incomingAt) && Number.isFinite(storedAt) && storedAt <= now && (storedAt - incomingAt > 10000);
+
+            if (isStaleWrite && !hasNewStops && incomingActive.length > 0) {
+                // Outdated write from a delayed outbox / background replay with no stops. Drop it.
+                delete updateFields.study_timer_state;
+            } else {
+                let activeSessions;
+                if (incomingActive.length === 0 && (hasNewStops || study_timer_state?.activeSessions?.length === 0)) {
+                    // Explicit stop of all sessions, or explicit stop of the sessions that were active
+                    activeSessions = [];
+                } else if (hasNewStops) {
+                    activeSessions = incomingActive.length > 0 ? incomingActive : storedActive;
+                } else {
+                    activeSessions = incomingActive;
+                }
+
+                const storedCustom = Array.isArray(storedState?.customSubjects) ? storedState.customSubjects : [];
+                const incomingCustom = Array.isArray(study_timer_state?.customSubjects) ? study_timer_state.customSubjects : [];
+                const customSubjects = [...new Set([...storedCustom, ...incomingCustom].filter(Boolean))];
+
+                updateFields.study_timer_state = {
+                    ...study_timer_state,
+                    activeSessions: activeSessions.slice(0, 3),
+                    activeSession: activeSessions[0] || null,
+                    customSubjects,
+                    stoppedIds,
+                    updatedAt: new Date().toISOString()
+                };
+            }
+        }
+
         if (Object.keys(updateFields).length === 0) {
             const { data: user, error } = await selectUserWithFallback(req.user.id);
 

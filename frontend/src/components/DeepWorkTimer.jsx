@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import { BookOpen, ChevronDown, ChevronUp, Clock, Edit3, Play, Plus, RotateCcw, Square, Trash2, X } from 'lucide-react';
 import { apiFetch } from '../utils/apiClient.js';
 import { queueMutation } from '../db/db';
@@ -7,10 +9,11 @@ import { nativeConfirm } from '../utils/confirm.js';
 
 const SESSIONS_KEY = 'snowball_study_timer_sessions';
 const ACTIVE_KEY = 'snowball_study_timer_active';
-const STOP_AT_KEY = 'snowball_study_timer_last_stop_at';
+const STOPPED_IDS_KEY = 'snowball_study_timer_stopped_ids';
 const EXPANDED_KEY = 'snowball_study_timer_expanded';
 const CUSTOM_SUBJECTS_KEY = 'snowball_study_custom_subjects';
 const MAX_CONCURRENT_TIMERS = 3;
+const MAX_STOPPED_IDS = 50;
 
 const stableStringify = (value) => JSON.stringify(value || null);
 
@@ -20,14 +23,22 @@ const normalizeSessions = (value) => (
         : []
 );
 
+const getActiveSessionId = (s) => (
+    s?.id || (s?.startedAt && s?.subject ? `active_${new Date(s.startedAt).getTime() || 0}_${String(s.subject).trim()}` : null)
+);
+
 const normalizeActiveSessions = (value) => {
-    if (!Array.isArray(value)) {
-        if (value?.subject && value?.startedAt) {
-            return [{ id: `active_${Date.now()}`, subject: value.subject, startedAt: value.startedAt }];
-        }
-        return [];
-    }
-    return value.filter((s) => s?.subject && s?.startedAt).slice(0, MAX_CONCURRENT_TIMERS);
+    const list = Array.isArray(value)
+        ? value
+        : (value?.subject && value?.startedAt ? [value] : []);
+    return list
+        .filter((s) => s?.subject && s?.startedAt)
+        .slice(0, MAX_CONCURRENT_TIMERS)
+        .map((s) => ({
+            id: getActiveSessionId(s),
+            subject: String(s.subject).trim(),
+            startedAt: new Date(s.startedAt).toISOString()
+        }));
 };
 
 const mergeSessions = (localSessions = [], remoteSessions = []) => {
@@ -42,33 +53,54 @@ const mergeSessions = (localSessions = [], remoteSessions = []) => {
         .slice(-500);
 };
 
-const getLocalStopAt = () => {
-    const value = Number(localStorage.getItem(STOP_AT_KEY));
-    return Number.isFinite(value) ? value : 0;
+// Timers this device has ended. Stored ids (not a timestamp) because several
+// timers can run at once: stopping one must not drop the others. The list is
+// kept so a stop survives killing the app before the server hears about it, and
+// so a device that has not caught up can never resurrect the session.
+const getStoppedIds = () => {
+    const saved = safeJson(localStorage.getItem(STOPPED_IDS_KEY), []);
+    return new Set(Array.isArray(saved) ? saved : []);
 };
 
-const markLocalStop = () => {
-    try { localStorage.setItem(STOP_AT_KEY, String(Date.now())); } catch (_e) { /* ignore */ }
+const markStoppedSessions = (sessionIds = []) => {
+    const ids = sessionIds.filter(Boolean);
+    if (ids.length === 0) return;
+    try {
+        const next = [...new Set([...ids, ...getStoppedIds()])].slice(0, MAX_STOPPED_IDS);
+        localStorage.setItem(STOPPED_IDS_KEY, JSON.stringify(next));
+    } catch (_e) { /* ignore */ }
 };
 
-const chooseActiveSessions = (localActive, remoteActive, remoteHasState, remoteUpdatedAt) => {
-    const local = normalizeActiveSessions(localActive);
-    const remote = normalizeActiveSessions(remoteActive);
-    const remoteTime = remoteUpdatedAt ? new Date(remoteUpdatedAt).getTime() : 0;
-    // A local stop/reset that is NEWER than the remote snapshot means this tab's
-    // state is the freshest (the stop PUT hadn't landed when the snapshot was
-    // taken). Never let a stale remote list resurrect a stopped timer — that
-    // ghost session keeps counting paused time and duplicates the next stop.
-    if (remoteTime > 0 && getLocalStopAt() > remoteTime) return local;
-    if (remoteHasState && remote.length === 0 && local.length === 0) return [];
-    if (remoteHasState && remote.length > 0) return remote;
-    if (remoteHasState && remote.length === 0 && local.length > 0) {
-        // Remote explicitly has no active sessions (timers were stopped/paused on
-        // another device).  Only keep local sessions that were started AFTER the
-        // remote state was last updated — these are genuinely new local timers.
-        return local.filter((s) => new Date(s.startedAt).getTime() > remoteTime);
+const filterStoppedSessions = (sessions) => {
+    const stopped = getStoppedIds();
+    if (stopped.size === 0) return sessions;
+    return sessions.filter((session) => {
+        if (!session) return false;
+        if (session.id && stopped.has(session.id)) return false;
+        const canonical = getActiveSessionId(session);
+        if (canonical && stopped.has(canonical)) return false;
+        return true;
+    });
+};
+
+const chooseActiveSessions = (localActive, remoteActive, remoteHasState) => {
+    const local = filterStoppedSessions(normalizeActiveSessions(localActive));
+    const remote = filterStoppedSessions(normalizeActiveSessions(remoteActive));
+
+    if (!remoteHasState) return local;
+
+    // Remote explicitly has no active sessions (timers were stopped/cleared).
+    // Local timers that were stopped elsewhere are already pruned by filterStoppedSessions.
+    if (remote.length === 0) {
+        return local;
     }
-    return local;
+
+    // Keep any local timers the remote has not seen yet
+    const remoteIds = new Set(remote.map((s) => s.id));
+    const unseenLocal = local.filter((s) => !remoteIds.has(s.id));
+    return unseenLocal.length > 0
+        ? [...remote, ...unseenLocal].slice(0, MAX_CONCURRENT_TIMERS)
+        : remote;
 };
 
 const buildTimerState = (sessions, activeSessions, customSubjects) => ({
@@ -76,7 +108,15 @@ const buildTimerState = (sessions, activeSessions, customSubjects) => ({
     activeSessions: normalizeActiveSessions(activeSessions),
     activeSession: activeSessions?.length > 0 ? activeSessions[0] : null,
     customSubjects: Array.isArray(customSubjects) ? customSubjects : [],
+    stoppedIds: [...getStoppedIds()],
     updatedAt: new Date().toISOString()
+});
+
+// Identical shape on both sides of the "already synced" comparison, so adopting
+// a remote snapshot can be marked as synced instead of echoing it back.
+const serializeTimerState = (activeSessions, customSubjects) => stableStringify({
+    activeSessions: normalizeActiveSessions(activeSessions),
+    customSubjects: Array.isArray(customSubjects) ? customSubjects : []
 });
 
 const safeJson = (value, fallback) => {
@@ -384,13 +424,20 @@ const AddSessionForm = ({ subjects, onAdd, onCancel }) => {
 
 const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
     const [now, setNow] = useState(Date.now());
-    const isApplyingRemoteRef = useRef(false);
     const hasLoadedRemoteRef = useRef(false);
     const syncTimerRef = useRef(null);
     const syncReqSeqRef = useRef(0);
     const lastSyncedStateRef = useRef('');
     const pendingPushRef = useRef(null);
-    const [remoteApplySeq, setRemoteApplySeq] = useState(0);
+    const pushInFlightRef = useRef(false);
+    const lastLocalChangeRef = useRef(0);
+    const activeSessionsRef = useRef([]);
+    const customSubjectsRef = useRef([]);
+    const mountedRef = useRef(true);
+    const intentRef = useRef(0);
+    const pushedIntentRef = useRef(0);
+    const lastPublishRef = useRef(0);
+    const [intentSeq, setIntentSeq] = useState(0);
     const [tagColors, setTagColors] = useState(() => loadTagColors());
     const [isExpanded, setIsExpanded] = useState(() => {
         const saved = localStorage.getItem(EXPANDED_KEY);
@@ -402,10 +449,11 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
     });
     const [activeSessions, setActiveSessions] = useState(() => {
         const saved = safeJson(localStorage.getItem(ACTIVE_KEY), null);
-        return normalizeActiveSessions(saved);
+        return filterStoppedSessions(normalizeActiveSessions(saved));
     });
     const [customSubjects, setCustomSubjects] = useState(() => {
-        return safeJson(localStorage.getItem(CUSTOM_SUBJECTS_KEY), []);
+        const saved = safeJson(localStorage.getItem(CUSTOM_SUBJECTS_KEY), []);
+        return Array.isArray(saved) ? saved.filter((s) => typeof s === 'string') : [];
     });
     const [showAddForm, setShowAddForm] = useState(false);
     const [showSessionEditor, setShowSessionEditor] = useState(false);
@@ -475,8 +523,8 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
     // in tab A can't be re-pushed as still-running by tab B (ghost → duplicates).
     useEffect(() => {
         const handleStorage = (e) => {
-            if (e.key !== null && e.key !== ACTIVE_KEY && e.key !== STOP_AT_KEY) return;
-            const next = normalizeActiveSessions(safeJson(localStorage.getItem(ACTIVE_KEY), null));
+            if (e.key !== null && e.key !== ACTIVE_KEY && e.key !== STOPPED_IDS_KEY) return;
+            const next = filterStoppedSessions(normalizeActiveSessions(safeJson(localStorage.getItem(ACTIVE_KEY), null)));
             setActiveSessions((prev) => (
                 JSON.stringify(prev) === JSON.stringify(next) ? prev : next
             ));
@@ -485,71 +533,153 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         return () => window.removeEventListener('storage', handleStorage);
     }, []);
 
+    // Keeps the refs aligned with state so pulls/pushes always reason about the
+    // latest local timers without stale closures.
     useEffect(() => {
-        let cancelled = false;
+        activeSessionsRef.current = activeSessions;
+    }, [activeSessions]);
 
-        const loadRemoteTimerState = async () => {
-            try {
-                const response = await apiFetch('/api/auth/me');
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const profile = await response.json();
-                const remoteState = profile?.study_timer_state || {};
-                const remoteActive = remoteState.activeSessions || (remoteState.activeSession ? [remoteState.activeSession] : []);
-                const remoteHasState = profile?.study_timer_state != null;
+    useEffect(() => {
+        customSubjectsRef.current = customSubjects;
+    }, [customSubjects]);
 
-                let remoteSessions = null;
-                try {
-                    const sessionsRes = await apiFetch('/api/timer/sessions');
-                    if (sessionsRes.ok) {
-                        const sessionsData = await sessionsRes.json();
-                        remoteSessions = normalizeSessions(sessionsData);
-                    } else {
-                        // Keep local sessions when the fetch fails — replacing with
-                        // [] would wipe locally recorded history.
-                        console.warn('Failed to load remote sessions: HTTP', sessionsRes.status);
-                    }
-                } catch (err) {
-                    console.warn('Failed to load remote sessions', err);
-                }
-
-                if (cancelled) return;
-
-                isApplyingRemoteRef.current = true;
-                if (remoteSessions) {
-                    setSessions(remoteSessions);
-                }
-                setActiveSessions((currentActive) => chooseActiveSessions(currentActive, remoteActive, remoteHasState, remoteState.updatedAt));
-                // Merge remote custom subjects with local ones so they sync across devices
-                const remoteCustom = Array.isArray(remoteState.customSubjects) ? remoteState.customSubjects : [];
-                if (remoteCustom.length > 0) {
-                    setCustomSubjects((prev) => [...new Set([...prev, ...remoteCustom])]);
-                }
-            } catch (error) {
-                console.warn('Failed to load synced study timer state', error);
-            } finally {
-                window.setTimeout(() => {
-                    isApplyingRemoteRef.current = false;
-                    hasLoadedRemoteRef.current = true;
-                    // Re-trigger the state-push effect: a stop made while this load
-                    // was in flight early-returned and would otherwise never be PUT.
-                    setRemoteApplySeq((v) => v + 1);
-                }, 0);
-            }
-        };
-
-        loadRemoteTimerState();
-        return () => { cancelled = true; };
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
     }, []);
 
+    // Every local decision (start, stop, reset, new subject, day split) bumps the
+    // intent counter. Only a bumped intent is ever pushed: adopting a snapshot from
+    // another device must never be echoed back, otherwise two open devices keep
+    // overwriting each other with stale state.
+    const bumpIntent = useCallback(() => {
+        intentRef.current += 1;
+        lastLocalChangeRef.current = Date.now();
+        setIntentSeq(intentRef.current);
+    }, []);
+
+    const applyRemoteTimerState = useCallback((remoteState, remoteSessions = null) => {
+        if (!mountedRef.current) return;
+
+        // Learn which sessions were stopped elsewhere before choosing what to show,
+        // so this snapshot is already filtered with the same rule.
+        const remoteStoppedIds = Array.isArray(remoteState?.stoppedIds) ? remoteState.stoppedIds : [];
+        if (remoteStoppedIds.length > 0) markStoppedSessions(remoteStoppedIds);
+
+        const remoteActive = normalizeActiveSessions(
+            remoteState?.activeSessions || (remoteState?.activeSession ? [remoteState.activeSession] : [])
+        );
+        const remoteHasState = remoteState != null;
+
+        if (remoteSessions) {
+            setSessions(remoteSessions);
+        }
+
+        const nextActive = chooseActiveSessions(activeSessionsRef.current, remoteActive, remoteHasState);
+        if (JSON.stringify(normalizeActiveSessions(activeSessionsRef.current)) !== JSON.stringify(nextActive)) {
+            activeSessionsRef.current = nextActive;
+            setActiveSessions(nextActive);
+        }
+
+        // Merge remote custom subjects with local ones so they sync across devices
+        const remoteCustom = Array.isArray(remoteState?.customSubjects) ? remoteState.customSubjects : [];
+        const currentCustom = customSubjectsRef.current;
+        const mergedCustom = remoteCustom.length > 0
+            ? [...new Set([...currentCustom, ...remoteCustom])]
+            : currentCustom;
+        if (mergedCustom.length !== currentCustom.length) {
+            customSubjectsRef.current = mergedCustom;
+            setCustomSubjects(mergedCustom);
+        }
+
+        // Adopted state is marked as synced so adopting a remote snapshot never triggers an echo push
+        if (remoteHasState) {
+            lastSyncedStateRef.current = serializeTimerState(nextActive, mergedCustom);
+        }
+    }, []);
+
+    // Republishes this device's view when it still differs from the server, with
+    // a short cooldown so a disagreement can never turn into a request loop.
+    const republishIfDiverged = useCallback(() => {
+        // Only republish if this device has an unpushed local decision
+        if (intentRef.current === pushedIntentRef.current) return;
+        const now = Date.now();
+        if (now - lastPublishRef.current < 3000) return;
+        const serialized = serializeTimerState(activeSessionsRef.current, customSubjectsRef.current);
+        if (serialized === lastSyncedStateRef.current) return;
+        lastPublishRef.current = now;
+        bumpIntent();
+    }, [bumpIntent]);
+
+    const pullTimerState = useCallback(async ({ includeSessions = false } = {}) => {
+        const requestedAt = Date.now();
+        let applied = false;
+        try {
+            if (includeSessions) {
+                const [profileRes, sessionsRes] = await Promise.all([
+                    apiFetch('/api/auth/me'),
+                    apiFetch('/api/timer/sessions')
+                ]);
+                if (!profileRes.ok) throw new Error(`HTTP ${profileRes.status}`);
+                const profile = await profileRes.json();
+
+                let remoteSessions = null;
+                if (sessionsRes.ok) {
+                    remoteSessions = normalizeSessions(await sessionsRes.json());
+                } else {
+                    // Keep local sessions when the fetch fails — replacing with
+                    // [] would wipe locally recorded history.
+                    console.warn('Failed to load remote sessions: HTTP', sessionsRes.status);
+                }
+
+                // A local start/stop made while this request was in flight is newer
+                // than the snapshot it returns — never let it clobber that change.
+                if (lastLocalChangeRef.current > requestedAt) return false;
+                applyRemoteTimerState(profile?.study_timer_state ?? null, remoteSessions);
+                applied = true;
+            } else {
+                const stateRes = await apiFetch('/api/timer/state');
+                if (!stateRes.ok) throw new Error(`HTTP ${stateRes.status}`);
+                const payload = await stateRes.json();
+
+                if (lastLocalChangeRef.current > requestedAt) return false;
+                applyRemoteTimerState(payload?.study_timer_state ?? null);
+                applied = true;
+            }
+        } catch (error) {
+            console.warn('Failed to sync study timer state', error);
+        } finally {
+            if (mountedRef.current) {
+                hasLoadedRemoteRef.current = true;
+                // The server disagrees with what this device knows (a stop it has
+                // not accepted, a timer started while offline): say it again.
+                if (applied) republishIfDiverged();
+            }
+        }
+        return applied;
+    }, [applyRemoteTimerState, republishIfDiverged]);
+
     useEffect(() => {
-        if (!hasLoadedRemoteRef.current || isApplyingRemoteRef.current) return;
+        pullTimerState({ includeSessions: true });
+    }, [pullTimerState]);
+
+    useEffect(() => {
+        if (!hasLoadedRemoteRef.current) return;
+
+        const intent = intentRef.current;
+        if (intent === pushedIntentRef.current) {
+            // Nothing local happened since the last successful write — this render
+            // is only the result of adopting another device's snapshot.
+            pendingPushRef.current = null;
+            return;
+        }
 
         const nextState = buildTimerState([], activeSessions, customSubjects);
-        const serialized = stableStringify({ activeSessions: nextState.activeSessions, customSubjects: nextState.customSubjects });
+        const serialized = serializeTimerState(activeSessions, customSubjects);
         if (serialized === lastSyncedStateRef.current) {
-            // Current state already matches what the server has — any stale
-            // pending payload is obsolete and must not be flushed later.
+            // The server already has this exact state; nothing to send.
             pendingPushRef.current = null;
+            pushedIntentRef.current = intent;
             return;
         }
 
@@ -562,24 +692,40 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         pendingPushRef.current = nextState;
         syncTimerRef.current = window.setTimeout(async () => {
             pendingPushRef.current = null;
+            pushInFlightRef.current = true;
+            // Stamp at send time so a delayed debounce never publishes an older
+            // `updatedAt` than the change it represents (the server orders by it).
+            const outgoing = { ...nextState, updatedAt: new Date().toISOString() };
             try {
                 const response = await apiFetch('/api/auth/me', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ study_timer_state: nextState })
+                    body: JSON.stringify({ study_timer_state: outgoing })
                 });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                if (syncReqSeqRef.current === localSeq) lastSyncedStateRef.current = serialized;
+                if (syncReqSeqRef.current === localSeq) {
+                    pushedIntentRef.current = intent;
+                    lastSyncedStateRef.current = serialized;
+                    // Adopt whatever the server kept: it drops stale sessions from
+                    // devices that have not seen a stop yet, and the answer tells
+                    // this device what actually won.
+                    const body = await response.json().catch(() => null);
+                    if (intentRef.current === intent && body?.study_timer_state !== undefined) {
+                        applyRemoteTimerState(body.study_timer_state);
+                    }
+                }
             } catch (error) {
                 console.warn('Failed to sync study timer state', error);
                 if (syncReqSeqRef.current === localSeq) {
-                    await queueMutation('timer_state_update', 'PUT', '/api/auth/me', { study_timer_state: nextState });
+                    await queueMutation('timer_state_update', 'PUT', '/api/auth/me', { study_timer_state: outgoing });
                 }
+            } finally {
+                pushInFlightRef.current = false;
             }
         }, 150);
 
         return () => { if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current); };
-    }, [activeSessions, customSubjects, remoteApplySeq]);
+    }, [activeSessions, customSubjects, intentSeq, applyRemoteTimerState]);
 
     // On unmount, flush any still-pending timer state to the outbox so a stop
     // made right before unmount is never silently dropped.
@@ -596,42 +742,57 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         }
     }, []);
 
-    // Re-sync from server when the tab regains visibility (handles cross-device
-    // deletes, pauses, etc. that happened while the tab was in the background).
+    // Cross-device propagation: other devices may start/stop timers at any time.
+    // Without a periodic pull an app left open (or restored from "close all")
+    // keeps showing a timer that was stopped elsewhere until it is resumed.
     useEffect(() => {
-        const handleVisibility = async () => {
-            if (document.visibilityState !== 'visible' || !hasLoadedRemoteRef.current) return;
-            try {
-                const [profileRes, sessionsRes] = await Promise.all([
-                    apiFetch('/api/auth/me'),
-                    apiFetch('/api/timer/sessions')
-                ]);
-                if (!profileRes.ok || !sessionsRes.ok) return;
-                const profile = await profileRes.json();
-                const remoteState = profile?.study_timer_state || {};
-                const remoteActive = remoteState.activeSessions || (remoteState.activeSession ? [remoteState.activeSession] : []);
-                const remoteHasState = profile?.study_timer_state != null;
-
-                const remoteSessions = normalizeSessions(await sessionsRes.json());
-
-                isApplyingRemoteRef.current = true;
-                setSessions(remoteSessions.length > 0 ? remoteSessions : []);
-                setActiveSessions((currentActive) => chooseActiveSessions(currentActive, remoteActive, remoteHasState, remoteState.updatedAt));
-                const remoteCustom = Array.isArray(remoteState.customSubjects) ? remoteState.customSubjects : [];
-                if (remoteCustom.length > 0) {
-                    setCustomSubjects((prev) => [...new Set([...prev, ...remoteCustom])]);
-                }
-                window.setTimeout(() => {
-                    isApplyingRemoteRef.current = false;
-                    setRemoteApplySeq((v) => v + 1);
-                }, 0);
-            } catch (err) {
-                console.warn('Failed to re-sync study timer on visibility change', err);
-            }
+        const poll = () => {
+            if (document.visibilityState !== 'visible') return;
+            if (!hasLoadedRemoteRef.current || mountedRef.current === false) return;
+            if (pendingPushRef.current || pushInFlightRef.current) return;
+            pullTimerState({ includeSessions: false });
         };
+        // When active timers are running, poll every 5s for snappy cross-device sync.
+        // When idle, poll every 15s to conserve network/battery.
+        const pollInterval = activeSessions.length > 0 ? 5000 : 15000;
+        const interval = window.setInterval(poll, pollInterval);
+        return () => window.clearInterval(interval);
+    }, [activeSessions.length, pullTimerState]);
+
+    // Full re-sync (state + completed sessions) when the app is resumed, the tab
+    // regains focus, or the page becomes visible again.
+    useEffect(() => {
+        const syncNow = () => {
+            if (!hasLoadedRemoteRef.current) return;
+            pullTimerState({ includeSessions: true });
+        };
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') syncNow();
+        };
+
         document.addEventListener('visibilitychange', handleVisibility);
-        return () => document.removeEventListener('visibilitychange', handleVisibility);
-    }, []);
+        window.addEventListener('focus', syncNow);
+
+        let appStateListener = null;
+        let cancelled = false;
+        if (Capacitor.isNativePlatform()) {
+            // Android/iOS WebViews do not reliably fire visibilitychange when the
+            // app is resumed from recents, so hook the native event too.
+            CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+                if (isActive) syncNow();
+            }).then((listener) => {
+                if (cancelled) { listener.remove(); return; }
+                appStateListener = listener;
+            }).catch(() => {});
+        }
+
+        return () => {
+            cancelled = true;
+            document.removeEventListener('visibilitychange', handleVisibility);
+            window.removeEventListener('focus', syncNow);
+            if (appStateListener) appStateListener.remove();
+        };
+    }, [pullTimerState]);
 
     useEffect(() => {
         const interval = window.setInterval(() => setNow(Date.now()), 1000);
@@ -672,6 +833,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
             }
             return active;
         }));
+        bumpIntent();
     }, [activeSessions, now, resetOffsetHours]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const dayStart = useMemo(() => getStudyDayStart(new Date(now), resetOffsetHours), [now, resetOffsetHours]);
@@ -761,14 +923,16 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
             subject: selectedSubject,
             startedAt: new Date().toISOString()
         }]);
+        bumpIntent();
     };
 
     const stopTimer = async (activeId) => {
-        const active = activeSessions.find((s) => s.id === activeId);
+        const active = activeSessions.find((s) => s.id === activeId || getActiveSessionId(s) === activeId);
         if (!active) return;
-        // Record the stop before anything async — a subsequent remote snapshot
-        // must never win over this stop (see chooseActiveSessions).
-        markLocalStop();
+        const canonicalId = getActiveSessionId(active);
+        // Record the stop before anything async — this id is never adopted again,
+        // even if another device republishes the snapshot it still has.
+        markStoppedSessions([active.id, canonicalId]);
         const endedAt = new Date();
         const startedAt = new Date(active.startedAt);
         const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
@@ -783,34 +947,30 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
             });
             logMomentum(durationMs);
         }
-        setActiveSessions((prev) => prev.filter((s) => s.id !== activeId));
+        setActiveSessions((prev) => prev.filter((s) => s.id !== active.id && getActiveSessionId(s) !== canonicalId));
+        bumpIntent();
     };
 
     const resetToday = async () => {
         const confirmed = await nativeConfirm('Reset today\'s study timer totals?');
         if (!confirmed) return;
 
-        markLocalStop();
+        const idsToStop = activeSessions.flatMap((s) => [s.id, getActiveSessionId(s)].filter(Boolean));
+        markStoppedSessions(idsToStop);
         setActiveSessions([]);
         setSessions((prev) => prev.filter((session) => getSessionDurationForDay(session, dayStart, dayEnd) <= 0));
+        bumpIntent();
 
         const fromISO = dayStart.toISOString();
         const toISO = dayEnd.toISOString();
         try {
-            const [delRes, stateRes] = await Promise.all([
-                apiFetch(`/api/timer/sessions?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`, { method: 'DELETE' }),
-                apiFetch('/api/auth/me', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ study_timer_state: { activeSessions: [], activeSession: null, updatedAt: new Date().toISOString() } })
-                })
-            ]);
+            // Active timers are synced by the shared state path (bumpIntent above);
+            // here we only clear the completed sessions for the day.
+            const delRes = await apiFetch(`/api/timer/sessions?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`, { method: 'DELETE' });
             if (!delRes.ok) throw new Error(`DELETE ${delRes.status}`);
-            if (!stateRes.ok) throw new Error(`PUT ${stateRes.status}`);
         } catch (error) {
             console.warn('Failed to sync timer reset, queueing for later', error);
             await queueMutation('timer_sessions_delete', 'DELETE', `/api/timer/sessions?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`, {});
-            await queueMutation('timer_state_update', 'PUT', '/api/auth/me', { study_timer_state: { activeSessions: [], activeSession: null, updatedAt: new Date().toISOString() } });
         }
     };
 
@@ -827,6 +987,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         } else {
             setCustomSubjects((prev) => [...prev, name]);
             setSelectedSubject(name);
+            bumpIntent();
         }
         setNewSubjectName('');
         setShowAddSubject(false);
