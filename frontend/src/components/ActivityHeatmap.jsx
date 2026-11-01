@@ -104,22 +104,37 @@ const safeJson = (value, fallback) => {
     }
 };
 
-const getStudyDayStart = (date = new Date(), offsetHours = 0) => {
-    const start = new Date(date);
-    const normalizedOffset = Number.isFinite(Number(offsetHours)) ? Number(offsetHours) : 0;
-    start.setHours(normalizedOffset, 0, 0, 0);
-    if (date.getTime() < start.getTime()) {
-        start.setDate(start.getDate() - 1);
-    }
-    return start;
-};
-
-const getSessionDurationForDay = (session, dayStart, dayEnd) => {
-    const start = new Date(session.startedAt).getTime();
-    const end = new Date(session.endedAt).getTime();
+const getSessionIntervalForDay = (session, dayStart, dayEnd) => {
+    const start = new Date(session?.startedAt).getTime();
+    const end = new Date(session?.endedAt).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
     const overlapStart = Math.max(start, dayStart.getTime());
     const overlapEnd = Math.min(end, dayEnd.getTime());
-    return Math.max(0, overlapEnd - overlapStart);
+    if (overlapEnd <= overlapStart) return null;
+    return [overlapStart, overlapEnd];
+};
+
+// Several timers can run at once (and split/duplicate records can describe the
+// same stretch of time). Summing the raw session durations double-counts those
+// overlaps and can push a single day past 24h, so merge the intervals first.
+const sumMergedIntervals = (intervals = []) => {
+    if (intervals.length === 0) return 0;
+    const sorted = [...intervals].sort((left, right) => left[0] - right[0]);
+    let [currentStart, currentEnd] = sorted[0];
+    let total = 0;
+
+    for (let index = 1; index < sorted.length; index += 1) {
+        const [start, end] = sorted[index];
+        if (start <= currentEnd) {
+            currentEnd = Math.max(currentEnd, end);
+            continue;
+        }
+        total += currentEnd - currentStart;
+        currentStart = start;
+        currentEnd = end;
+    }
+
+    return total + (currentEnd - currentStart);
 };
 
 const formatStudyDuration = (durationMs) => {
@@ -136,9 +151,38 @@ const loadStudySessions = () => {
     return Array.isArray(saved) ? saved : [];
 };
 
-const loadActiveStudySession = () => {
+const loadActiveStudySessions = () => {
     const saved = safeJson(localStorage.getItem(ACTIVE_STUDY_KEY), null);
-    return saved?.subject && saved?.startedAt ? saved : null;
+    // DeepWorkTimer stores an array of running timers; older builds stored a
+    // single object. Support both so running timers land on the heatmap.
+    if (Array.isArray(saved)) {
+        return saved.filter((session) => session?.startedAt);
+    }
+    return saved?.startedAt ? [saved] : [];
+};
+
+// Pad the trailing 12 months to whole weeks so every column holds 7 days
+// (Sunday → Saturday). 365 days needs 53 columns, not 52 — without the padding
+// "today" spills into an implicit, misaligned extra column.
+const buildWeekAlignedDates = (todayStr) => {
+    const [year, month, day] = String(todayStr).split('-').map(Number);
+    const todayDate = new Date(year, (month || 1) - 1, day || 1);
+    if (Number.isNaN(todayDate.getTime())) return [];
+
+    const start = new Date(todayDate);
+    start.setDate(start.getDate() - 364);
+    start.setDate(start.getDate() - start.getDay());
+
+    const end = new Date(todayDate);
+    end.setDate(end.getDate() + (6 - end.getDay()));
+
+    const dates = [];
+    const cursor = new Date(start);
+    while (cursor.getTime() <= end.getTime()) {
+        dates.push(formatLocalDate(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+    }
+    return dates;
 };
 
 const cardStyle = {
@@ -158,7 +202,7 @@ const panelStyle = {
     background: 'rgba(255,255,255,0.02)'
 };
 
-const HeatmapPanel = ({ days, today, currentDisplayScore, getColor, compact = false }) => (
+const HeatmapPanel = ({ days, today, currentDisplayScore, getColor, columns = 53, compact = false }) => (
     <>
         <div style={{
             overflowX: 'auto',
@@ -170,7 +214,7 @@ const HeatmapPanel = ({ days, today, currentDisplayScore, getColor, compact = fa
         }}>
             <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(52, 1fr)',
+                gridTemplateColumns: `repeat(${columns}, 1fr)`,
                 gridAutoFlow: 'column',
                 gridTemplateRows: 'repeat(7, 1fr)',
                 gap: compact ? '3px' : '4px',
@@ -181,16 +225,16 @@ const HeatmapPanel = ({ days, today, currentDisplayScore, getColor, compact = fa
                     const score = (day.date === today && currentDisplayScore !== undefined) ? currentDisplayScore : day.score;
                     return (
                         <div
-                            key={i}
-                            title={`${day.date}: ${score} points`}
+                            key={day.date || i}
+                            title={day.isFuture ? undefined : `${day.date}: ${score} points`}
                             style={{
                                 width: '100%',
                                 minWidth: compact ? '10px' : '12px',
                                 height: '100%',
                                 minHeight: compact ? '10px' : '12px',
-                                background: getColor(score),
+                                background: day.isFuture ? 'transparent' : getColor(score),
                                 borderRadius: '3px',
-                                border: '1px solid rgba(128, 128, 128, 0.15)'
+                                border: `1px solid ${day.isFuture ? 'transparent' : 'rgba(128, 128, 128, 0.15)'}`
                             }}
                         />
                     );
@@ -210,40 +254,82 @@ const HeatmapPanel = ({ days, today, currentDisplayScore, getColor, compact = fa
     </>
 );
 
-const HabitHeatmapPanel = ({ habitLogs, globalHabits, days, today, compact = false }) => {
-    const [selectedHabitId, setSelectedHabitId] = useState(globalHabits?.[0]?.id ? String(globalHabits[0].id) : '');
+const HabitHeatmapPanel = ({ habitLogs, globalHabits, days, today, columns = 53, compact = false }) => {
+    const habits = useMemo(() => Array.isArray(globalHabits) ? globalHabits : [], [globalHabits]);
+
+    // Rank habits by how often they were checked, counting distinct logged days
+    // (today's live completion counts too, even if the log list is stale).
+    const sortedHabits = useMemo(() => {
+        const checkedDates = new Map();
+        (Array.isArray(habitLogs) ? habitLogs : []).forEach((log) => {
+            if (!log?.habit_id || !log?.date) return;
+            const key = String(log.habit_id);
+            if (!checkedDates.has(key)) checkedDates.set(key, new Set());
+            checkedDates.get(key).add(log.date);
+        });
+
+        const checkedCount = (habit) => {
+            const dates = checkedDates.get(String(habit.id));
+            const count = dates ? dates.size : 0;
+            const includesToday = dates ? dates.has(today) : false;
+            return count + (habit.completedToday && !includesToday ? 1 : 0);
+        };
+
+        return habits
+            .map((habit) => ({ habit, count: checkedCount(habit) }))
+            .sort((left, right) => {
+                if (right.count !== left.count) return right.count - left.count;
+                return String(left.habit.name || '').localeCompare(String(right.habit.name || ''));
+            });
+    }, [habitLogs, habits, today]);
+
+    const [selectedHabitId, setSelectedHabitId] = useState(() => (
+        sortedHabits[0]?.habit?.id ? String(sortedHabits[0].habit.id) : ''
+    ));
+    const [userSelectedHabit, setUserSelectedHabit] = useState(false);
 
     useEffect(() => {
-        if (!selectedHabitId && globalHabits?.length > 0) {
-            setSelectedHabitId(String(globalHabits[0].id));
+        const topHabit = sortedHabits[0]?.habit;
+        if (!topHabit) return;
+        const topId = String(topHabit.id);
+        const selectionExists = sortedHabits.some(({ habit }) => String(habit.id) === String(selectedHabitId));
+
+        // Once logs load, default to the most-checked habit. A habit the user
+        // picked themselves is respected unless it was deleted.
+        if ((!userSelectedHabit && selectedHabitId !== topId) || !selectionExists) {
+            setSelectedHabitId(topId);
         }
-    }, [globalHabits, selectedHabitId]);
+    }, [selectedHabitId, sortedHabits, userSelectedHabit]);
 
     const habitGrid = useMemo(() => {
-        if (!selectedHabitId) return days.map(d => ({ date: d.date, score: 0 }));
+        if (!selectedHabitId) return days.map(d => ({ date: d.date, score: 0, isFuture: d.isFuture }));
         
         const completedDates = new Set(
-            habitLogs
+            (Array.isArray(habitLogs) ? habitLogs : [])
                 .filter(log => String(log.habit_id) === String(selectedHabitId))
                 .map(log => log.date)
         );
 
-        const habit = globalHabits?.find(h => String(h.id) === String(selectedHabitId));
+        const habit = habits.find(h => String(h.id) === String(selectedHabitId));
         const isCompletedToday = habit?.completedToday || false;
         
         return days.map(d => {
+            if (d.isFuture) {
+                return { date: d.date, score: 0, isFuture: true };
+            }
             if (d.date === today) {
-                return { date: d.date, score: isCompletedToday ? 100 : 0 };
+                return { date: d.date, score: isCompletedToday ? 100 : 0, isFuture: false };
             }
             return {
                 date: d.date,
-                score: completedDates.has(d.date) ? 100 : 0
+                score: completedDates.has(d.date) ? 100 : 0,
+                isFuture: false
             };
         });
-    }, [days, habitLogs, selectedHabitId, globalHabits, today]);
+    }, [days, habitLogs, selectedHabitId, habits, today]);
 
     const getColor = (score) => {
-        const habit = globalHabits?.find(h => String(h.id) === String(selectedHabitId));
+        const habit = habits.find(h => String(h.id) === String(selectedHabitId));
         const color = habit?.color || 'var(--accent-color)';
         if (score === 0) return 'rgba(128, 128, 128, 0.1)';
         return color;
@@ -251,12 +337,15 @@ const HabitHeatmapPanel = ({ habitLogs, globalHabits, days, today, compact = fal
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
-            {globalHabits && globalHabits.length > 0 ? (
+            {sortedHabits.length > 0 ? (
                 <>
                     <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
                         <select
                             value={selectedHabitId}
-                            onChange={(e) => setSelectedHabitId(e.target.value)}
+                            onChange={(e) => {
+                                setUserSelectedHabit(true);
+                                setSelectedHabitId(e.target.value);
+                            }}
                             style={{
                                 padding: '0.5rem',
                                 borderRadius: '0.5rem',
@@ -269,12 +358,14 @@ const HabitHeatmapPanel = ({ habitLogs, globalHabits, days, today, compact = fal
                                 maxWidth: '300px'
                             }}
                         >
-                            {globalHabits.map(h => (
-                                <option key={h.id} value={h.id}>{h.name}</option>
+                            {sortedHabits.map(({ habit, count }) => (
+                                <option key={habit.id} value={habit.id}>
+                                    {habit.name}{count > 0 ? ` (${count})` : ''}
+                                </option>
                             ))}
                         </select>
                     </div>
-                    <HeatmapPanel days={habitGrid} today={today} getColor={getColor} compact={compact} />
+                    <HeatmapPanel days={habitGrid} today={today} getColor={getColor} columns={columns} compact={compact} />
                 </>
             ) : (
                 <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
@@ -285,7 +376,7 @@ const HabitHeatmapPanel = ({ habitLogs, globalHabits, days, today, compact = fal
     );
 };
 
-const StudyHeatmapPanel = ({ days, today, maxDuration, compact = false }) => {
+const StudyHeatmapPanel = ({ days, today, maxDuration, columns = 53, compact = false }) => {
     const getStudyColor = (duration) => {
         if (duration <= 0) return 'rgba(128, 128, 128, 0.1)';
         const ratio = maxDuration > 0 ? duration / maxDuration : 0;
@@ -307,7 +398,7 @@ const StudyHeatmapPanel = ({ days, today, maxDuration, compact = false }) => {
             }}>
                 <div style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(52, 1fr)',
+                    gridTemplateColumns: `repeat(${columns}, 1fr)`,
                     gridAutoFlow: 'column',
                     gridTemplateRows: 'repeat(7, 1fr)',
                     gap: compact ? '3px' : '4px',
@@ -317,15 +408,15 @@ const StudyHeatmapPanel = ({ days, today, maxDuration, compact = false }) => {
                     {days.map((day, index) => (
                         <div
                             key={day.date || index}
-                            title={`${day.date}: ${formatStudyDuration(day.duration)}`}
+                            title={day.isFuture ? undefined : `${day.date}: ${formatStudyDuration(day.duration)}`}
                             style={{
                                 width: '100%',
                                 minWidth: compact ? '10px' : '12px',
                                 height: '100%',
                                 minHeight: compact ? '10px' : '12px',
-                                background: getStudyColor(day.duration),
+                                background: day.isFuture ? 'transparent' : getStudyColor(day.duration),
                                 borderRadius: '3px',
-                                border: '1px solid rgba(128, 128, 128, 0.15)',
+                                border: `1px solid ${day.isFuture ? 'transparent' : 'rgba(128, 128, 128, 0.15)'}`,
                                 boxShadow: day.date === today ? '0 0 0 1px var(--accent-color)' : 'none'
                             }}
                         />
@@ -634,21 +725,14 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
     }, []);
 
     const days = useMemo(() => {
-        const grid = [];
-        const base = new Date();
+        return buildWeekAlignedDates(today).map((dateStr) => ({
+            date: dateStr,
+            score: activity[dateStr] || 0,
+            isFuture: dateStr > today
+        }));
+    }, [activity, today]);
 
-        for (let i = 364; i >= 0; i -= 1) {
-            const d = new Date();
-            d.setDate(base.getDate() - i);
-            const dateStr = formatLocalDate(d);
-            grid.push({
-                date: dateStr,
-                score: activity[dateStr] || 0
-            });
-        }
-
-        return grid;
-    }, [activity]);
+    const heatmapColumns = Math.max(1, Math.ceil(days.length / 7));
 
     const analyticsTasks = useMemo(() => {
         const merged = new Map();
@@ -705,40 +789,48 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
 
     const studyHeatmap = useMemo(() => {
         const sessions = loadStudySessions();
-        const activeSession = loadActiveStudySession();
-        const baseDayStart = getStudyDayStart(new Date(studyNow), resetOffsetHours);
-        const grid = [];
+        const activeSessions = loadActiveStudySessions();
+        const activeEndedAt = new Date(studyNow).toISOString();
 
-        for (let index = 364; index >= 0; index -= 1) {
-            const dayStart = new Date(baseDayStart);
-            dayStart.setDate(baseDayStart.getDate() - index);
-            const dayEnd = new Date(dayStart);
-            dayEnd.setDate(dayEnd.getDate() + 1);
-            const dateStr = formatLocalDate(dayStart);
-
-            let duration = sessions.reduce(
-                (sum, session) => sum + getSessionDurationForDay(session, dayStart, dayEnd),
-                0
-            );
-
-            if (activeSession) {
-                const activeStart = new Date(activeSession.startedAt).getTime();
-                const overlapStart = Math.max(activeStart, dayStart.getTime());
-                const overlapEnd = Math.min(studyNow, dayEnd.getTime());
-                duration += Math.max(0, overlapEnd - overlapStart);
+        const grid = buildWeekAlignedDates(today).map((dateStr) => {
+            if (dateStr > today) {
+                return { date: dateStr, duration: 0, isFuture: true };
             }
 
-            grid.push({
-                date: dateStr,
-                duration
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const dayStart = new Date(year, (month || 1) - 1, day || 1, resetOffsetHours, 0, 0, 0);
+            const dayEnd = new Date(dayStart);
+            dayEnd.setDate(dayEnd.getDate() + 1);
+
+            const intervals = [];
+            sessions.forEach((session) => {
+                const interval = getSessionIntervalForDay(session, dayStart, dayEnd);
+                if (interval) intervals.push(interval);
             });
-        }
+            activeSessions.forEach((session) => {
+                const interval = getSessionIntervalForDay(
+                    { startedAt: session.startedAt, endedAt: activeEndedAt },
+                    dayStart,
+                    dayEnd
+                );
+                if (interval) intervals.push(interval);
+            });
+
+            const dayLength = dayEnd.getTime() - dayStart.getTime();
+            return {
+                date: dateStr,
+                // Merged (not summed) so concurrent timers can never report more
+                // study time for a day than the day actually contains.
+                duration: Math.min(sumMergedIntervals(intervals), dayLength),
+                isFuture: false
+            };
+        });
 
         return {
             days: grid,
-            maxDuration: Math.max(...grid.map((day) => day.duration), 0)
+            maxDuration: Math.max(0, ...grid.map((day) => day.duration))
         };
-    }, [resetOffsetHours, studyNow, studyRefreshKey]);
+    }, [resetOffsetHours, studyNow, studyRefreshKey, today]);
 
     const getColor = (score) => {
         if (score === 0) return 'rgba(128, 128, 128, 0.1)';
@@ -754,7 +846,7 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
         {
             key: 'heatmap',
             title: 'Consistency Heatmap',
-            content: <HeatmapPanel days={days} today={today} currentDisplayScore={currentDisplayScore} getColor={getColor} compact />
+            content: <HeatmapPanel days={days} today={today} currentDisplayScore={currentDisplayScore} getColor={getColor} columns={heatmapColumns} compact />
         },
         {
             key: 'weekly',
@@ -764,12 +856,12 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
         {
             key: 'study',
             title: 'Study Heatmap',
-            content: <StudyHeatmapPanel days={studyHeatmap.days} today={today} maxDuration={studyHeatmap.maxDuration} compact />
+            content: <StudyHeatmapPanel days={studyHeatmap.days} today={today} maxDuration={studyHeatmap.maxDuration} columns={heatmapColumns} compact />
         },
         {
             key: 'habits',
             title: 'Habits Heatmap',
-            content: <HabitHeatmapPanel habitLogs={habitLogs} globalHabits={globalHabits} days={days} today={today} compact />
+            content: <HabitHeatmapPanel habitLogs={habitLogs} globalHabits={globalHabits} days={days} today={today} columns={heatmapColumns} compact />
         },
         {
             key: 'tags',
