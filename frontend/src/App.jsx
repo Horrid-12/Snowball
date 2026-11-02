@@ -1699,6 +1699,8 @@ function App() {
                                     const showStats = isCardEffectivelyVisible('stats', dashboardCards, spotifyConnected);
                                     const showCalendarCard = isCardEffectivelyVisible('calendar', dashboardCards, spotifyConnected);
                                     const showSpotify = isCardEffectivelyVisible('spotify', dashboardCards, spotifyConnected);
+                                    const showYoutube = isCardEffectivelyVisible('youtube', dashboardCards, spotifyConnected);
+                                    const showMediaHub = showSpotify || showYoutube;
                                     const showNotes = isCardEffectivelyVisible('notes', dashboardCards, spotifyConnected);
                                     const hasTopSection = showTimer || showStats || showCalendarCard;
 
@@ -1732,10 +1734,13 @@ function App() {
                                                     )}
                                                 </div>
                                             )}
-                                            {showSpotify && (
+                                            {showMediaHub && (
                                                 <ErrorBoundary>
                                                     <Suspense fallback={<LoadingFallback variant="media" />}>
-                                                        <MediaHub />
+                                                        <MediaHub
+                                                            showSpotifyTab={showSpotify}
+                                                            showYoutubeTab={showYoutube}
+                                                        />
                                                     </Suspense>
                                                 </ErrorBoundary>
                                             )}
@@ -1832,6 +1837,8 @@ function App() {
                                     const showTasks = isCardEffectivelyVisible('tasks', dashboardCards, spotifyConnected);
                                     const showHeatmap = isCardEffectivelyVisible('heatmap', dashboardCards, spotifyConnected);
                                     const showSpotify = isCardEffectivelyVisible('spotify', dashboardCards, spotifyConnected);
+                                    const showYoutube = isCardEffectivelyVisible('youtube', dashboardCards, spotifyConnected);
+                                    const showMediaHub = showSpotify || showYoutube;
                                     const showNotes = isCardEffectivelyVisible('notes', dashboardCards, spotifyConnected);
                                     const showHabits = isCardEffectivelyVisible('habits', dashboardCards, spotifyConnected);
 
@@ -1948,10 +1955,13 @@ function App() {
                                                     </ErrorBoundary>
                                                 )}
 
-                                                {showSpotify && (
+                                                {showMediaHub && (
                                                     <ErrorBoundary>
                                                         <Suspense fallback={<LoadingFallback variant="media" />}>
-                                                            <MediaHub />
+                                                            <MediaHub
+                                                                showSpotifyTab={showSpotify}
+                                                                showYoutubeTab={showYoutube}
+                                                            />
                                                         </Suspense>
                                                     </ErrorBoundary>
                                                 )}

@@ -7,10 +7,15 @@ import { apiFetch } from '../utils/apiClient';
 import { isTauriDesktop } from '../config.js';
 import YouTubePanel from './YouTubePanel.jsx';
 import { SkeletonBox, SkeletonCircle } from './Skeletons.jsx';
-import { setCachedSpotifyStatus, notifySpotifyStatusChanged } from '../utils/spotifyStatus.js';
+import { getCachedSpotifyStatus, setCachedSpotifyStatus, notifySpotifyStatusChanged } from '../utils/spotifyStatus.js';
 
-const MediaHub = ({ onReady }) => {
-    const [activeTab, setActiveTab] = useState('spotify'); // 'spotify' or 'youtube'
+const MediaHub = ({ onReady, showSpotifyTab = true, showYoutubeTab = true }) => {
+    const [activeTab, setActiveTab] = useState(() => {
+        if (!showSpotifyTab || !getCachedSpotifyStatus()) {
+            return showYoutubeTab ? 'youtube' : 'spotify';
+        }
+        return 'spotify';
+    });
     const [isExpanded, setIsExpanded] = useState(true);
     const [youtubeBackgroundPlayback, setYoutubeBackgroundPlayback] = useState(() => {
         try {
@@ -27,6 +32,17 @@ const MediaHub = ({ onReady }) => {
     // Spotify State
     const [spotifyData, setSpotifyData] = useState(null);
     const [spotifyConnected, setSpotifyConnected] = useState(false);
+
+    const canShowSpotify = Boolean(showSpotifyTab && spotifyConnected);
+    const canShowYoutube = Boolean(showYoutubeTab);
+
+    useEffect(() => {
+        if (!canShowSpotify && canShowYoutube) {
+            setActiveTab('youtube');
+        } else if (canShowSpotify && !canShowYoutube) {
+            setActiveTab('spotify');
+        }
+    }, [canShowSpotify, canShowYoutube]);
     const [isCheckingStatus, setIsCheckingStatus] = useState(true);
     const [spotifyResults, setSpotifyResults] = useState([]);
     const [spotifyQuery, setSpotifyQuery] = useState('');
@@ -782,21 +798,41 @@ const MediaHub = ({ onReady }) => {
             width: '100%',
             boxSizing: 'border-box'
         }}>
-            <div
+            <button
+                type="button"
                 onClick={() => setIsExpanded(prev => !prev)}
                 style={{
+                    width: '100%',
                     padding: '0.75rem 1rem',
                     background: 'var(--bg-secondary)',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     cursor: 'pointer',
-                    borderBottom: isExpanded ? '1px solid var(--border-color)' : 'none'
+                    border: 'none',
+                    borderBottom: isExpanded ? '1px solid var(--border-color)' : 'none',
+                    font: 'inherit',
+                    color: 'inherit',
+                    textAlign: 'inherit'
                 }}
             >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <Music size={16} style={{ color: 'var(--accent-color)' }} />
-                    <h3 style={{ fontSize: '0.85rem', margin: 0, fontWeight: 'bold' }}>Media Hub</h3>
+                    {canShowSpotify && !canShowYoutube ? (
+                        <Music size={16} style={{ color: 'var(--accent-color)' }} />
+                    ) : !canShowSpotify && canShowYoutube ? (
+                        <Video size={16} style={{ color: 'var(--accent-color)' }} />
+                    ) : activeTab === 'youtube' ? (
+                        <Video size={16} style={{ color: 'var(--accent-color)' }} />
+                    ) : (
+                        <Music size={16} style={{ color: 'var(--accent-color)' }} />
+                    )}
+                    <h3 style={{ fontSize: '0.85rem', margin: 0, fontWeight: 'bold' }}>
+                        {canShowSpotify && !canShowYoutube
+                            ? 'Spotify Player'
+                            : !canShowSpotify && canShowYoutube
+                                ? 'YouTube Player'
+                                : 'Media Hub'}
+                    </h3>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', opacity: 0.7 }}>
@@ -804,44 +840,50 @@ const MediaHub = ({ onReady }) => {
                     </span>
                     {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 </div>
-            </div>
+            </button>
 
             {isExpanded && (
                 <div style={{ padding: 'var(--card-padding)', display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative', zIndex: 1 }}>
-                    {/* Tabs */}
-                    <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-                        <button
-                            onClick={() => setActiveTab('spotify')}
-                            style={{
-                                flex: 1, fontSize: '0.75rem', padding: '0.4rem', borderRadius: '0.25rem',
-                                background: activeTab === 'spotify' ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
-                                color: activeTab === 'spotify' ? 'var(--accent-color)' : 'var(--text-secondary)',
-                                fontWeight: activeTab === 'spotify' ? 'bold' : 'normal',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem'
-                            }}
-                        >
-                            <Music size={14} /> Spotify
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('youtube')}
-                            style={{
-                                flex: 1, fontSize: '0.75rem', padding: '0.4rem', borderRadius: '0.25rem',
-                                background: activeTab === 'youtube' ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
-                                color: activeTab === 'youtube' ? 'var(--accent-color)' : 'var(--text-secondary)',
-                                fontWeight: activeTab === 'youtube' ? 'bold' : 'normal',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem'
-                            }}
-                        >
-                            <Video size={14} /> YouTube
-                        </button>
-                    </div>
+                    {/* Tabs (only shown if both players are enabled and Spotify is connected) */}
+                    {canShowSpotify && canShowYoutube && (
+                        <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('spotify')}
+                                style={{
+                                    flex: 1, fontSize: '0.75rem', padding: '0.4rem', borderRadius: '0.25rem',
+                                    background: activeTab === 'spotify' ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
+                                    color: activeTab === 'spotify' ? 'var(--accent-color)' : 'var(--text-secondary)',
+                                    fontWeight: activeTab === 'spotify' ? 'bold' : 'normal',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem'
+                                }}
+                            >
+                                <Music size={14} /> Spotify
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('youtube')}
+                                style={{
+                                    flex: 1, fontSize: '0.75rem', padding: '0.4rem', borderRadius: '0.25rem',
+                                    background: activeTab === 'youtube' ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
+                                    color: activeTab === 'youtube' ? 'var(--accent-color)' : 'var(--text-secondary)',
+                                    fontWeight: activeTab === 'youtube' ? 'bold' : 'normal',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem'
+                                }}
+                            >
+                                <Video size={14} /> YouTube
+                            </button>
+                        </div>
+                    )}
 
                     {/* Content */}
                     <div style={{ minHeight: '100px', position: 'relative', zIndex: 1 }}>
-                        <div style={{ display: activeTab === 'spotify' ? 'block' : 'none' }}>
-                            {renderSpotify()}
-                        </div>
-                        {(activeTab === 'youtube' || youtubeBackgroundPlayback) && (
+                        {canShowSpotify && (
+                            <div style={{ display: activeTab === 'spotify' ? 'block' : 'none' }}>
+                                {renderSpotify()}
+                            </div>
+                        )}
+                        {canShowYoutube && (activeTab === 'youtube' || youtubeBackgroundPlayback) && (
                             <div style={{ display: activeTab === 'youtube' ? 'block' : 'none' }}>
                                 {renderYouTube()}
                             </div>

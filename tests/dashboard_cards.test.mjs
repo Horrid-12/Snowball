@@ -52,14 +52,14 @@ global.CustomEvent = class CustomEvent {
 // 1. Verify Card Configurations
 console.log('1. Checking Card Configurations & Defaults:');
 {
-    const expectedCards = ['timer', 'stats', 'calendar', 'tasks', 'heatmap', 'spotify', 'notes', 'habits'];
-    assert.strictEqual(DASHBOARD_CARD_CONFIG.length, 8, 'Must have exactly 8 dashboard cards');
+    const expectedCards = ['timer', 'stats', 'calendar', 'tasks', 'heatmap', 'spotify', 'youtube', 'notes', 'habits'];
+    assert.strictEqual(DASHBOARD_CARD_CONFIG.length, 9, 'Must have exactly 9 dashboard cards (including YouTube)');
     const configuredIds = DASHBOARD_CARD_CONFIG.map(c => c.id);
     expectedCards.forEach(id => {
         assert(configuredIds.includes(id), `Card ${id} must be in DASHBOARD_CARD_CONFIG`);
         assert.strictEqual(DEFAULT_DASHBOARD_CARDS[id], true, `Default for ${id} must be true`);
     });
-    console.log('✓ All 8 dashboard cards are properly configured with default true');
+    console.log('✓ All 9 dashboard cards (including YouTube Player) are properly configured with default true');
 }
 
 // 2. Acceptance Criteria 1 & 2: Spotify Precedence and Conditional Display
@@ -86,6 +86,31 @@ console.log('\n2. Checking Spotify Connection Precedence:');
     console.log('✓ Disconnected Spotify account NEVER sees the Spotify dashboard card');
     console.log('✓ Connecting Spotify makes the card available automatically');
     console.log('✓ Connection requirement strictly takes precedence over the toggle preference');
+
+    // YouTube Player visibility & independence
+    const ytVisibleDisconnected = isCardEffectivelyVisible('youtube', { youtube: true }, false);
+    assert.strictEqual(ytVisibleDisconnected, true, 'FAIL: YouTube player must still show when Spotify is disconnected');
+
+    const ytHiddenWhenDisabled = isCardEffectivelyVisible('youtube', { youtube: false }, false);
+    assert.strictEqual(ytHiddenWhenDisabled, false, 'FAIL: YouTube player should be hidden when toggle is OFF');
+
+    // Media Hub card composition logic (showSpotify || showYoutube)
+    // 1. Spotify disconnected, YouTube enabled => MediaHub visible (showing YouTube)
+    const mediaWhenDisconnected = isCardEffectivelyVisible('spotify', { spotify: true, youtube: true }, false) ||
+                                  isCardEffectivelyVisible('youtube', { spotify: true, youtube: true }, false);
+    assert.strictEqual(mediaWhenDisconnected, true, 'FAIL: MediaHub must still be visible to display YouTube when Spotify is disconnected');
+
+    // 2. Spotify disconnected, YouTube disabled => MediaHub completely hidden
+    const mediaWhenBothDisabledOrDisconnected = isCardEffectivelyVisible('spotify', { spotify: true, youtube: false }, false) ||
+                                                isCardEffectivelyVisible('youtube', { spotify: true, youtube: false }, false);
+    assert.strictEqual(mediaWhenBothDisabledOrDisconnected, false, 'FAIL: MediaHub must be hidden when YouTube is disabled and Spotify is disconnected');
+
+    // 3. Spotify connected, YouTube disabled => MediaHub visible (showing Spotify only)
+    const mediaSpotifyOnly = isCardEffectivelyVisible('spotify', { spotify: true, youtube: false }, true) ||
+                             isCardEffectivelyVisible('youtube', { spotify: true, youtube: false }, true);
+    assert.strictEqual(mediaSpotifyOnly, true, 'FAIL: MediaHub must be visible for Spotify when YouTube is disabled');
+
+    console.log('✓ YouTube player toggle and visibility behave correctly when Spotify is disconnected');
 }
 
 // 3. Acceptance Criteria 3, 4 & 5: Preference Persistence & Guest Local Fallback

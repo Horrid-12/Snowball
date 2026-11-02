@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Settings, X, Edit2, Trash2, Check, Clock, BarChart2, Calendar, CheckSquare, Flame, Music, FileText, Repeat } from 'lucide-react';
+import { Settings, X, Edit2, Trash2, Check, Clock, BarChart2, Calendar, CheckSquare, Flame, Music, Video, FileText, Repeat } from 'lucide-react';
 import { DASHBOARD_CARD_CONFIG, getStoredCardPreferences, saveCardPreferences } from '../utils/dashboardCards.js';
 import { connectSpotify, disconnectSpotify, getCachedSpotifyStatus } from '../utils/spotifyStatus.js';
 import { Device } from '@capacitor/device';
@@ -135,6 +135,7 @@ const SettingsModal = ({
             case 'CheckSquare': return <CheckSquare size={18} />;
             case 'Flame': return <Flame size={18} />;
             case 'Music': return <Music size={18} />;
+            case 'Video': return <Video size={18} />;
             case 'FileText': return <FileText size={18} />;
             case 'Repeat': return <Repeat size={18} />;
             default: return <Settings size={18} />;

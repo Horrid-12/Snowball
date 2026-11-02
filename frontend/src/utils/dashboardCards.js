@@ -7,6 +7,7 @@ export const DEFAULT_DASHBOARD_CARDS = {
     tasks: true,
     heatmap: true,
     spotify: true,
+    youtube: true,
     notes: true,
     habits: true
 };
@@ -48,6 +49,12 @@ export const DASHBOARD_CARD_CONFIG = [
         description: 'Playback controls, playlists, lyrics, and media integration.',
         icon: 'Music',
         requiresConnection: true
+    },
+    {
+        id: 'youtube',
+        label: 'YouTube Player',
+        description: 'Embedded video player, lofi streams, and audio controls.',
+        icon: 'Video'
     },
     {
         id: 'notes',
@@ -94,7 +101,10 @@ export const getStoredCardPreferences = (user = null) => {
                 return {
                     ...DEFAULT_DASHBOARD_CARDS,
                     ...(legacyHeatmap !== null ? { heatmap: legacyHeatmap === 'true' } : {}),
-                    ...(legacyMedia !== null ? { spotify: legacyMedia === 'true' } : {})
+                    ...(legacyMedia !== null ? {
+                        spotify: legacyMedia === 'true',
+                        youtube: legacyMedia === 'true'
+                    } : {})
                 };
             }
         }
@@ -117,7 +127,7 @@ export const saveCardPreferences = (nextPreferences, user = null, onUpdateUser =
             window.localStorage.setItem('snowball_dashboard_cards', JSON.stringify(sanitized));
             // Keep legacy keys in sync
             window.localStorage.setItem('snowball_show_heatmap', JSON.stringify(sanitized.heatmap ?? true));
-            window.localStorage.setItem('snowball_show_media', JSON.stringify(sanitized.spotify ?? true));
+            window.localStorage.setItem('snowball_show_media', JSON.stringify(Boolean((sanitized.spotify ?? true) || (sanitized.youtube ?? true))));
         }
     } catch (_err) {
         /* ignore */
