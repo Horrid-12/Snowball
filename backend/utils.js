@@ -69,3 +69,29 @@ export const getPastDateWithOffset = async (userId, daysAgo) => {
         return target.toISOString().split('T')[0];
     }
 };
+
+const userLocks = new Map();
+
+/**
+ * Execute an async operation with per-user mutex serialization.
+ * Avoids concurrent read-modify-write races on user state (e.g. study_timer_state).
+ */
+export const withUserLock = async (userId, fn) => {
+    if (!userId) return fn();
+    const prevLock = userLocks.get(userId) || Promise.resolve();
+    let resolveLock;
+    const currentLock = new Promise((resolve) => {
+        resolveLock = resolve;
+    });
+    // Chain onto previous operation
+    userLocks.set(userId, currentLock);
+    try {
+        await prevLock;
+        return await fn();
+    } finally {
+        resolveLock();
+        if (userLocks.get(userId) === currentLock) {
+            userLocks.delete(userId);
+        }
+    }
+};

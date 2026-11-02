@@ -7,7 +7,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { createRateLimiter } from '../middleware/rateLimit.js';
 import { revokeToken } from '../middleware/sessionStore.js';
 import { validate, schemas } from '../middleware/validate.js';
-import { clearUserOffsetCache } from '../utils.js';
+import { clearUserOffsetCache, withUserLock } from '../utils.js';
 
 const getEnv = (name) => {
     const upper = name.toUpperCase();
@@ -261,67 +261,80 @@ router.get('/me', requireAuth, async (req, res, next) => {
 
 // Update User Settings (Me)
 router.put('/me', requireAuth, validate(schemas.userSettings), async (req, res, next) => {
-    try {
-        const { reset_offset_hours, timezone_offset_minutes, penalty_buffer_hours, appearance_settings, profile_icon, tag_colors, study_timer_state } = req.validatedBody;
-        const updateFields = {};
-        if (reset_offset_hours !== undefined) updateFields.reset_offset_hours = reset_offset_hours;
-        if (timezone_offset_minutes !== undefined) updateFields.timezone_offset_minutes = timezone_offset_minutes;
-        if (penalty_buffer_hours !== undefined) updateFields.penalty_buffer_hours = penalty_buffer_hours;
-        if (appearance_settings !== undefined) updateFields.appearance_settings = appearance_settings;
-        if (profile_icon !== undefined) updateFields.profile_icon = String(profile_icon || 'snowball').trim().slice(0, 40);
-        if (tag_colors !== undefined) updateFields.tag_colors = tag_colors;
-        if (study_timer_state !== undefined) updateFields.study_timer_state = study_timer_state;
+    return withUserLock(req.user.id, async () => {
+        try {
+            const { reset_offset_hours, timezone_offset_minutes, penalty_buffer_hours, appearance_settings, profile_icon, tag_colors, study_timer_state } = req.validatedBody;
+            const updateFields = {};
+            if (reset_offset_hours !== undefined) updateFields.reset_offset_hours = reset_offset_hours;
+            if (timezone_offset_minutes !== undefined) updateFields.timezone_offset_minutes = timezone_offset_minutes;
+            if (penalty_buffer_hours !== undefined) updateFields.penalty_buffer_hours = penalty_buffer_hours;
+            if (appearance_settings !== undefined) updateFields.appearance_settings = appearance_settings;
+            if (profile_icon !== undefined) updateFields.profile_icon = String(profile_icon || 'snowball').trim().slice(0, 40);
+            if (tag_colors !== undefined) updateFields.tag_colors = tag_colors;
+            if (study_timer_state !== undefined) updateFields.study_timer_state = study_timer_state;
 
-        // Timer-state synchronization. Two devices can write this field concurrently.
-        // A stop is terminal and must NEVER be dropped due to minor clock differences.
-        if (updateFields.study_timer_state !== undefined) {
-            const { data: storedUser } = await selectUserWithFallback(req.user.id, ['study_timer_state']);
-            const storedState = storedUser?.study_timer_state ?? null;
-            const incomingAt = Date.parse(study_timer_state?.updatedAt);
-            const storedAt = Date.parse(storedState?.updatedAt);
-            const now = Date.now();
+            // Timer-state synchronization with concurrency control and non-destructive CRDT union.
+            // Two devices can write concurrently; requests are serialized per-user with withUserLock.
+            if (updateFields.study_timer_state !== undefined) {
+                const { data: storedUser } = await selectUserWithFallback(req.user.id, ['study_timer_state']);
+                const storedState = storedUser?.study_timer_state ?? null;
 
-            const storedStopped = Array.isArray(storedState?.stoppedIds) ? storedState.stoppedIds : [];
-            const incomingStopped = Array.isArray(study_timer_state?.stoppedIds) ? study_timer_state.stoppedIds : [];
-            const stoppedIds = [...new Set([...incomingStopped, ...storedStopped].filter(Boolean))].slice(0, 50);
-            const stopped = new Set(stoppedIds);
+                const MAX_STOPPED_IDS = 500;
+                const MAX_ACTIVE_SESSION_AGE_MS = 48 * 60 * 60 * 1000;
+                const MAX_CONCURRENT_TIMERS = 3;
 
-            const isSessionStopped = (s) => {
-                if (!s?.startedAt) return true;
-                if (s.id && stopped.has(s.id)) return true;
-                const canonical = s.subject ? `active_${new Date(s.startedAt).getTime() || 0}_${String(s.subject).trim()}` : null;
-                if (canonical && stopped.has(canonical)) return true;
-                return false;
-            };
+                const storedStopped = Array.isArray(storedState?.stoppedIds) ? storedState.stoppedIds : [];
+                const incomingStopped = Array.isArray(study_timer_state?.stoppedIds) ? study_timer_state.stoppedIds : [];
+                const stoppedIds = [...new Set([...incomingStopped, ...storedStopped].filter(Boolean))].slice(-MAX_STOPPED_IDS);
+                const stopped = new Set(stoppedIds);
 
-            const incomingActive = Array.isArray(study_timer_state?.activeSessions)
-                ? study_timer_state.activeSessions.filter((s) => !isSessionStopped(s)).map((s) => ({
-                    id: s.id || `active_${new Date(s.startedAt).getTime() || 0}_${String(s.subject).trim()}`,
-                    subject: String(s.subject).trim(),
-                    startedAt: new Date(s.startedAt).toISOString()
-                }))
-                : [];
+                const resetAt = study_timer_state?.resetAt || storedState?.resetAt || null;
+                const resetAtMs = resetAt ? new Date(resetAt).getTime() : 0;
 
-            const storedActive = Array.isArray(storedState?.activeSessions)
-                ? storedState.activeSessions.filter((s) => !isSessionStopped(s))
-                : [];
+                const getSessionKey = (s) => (
+                    s?.id || (s?.startedAt && s?.subject ? `active_${new Date(s.startedAt).getTime() || 0}_${String(s.subject).trim()}` : null)
+                );
 
-            const hasNewStops = incomingStopped.some((id) => !storedStopped.includes(id));
-            // A write is considered truly stale only if it is older than stored by more than 10 seconds AND brings no new stops
-            const isStaleWrite = Number.isFinite(incomingAt) && Number.isFinite(storedAt) && storedAt <= now && (storedAt - incomingAt > 10000);
+                const isSessionActive = (s) => {
+                    if (!s?.startedAt || !s?.subject) return false;
+                    const startedAtMs = new Date(s.startedAt).getTime();
+                    if (!Number.isFinite(startedAtMs)) return false;
+                    const now = Date.now();
+                    // Reject sessions older than 48 hours or > 5 minutes in future
+                    if (now - startedAtMs > MAX_ACTIVE_SESSION_AGE_MS || startedAtMs - now > 5 * 60 * 1000) return false;
+                    if (s.id && stopped.has(s.id)) return false;
+                    const canonical = getSessionKey(s);
+                    if (canonical && stopped.has(canonical)) return false;
+                    if (resetAtMs && startedAtMs <= resetAtMs) return false;
+                    return true;
+                };
 
-            if (isStaleWrite && !hasNewStops && incomingActive.length > 0) {
-                // Outdated write from a delayed outbox / background replay with no stops. Drop it.
-                delete updateFields.study_timer_state;
-            } else {
+                const incomingActive = Array.isArray(study_timer_state?.activeSessions)
+                    ? study_timer_state.activeSessions.filter(isSessionActive).map((s) => ({
+                        id: getSessionKey(s),
+                        subject: String(s.subject).trim(),
+                        startedAt: new Date(s.startedAt).toISOString()
+                    }))
+                    : [];
+
+                const storedActive = Array.isArray(storedState?.activeSessions)
+                    ? storedState.activeSessions.filter(isSessionActive)
+                    : [];
+
                 let activeSessions;
-                if (incomingActive.length === 0 && (hasNewStops || study_timer_state?.activeSessions?.length === 0)) {
-                    // Explicit stop of all sessions, or explicit stop of the sessions that were active
-                    activeSessions = [];
-                } else if (hasNewStops) {
-                    activeSessions = incomingActive.length > 0 ? incomingActive : storedActive;
-                } else {
+                // Explicit reset: if incoming resetAt is strictly newer than stored resetAt, clear prior active sessions
+                if (study_timer_state?.resetAt && (!storedState?.resetAt || new Date(study_timer_state.resetAt) > new Date(storedState.resetAt))) {
                     activeSessions = incomingActive;
+                } else {
+                    // Union stored and incoming active sessions by canonical key (CRDT union)
+                    const byKey = new Map();
+                    [...storedActive, ...incomingActive].forEach((s) => {
+                        const key = getSessionKey(s);
+                        if (key && !byKey.has(key)) {
+                            byKey.set(key, s);
+                        }
+                    });
+                    activeSessions = [...byKey.values()].slice(0, MAX_CONCURRENT_TIMERS);
                 }
 
                 const storedCustom = Array.isArray(storedState?.customSubjects) ? storedState.customSubjects : [];
@@ -330,14 +343,14 @@ router.put('/me', requireAuth, validate(schemas.userSettings), async (req, res, 
 
                 updateFields.study_timer_state = {
                     ...study_timer_state,
-                    activeSessions: activeSessions.slice(0, 3),
+                    activeSessions,
                     activeSession: activeSessions[0] || null,
                     customSubjects,
                     stoppedIds,
+                    resetAt,
                     updatedAt: new Date().toISOString()
                 };
             }
-        }
 
         if (Object.keys(updateFields).length === 0) {
             const { data: user, error } = await selectUserWithFallback(req.user.id);
@@ -400,9 +413,10 @@ router.put('/me', requireAuth, validate(schemas.userSettings), async (req, res, 
         }
 
         res.json(mapUserSettings(user));
-    } catch (err) {
-        next(err);
-    }
+        } catch (err) {
+            next(err);
+        }
+    });
 });
 
 // Logout

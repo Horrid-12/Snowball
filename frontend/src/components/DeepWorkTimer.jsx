@@ -10,10 +10,41 @@ import { nativeConfirm } from '../utils/confirm.js';
 const SESSIONS_KEY = 'snowball_study_timer_sessions';
 const ACTIVE_KEY = 'snowball_study_timer_active';
 const STOPPED_IDS_KEY = 'snowball_study_timer_stopped_ids';
+const UNCOMMITTED_KEY = 'snowball_study_timer_uncommitted_ids';
 const EXPANDED_KEY = 'snowball_study_timer_expanded';
 const CUSTOM_SUBJECTS_KEY = 'snowball_study_custom_subjects';
 const MAX_CONCURRENT_TIMERS = 3;
-const MAX_STOPPED_IDS = 50;
+const MAX_STOPPED_IDS = 500;
+const MAX_ACTIVE_SESSION_AGE_MS = 48 * 60 * 60 * 1000;
+
+const getUncommittedIds = () => {
+    const saved = safeJson(localStorage.getItem(UNCOMMITTED_KEY), []);
+    return new Set(Array.isArray(saved) ? saved : []);
+};
+
+const markUncommittedSession = (sessionId) => {
+    if (!sessionId) return;
+    try {
+        const next = [...new Set([...getUncommittedIds(), sessionId])];
+        localStorage.setItem(UNCOMMITTED_KEY, JSON.stringify(next));
+    } catch (_e) { /* ignore */ }
+};
+
+const clearUncommittedSession = (sessionId) => {
+    if (!sessionId) return;
+    try {
+        const set = getUncommittedIds();
+        if (set.delete(sessionId)) {
+            localStorage.setItem(UNCOMMITTED_KEY, JSON.stringify([...set]));
+        }
+    } catch (_e) { /* ignore */ }
+};
+
+const clearAllUncommittedSessions = () => {
+    try {
+        localStorage.removeItem(UNCOMMITTED_KEY);
+    } catch (_e) { /* ignore */ }
+};
 
 const stableStringify = (value) => JSON.stringify(value || null);
 
@@ -31,8 +62,15 @@ const normalizeActiveSessions = (value) => {
     const list = Array.isArray(value)
         ? value
         : (value?.subject && value?.startedAt ? [value] : []);
+    const now = Date.now();
     return list
-        .filter((s) => s?.subject && s?.startedAt)
+        .filter((s) => {
+            if (!s?.subject || !s?.startedAt) return false;
+            const startedAtMs = new Date(s.startedAt).getTime();
+            if (!Number.isFinite(startedAtMs)) return false;
+            if (now - startedAtMs > MAX_ACTIVE_SESSION_AGE_MS) return false;
+            return true;
+        })
         .slice(0, MAX_CONCURRENT_TIMERS)
         .map((s) => ({
             id: getActiveSessionId(s),
@@ -66,7 +104,7 @@ const markStoppedSessions = (sessionIds = []) => {
     const ids = sessionIds.filter(Boolean);
     if (ids.length === 0) return;
     try {
-        const next = [...new Set([...ids, ...getStoppedIds()])].slice(0, MAX_STOPPED_IDS);
+        const next = [...new Set([...ids, ...getStoppedIds()])].slice(-MAX_STOPPED_IDS);
         localStorage.setItem(STOPPED_IDS_KEY, JSON.stringify(next));
     } catch (_e) { /* ignore */ }
 };
@@ -89,26 +127,33 @@ const chooseActiveSessions = (localActive, remoteActive, remoteHasState) => {
 
     if (!remoteHasState) return local;
 
+    const uncommitted = getUncommittedIds();
+
     // Remote explicitly has no active sessions (timers were stopped/cleared).
-    // Local timers that were stopped elsewhere are already pruned by filterStoppedSessions.
+    // Drop stale cached local timers; only keep timers explicitly started on THIS
+    // device that have not yet been confirmed by the server.
     if (remote.length === 0) {
-        return local;
+        return local.filter((s) => uncommitted.has(s.id) || uncommitted.has(getActiveSessionId(s)));
     }
 
-    // Keep any local timers the remote has not seen yet
+    // Keep remote sessions + local uncommitted sessions started here that remote hasn't seen yet
     const remoteIds = new Set(remote.map((s) => s.id));
-    const unseenLocal = local.filter((s) => !remoteIds.has(s.id));
+    const unseenLocal = local.filter((s) => (
+        !remoteIds.has(s.id) &&
+        (uncommitted.has(s.id) || uncommitted.has(getActiveSessionId(s)))
+    ));
     return unseenLocal.length > 0
         ? [...remote, ...unseenLocal].slice(0, MAX_CONCURRENT_TIMERS)
         : remote;
 };
 
-const buildTimerState = (sessions, activeSessions, customSubjects) => ({
+const buildTimerState = (sessions, activeSessions, customSubjects, resetAt = null) => ({
     sessions: normalizeSessions(sessions),
     activeSessions: normalizeActiveSessions(activeSessions),
     activeSession: activeSessions?.length > 0 ? activeSessions[0] : null,
     customSubjects: Array.isArray(customSubjects) ? customSubjects : [],
     stoppedIds: [...getStoppedIds()],
+    resetAt: resetAt || null,
     updatedAt: new Date().toISOString()
 });
 
@@ -437,6 +482,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
     const intentRef = useRef(0);
     const pushedIntentRef = useRef(0);
     const lastPublishRef = useRef(0);
+    const resetAtRef = useRef(null);
     const [intentSeq, setIntentSeq] = useState(0);
     const [tagColors, setTagColors] = useState(() => loadTagColors());
     const [isExpanded, setIsExpanded] = useState(() => {
@@ -575,6 +621,18 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
             setSessions(remoteSessions);
         }
 
+        if (remoteState?.resetAt) {
+            if (!resetAtRef.current || new Date(remoteState.resetAt) > new Date(resetAtRef.current)) {
+                resetAtRef.current = remoteState.resetAt;
+            }
+        }
+
+        remoteActive.forEach((s) => {
+            if (s.id) clearUncommittedSession(s.id);
+            const canonical = getActiveSessionId(s);
+            if (canonical) clearUncommittedSession(canonical);
+        });
+
         const nextActive = chooseActiveSessions(activeSessionsRef.current, remoteActive, remoteHasState);
         if (JSON.stringify(normalizeActiveSessions(activeSessionsRef.current)) !== JSON.stringify(nextActive)) {
             activeSessionsRef.current = nextActive;
@@ -674,7 +732,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
             return;
         }
 
-        const nextState = buildTimerState([], activeSessions, customSubjects);
+        const nextState = buildTimerState([], activeSessions, customSubjects, resetAtRef.current);
         const serialized = serializeTimerState(activeSessions, customSubjects);
         if (serialized === lastSyncedStateRef.current) {
             // The server already has this exact state; nothing to send.
@@ -918,11 +976,13 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
     const startTimer = () => {
         if (activeSessions.length >= MAX_CONCURRENT_TIMERS) return;
         if (activeSessions.some((s) => s.subject === selectedSubject)) return;
-        setActiveSessions((prev) => [...prev, {
+        const newSession = {
             id: `active_${Date.now()}`,
             subject: selectedSubject,
             startedAt: new Date().toISOString()
-        }]);
+        };
+        markUncommittedSession(newSession.id);
+        setActiveSessions((prev) => [...prev, newSession]);
         bumpIntent();
     };
 
@@ -933,6 +993,8 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
         // Record the stop before anything async — this id is never adopted again,
         // even if another device republishes the snapshot it still has.
         markStoppedSessions([active.id, canonicalId]);
+        clearUncommittedSession(active.id);
+        clearUncommittedSession(canonicalId);
         const endedAt = new Date();
         const startedAt = new Date(active.startedAt);
         const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
@@ -957,8 +1019,10 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
 
         const idsToStop = activeSessions.flatMap((s) => [s.id, getActiveSessionId(s)].filter(Boolean));
         markStoppedSessions(idsToStop);
+        clearAllUncommittedSessions();
         setActiveSessions([]);
         setSessions((prev) => prev.filter((session) => getSessionDurationForDay(session, dayStart, dayEnd) <= 0));
+        resetAtRef.current = new Date().toISOString();
         bumpIntent();
 
         const fromISO = dayStart.toISOString();

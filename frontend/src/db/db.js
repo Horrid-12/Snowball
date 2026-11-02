@@ -46,6 +46,43 @@ export const setOutboxFlushHandler = (handler) => {
 
 // Helper to add mutation to outbox
 export const queueMutation = async (type, method, url, body) => {
+    if (type === 'timer_state_update') {
+        try {
+            const existing = await db.outbox.where('type').equals('timer_state_update').toArray();
+            if (existing.length > 0) {
+                const allStopped = new Set(Array.isArray(body?.study_timer_state?.stoppedIds) ? body.study_timer_state.stoppedIds : []);
+                existing.forEach((m) => {
+                    const s = m?.body?.study_timer_state?.stoppedIds;
+                    if (Array.isArray(s)) s.forEach((id) => { allStopped.add(id); });
+                });
+                const mergedBody = {
+                    ...body,
+                    study_timer_state: {
+                        ...body?.study_timer_state,
+                        stoppedIds: [...allStopped]
+                    }
+                };
+                await db.outbox.where('type').equals('timer_state_update').delete();
+                const id = await db.outbox.add({
+                    type,
+                    method,
+                    url,
+                    body: mergedBody,
+                    timestamp: Date.now()
+                });
+                if (outboxFlushHandler) {
+                    try {
+                        outboxFlushHandler();
+                    } catch (err) {
+                        console.warn('Outbox flush failed', err);
+                    }
+                }
+                return id;
+            }
+        } catch (_err) {
+            // Fall back to standard add on error
+        }
+    }
     const id = await db.outbox.add({
         type,
         method,
