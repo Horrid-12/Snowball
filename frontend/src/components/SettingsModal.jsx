@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Settings, X, Edit2, Trash2, Check } from 'lucide-react';
+import { Settings, X, Edit2, Trash2, Check, Clock, BarChart2, Calendar, CheckSquare, Flame, Music, FileText, Repeat } from 'lucide-react';
+import { DASHBOARD_CARD_CONFIG, getStoredCardPreferences, saveCardPreferences } from '../utils/dashboardCards.js';
+import { connectSpotify, disconnectSpotify, getCachedSpotifyStatus } from '../utils/spotifyStatus.js';
 import { Device } from '@capacitor/device';
 import { apiFetch } from '../utils/apiClient.js';
 import { notificationService } from '../services/NotificationService.js';
@@ -50,12 +52,95 @@ const decodeBase64Utf8 = (value = '') => {
 
 const SETTINGS_SECTIONS = [
     { id: 'general', title: 'General', description: 'Identity, daily reset, penalties, and reminders.' },
+    { id: 'dashboard', title: 'Dashboard Cards', description: 'Show or hide cards on your dashboard.' },
     { id: 'themes', title: 'Themes & Tags', description: 'Appearance, custom colors, tags, and backup.' },
     { id: 'technical', title: 'Technical', description: 'Build info, integrations, updates, and recovery.' },
     { id: 'account', title: 'Account', description: 'Save preferences or sign out.' }
 ];
 
-const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksUpdate, theme, setTheme, customColors, setCustomColors, profileSyncStatus, profileSyncMessage, setProfileSyncStatus, onLogout }) => {
+const SettingsModal = ({
+    user,
+    onClose,
+    onUpdateUser,
+    onTaskUpdate,
+    onBulkTasksUpdate,
+    theme,
+    setTheme,
+    customColors,
+    setCustomColors,
+    profileSyncStatus,
+    profileSyncMessage,
+    setProfileSyncStatus,
+    onLogout,
+    dashboardCards = null,
+    onUpdateDashboardCards = null,
+    spotifyConnected = false,
+    onSpotifyStatusChange = null
+}) => {
+    const [localCards, setLocalCards] = useState(() => dashboardCards || getStoredCardPreferences(user));
+    useEffect(() => {
+        if (dashboardCards) setLocalCards(dashboardCards);
+    }, [dashboardCards]);
+
+    const [localSpotifyConnected, setLocalSpotifyConnected] = useState(() => (
+        typeof spotifyConnected === 'boolean' ? spotifyConnected : getCachedSpotifyStatus()
+    ));
+    useEffect(() => {
+        if (typeof spotifyConnected === 'boolean') {
+            setLocalSpotifyConnected(spotifyConnected);
+        }
+    }, [spotifyConnected]);
+
+    useEffect(() => {
+        const handleStatus = (e) => {
+            if (typeof e.detail?.connected === 'boolean') {
+                setLocalSpotifyConnected(e.detail.connected);
+            }
+        };
+        window.addEventListener('snowball-spotify-status-changed', handleStatus);
+        return () => window.removeEventListener('snowball-spotify-status-changed', handleStatus);
+    }, []);
+
+    const handleToggleCard = (cardId) => {
+        const next = {
+            ...localCards,
+            [cardId]: !(localCards[cardId] ?? true)
+        };
+        setLocalCards(next);
+        if (onUpdateDashboardCards) {
+            onUpdateDashboardCards(next);
+        } else {
+            saveCardPreferences(next, user, onUpdateUser);
+        }
+    };
+
+    const handleSpotifyConnect = () => {
+        connectSpotify();
+    };
+
+    const handleSpotifyDisconnect = async () => {
+        if (!window.confirm('Disconnect Spotify account?')) return;
+        const ok = await disconnectSpotify();
+        if (ok) {
+            setLocalSpotifyConnected(false);
+            if (onSpotifyStatusChange) onSpotifyStatusChange(false);
+        }
+    };
+
+    const renderCardIcon = (iconName) => {
+        switch (iconName) {
+            case 'Clock': return <Clock size={18} />;
+            case 'BarChart2': return <BarChart2 size={18} />;
+            case 'Calendar': return <Calendar size={18} />;
+            case 'CheckSquare': return <CheckSquare size={18} />;
+            case 'Flame': return <Flame size={18} />;
+            case 'Music': return <Music size={18} />;
+            case 'FileText': return <FileText size={18} />;
+            case 'Repeat': return <Repeat size={18} />;
+            default: return <Settings size={18} />;
+        }
+    };
+
     const [offset, setOffset] = useState(user?.reset_offset_hours || 0);
     const [penaltyBuffer, setPenaltyBuffer] = useState(
         user?.penalty_buffer_hours !== undefined && user?.penalty_buffer_hours !== null
@@ -1144,6 +1229,164 @@ const SettingsModal = ({ user, onClose, onUpdateUser, onTaskUpdate, onBulkTasksU
                                         />
                                     </label>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Dashboard Cards Section */}
+                        <div id="settings-dashboard" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '1.5rem' }}>
+                            <div>
+                                <h3 style={{ fontSize: '1rem', marginBottom: '0.35rem', fontWeight: '600' }}>Dashboard Cards</h3>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                                    Customize which cards appear on your dashboard. When a card is hidden, all its underlying data, habits, tasks, and history are safely preserved.
+                                </p>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                {DASHBOARD_CARD_CONFIG.map((card) => {
+                                    const isEnabled = localCards[card.id] ?? true;
+                                    const isSpotify = card.id === 'spotify';
+
+                                    return (
+                                        <div
+                                            key={card.id}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                padding: '0.85rem 1rem',
+                                                borderRadius: '0.75rem',
+                                                background: 'var(--bg-secondary)',
+                                                border: '1px solid var(--border-color)',
+                                                gap: '1rem'
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+                                                <div style={{
+                                                    width: '36px',
+                                                    height: '36px',
+                                                    borderRadius: '0.5rem',
+                                                    background: isEnabled ? 'rgba(var(--accent-rgb), 0.15)' : 'rgba(255,255,255,0.05)',
+                                                    color: isEnabled ? 'var(--accent-color)' : 'var(--text-secondary)',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    flexShrink: 0
+                                                }}>
+                                                    {renderCardIcon(card.icon)}
+                                                </div>
+                                                <div style={{ minWidth: 0 }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                        <span style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
+                                                            {card.label}
+                                                        </span>
+                                                        {isSpotify && (
+                                                            <span style={{
+                                                                fontSize: '0.65rem',
+                                                                padding: '0.15rem 0.45rem',
+                                                                borderRadius: '999px',
+                                                                fontWeight: 600,
+                                                                background: localSpotifyConnected ? 'rgba(34, 197, 94, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                                                color: localSpotifyConnected ? '#22c55e' : '#f59e0b',
+                                                                border: `1px solid ${localSpotifyConnected ? 'rgba(34, 197, 94, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`
+                                                            }}>
+                                                                {localSpotifyConnected ? 'Connected' : 'Disconnected'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0', lineHeight: 1.35 }}>
+                                                        {card.description}
+                                                    </p>
+                                                    {isSpotify && !localSpotifyConnected && (
+                                                        <p style={{ fontSize: '0.68rem', color: '#f59e0b', margin: '0.25rem 0 0', lineHeight: 1.35 }}>
+                                                            Requires a connected Spotify account. Card stays hidden until connected.
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexShrink: 0 }}>
+                                                {isSpotify && (
+                                                    localSpotifyConnected ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleSpotifyDisconnect}
+                                                            style={{
+                                                                padding: '0.35rem 0.65rem',
+                                                                borderRadius: '0.45rem',
+                                                                fontSize: '0.72rem',
+                                                                background: 'transparent',
+                                                                border: '1px solid var(--border-color)',
+                                                                color: 'var(--text-secondary)',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                        >
+                                                            Disconnect
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleSpotifyConnect}
+                                                            style={{
+                                                                padding: '0.35rem 0.65rem',
+                                                                borderRadius: '0.45rem',
+                                                                fontSize: '0.72rem',
+                                                                fontWeight: 600,
+                                                                background: 'var(--accent-color)',
+                                                                border: 'none',
+                                                                color: '#fff',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                        >
+                                                            Connect
+                                                        </button>
+                                                    )
+                                                )}
+                                                <label
+                                                    style={{
+                                                        position: 'relative',
+                                                        display: 'inline-block',
+                                                        width: '44px',
+                                                        height: '24px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isEnabled}
+                                                        onChange={() => handleToggleCard(card.id)}
+                                                        style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }}
+                                                        aria-label={`Toggle ${card.label} visibility`}
+                                                    />
+                                                    <span
+                                                        style={{
+                                                            position: 'absolute',
+                                                            cursor: 'pointer',
+                                                            inset: 0,
+                                                            backgroundColor: isEnabled ? 'var(--accent-color)' : 'rgba(255,255,255,0.1)',
+                                                            borderRadius: '24px',
+                                                            transition: '0.2s',
+                                                            border: `1px solid ${isEnabled ? 'var(--accent-color)' : 'var(--border-color)'}`
+                                                        }}
+                                                    >
+                                                        <span
+                                                            style={{
+                                                                position: 'absolute',
+                                                                height: '18px',
+                                                                width: '18px',
+                                                                left: isEnabled ? '22px' : '2px',
+                                                                bottom: '2px',
+                                                                backgroundColor: '#fff',
+                                                                borderRadius: '50%',
+                                                                transition: '0.2s',
+                                                                boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                                                            }}
+                                                        />
+                                                    </span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
 

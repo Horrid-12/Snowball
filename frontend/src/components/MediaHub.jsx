@@ -7,6 +7,7 @@ import { apiFetch } from '../utils/apiClient';
 import { isTauriDesktop } from '../config.js';
 import YouTubePanel from './YouTubePanel.jsx';
 import { SkeletonBox, SkeletonCircle } from './Skeletons.jsx';
+import { setCachedSpotifyStatus, notifySpotifyStatusChanged } from '../utils/spotifyStatus.js';
 
 const MediaHub = ({ onReady }) => {
     const [activeTab, setActiveTab] = useState('spotify'); // 'spotify' or 'youtube'
@@ -61,6 +62,8 @@ const MediaHub = ({ onReady }) => {
             const data = await response.json();
             const isConn = Boolean(data.connected);
             setSpotifyConnected(isConn);
+            setCachedSpotifyStatus(isConn);
+            notifySpotifyStatusChanged(isConn);
             setSpotifyCredentialSource(data.credentialSource || 'shared');
             setSpotifyStatusError('');
             return isConn;
@@ -163,6 +166,16 @@ const MediaHub = ({ onReady }) => {
             setSpotifyLoading(false);
         }
     }, [hasAttemptedPlaylists, playlists.length, refreshSpotifyStatus]);
+
+    useEffect(() => {
+        const handleStatusChanged = (e) => {
+            if (typeof e.detail?.connected === 'boolean') {
+                setSpotifyConnected(e.detail.connected);
+            }
+        };
+        window.addEventListener('snowball-spotify-status-changed', handleStatusChanged);
+        return () => window.removeEventListener('snowball-spotify-status-changed', handleStatusChanged);
+    }, []);
 
     // Mount effect: check connection status once and process Spotify redirect callbacks
     useEffect(() => {
@@ -427,6 +440,8 @@ const MediaHub = ({ onReady }) => {
                 setSpotifyConnected(false);
                 setSpotifyData(null);
                 setPlaylists([]);
+                setCachedSpotifyStatus(false);
+                notifySpotifyStatusChanged(false);
                 setMessage({ type: 'success', text: 'Spotify disconnected' });
                 pollTimeouts.current.push(setTimeout(() => setMessage(null), 3000));
             }

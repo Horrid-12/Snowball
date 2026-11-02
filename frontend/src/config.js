@@ -15,7 +15,7 @@ export const isTauriDesktop = isTauri;
 // still overrides it when present.
 export const DISCORD_CLIENT_ID = '1487509274207981718';
 
-export const API_URL = import.meta.env.PROD
+export const API_URL = import.meta.env?.PROD
     ? productionApiUrl
     : localApiUrl;
 

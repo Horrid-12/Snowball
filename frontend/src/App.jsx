@@ -18,6 +18,8 @@ import { syncService } from './services/SyncService.js';
 import { desktopUpdateService } from './services/DesktopUpdateService.js';
 import { discordPresenceService } from './services/DiscordPresenceService.js';
 import { apiFetch, hasPersistedSession, setUserData, clearSession, initAuthFromStorage } from './utils/apiClient.js';
+import { getStoredCardPreferences, saveCardPreferences, isCardEffectivelyVisible } from './utils/dashboardCards.js';
+import { getCachedSpotifyStatus, setCachedSpotifyStatus, checkSpotifyStatus, notifySpotifyStatusChanged } from './utils/spotifyStatus.js';
 import { calculateProductivityScore, filterTasksForDate, formatLocalDate } from './utils/productivityScore.js';
 import { registerPlugin, Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -136,10 +138,8 @@ function App() {
     // single stretched column on desktop.
     const [showSidebar, setShowSidebar] = useState(() => window.innerWidth > 768);
 
-    const [showHeatmap, setShowHeatmap] = useState(() => {
-        const stored = localStorage.getItem('snowball_show_heatmap');
-        return stored ? JSON.parse(stored) : true;
-    });
+    const [dashboardCards, setDashboardCards] = useState(() => getStoredCardPreferences());
+    const [spotifyConnected, setSpotifyConnected] = useState(() => getCachedSpotifyStatus());
 
     const [showSettings, setShowSettings] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
@@ -147,10 +147,6 @@ function App() {
     const [showCalendar, setShowCalendar] = useState(false);
     const [showTaskComposer, setShowTaskComposer] = useState(false);
     const [showFriends, setShowFriends] = useState(false);
-    const [showMediaHub, setShowMediaHub] = useState(() => {
-        const stored = localStorage.getItem('snowball_show_media');
-        return stored ? JSON.parse(stored) : true;
-    });
 
     const [activeTab, setActiveTab] = useState('dashboard'); // For mobile 📱
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
@@ -517,14 +513,56 @@ function App() {
         }
     }, [theme, customColors, systemAccentColor, user]);
 
-    // UI Toggles effects
+    // Sync dashboard card preferences from authenticated user
     useEffect(() => {
-        localStorage.setItem('snowball_show_heatmap', JSON.stringify(showHeatmap));
-    }, [showHeatmap]);
+        if (user?.appearance_settings?.dashboard_cards) {
+            setDashboardCards((prev) => ({
+                ...prev,
+                ...user.appearance_settings.dashboard_cards
+            }));
+        }
+    }, [user?.appearance_settings?.dashboard_cards]);
 
+    // Listen for cross-component dashboard card changes and Spotify status events
     useEffect(() => {
-        localStorage.setItem('snowball_show_media', JSON.stringify(showMediaHub));
-    }, [showMediaHub]);
+        const handleCardsChanged = (e) => {
+            if (e.detail && typeof e.detail === 'object') {
+                setDashboardCards(e.detail);
+            }
+        };
+        const handleSpotifyStatusChanged = (e) => {
+            if (typeof e.detail?.connected === 'boolean') {
+                setSpotifyConnected(e.detail.connected);
+            }
+        };
+        window.addEventListener('snowball-dashboard-cards-changed', handleCardsChanged);
+        window.addEventListener('snowball-spotify-status-changed', handleSpotifyStatusChanged);
+        return () => {
+            window.removeEventListener('snowball-dashboard-cards-changed', handleCardsChanged);
+            window.removeEventListener('snowball-spotify-status-changed', handleSpotifyStatusChanged);
+        };
+    }, []);
+
+    // Check Spotify OAuth redirect params on mount and verify live status with backend
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const spotifyStatusParam = params.get('spotify');
+            if (spotifyStatusParam === 'connected') {
+                setCachedSpotifyStatus(true);
+                setSpotifyConnected(true);
+                notifySpotifyStatusChanged(true);
+                window.history.replaceState({}, document.title, window.location.pathname);
+            } else if (spotifyStatusParam === 'error') {
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+        checkSpotifyStatus().then((result) => {
+            if (result && !result.isTemporary) {
+                setSpotifyConnected(result.connected);
+            }
+        });
+    }, []);
 
     useEffect(() => {
         let lastMobile = window.innerWidth <= 768;
@@ -538,7 +576,6 @@ function App() {
                     setShowTaskComposer(false);
                 } else {
                     setShowSidebar(true);
-                    setShowMediaHub(true);
                 }
                 lastMobile = mobile;
             }
@@ -1045,6 +1082,21 @@ function App() {
     const handleThemeChange = useCallback((newTheme) => {
         setTheme(newTheme);
     }, []);
+
+    const handleUpdateDashboardCards = useCallback((nextCards) => {
+        setDashboardCards(nextCards);
+        saveCardPreferences(nextCards, user, handleUpdateUser);
+    }, [user, handleUpdateUser]);
+
+    const showHeatmap = isCardEffectivelyVisible('heatmap', dashboardCards, spotifyConnected);
+
+    const setShowHeatmap = useCallback((updater) => {
+        const nextValue = typeof updater === 'function' ? updater(showHeatmap) : Boolean(updater);
+        handleUpdateDashboardCards({
+            ...dashboardCards,
+            heatmap: nextValue
+        });
+    }, [showHeatmap, dashboardCards, handleUpdateDashboardCards]);
 
     const keyboardDismissedRef = useRef(false);
 
@@ -1566,7 +1618,7 @@ function App() {
                 )}
             <main className="main-content" style={{
                 display: user ? 'grid' : 'block',
-                gridTemplateColumns: (user && (showSidebar || showFriends) && !isMobile) ? 'minmax(0, 1fr) 300px' : 'minmax(0, 1fr)',
+                gridTemplateColumns: (user && ((showSidebar && (isCardEffectivelyVisible('notes', dashboardCards, spotifyConnected) || isCardEffectivelyVisible('habits', dashboardCards, spotifyConnected))) || showFriends) && !isMobile) ? 'minmax(0, 1fr) 300px' : 'minmax(0, 1fr)',
                 gap: '2rem',
                 alignItems: 'start',
                 minHeight: '600px'
@@ -1606,12 +1658,10 @@ function App() {
                             onUpdateUser={handleUpdateUser}
                             onTaskUpdate={handleTaskUpdate}
                             onBulkTasksUpdate={handleBulkTasksUpdate}
-                            showSidebar={showSidebar}
-                            setShowSidebar={setShowSidebar}
-                            showHeatmap={showHeatmap}
-                            setShowHeatmap={setShowHeatmap}
-                            showMediaHub={showMediaHub}
-                            setShowMediaHub={setShowMediaHub}
+                            dashboardCards={dashboardCards}
+                            onUpdateDashboardCards={handleUpdateDashboardCards}
+                            spotifyConnected={spotifyConnected}
+                            onSpotifyStatusChange={setSpotifyConnected}
                             theme={theme}
                             setTheme={handleThemeChange}
                             customColors={customColors}
@@ -1644,40 +1694,61 @@ function App() {
                         {/* Tab-based Mobile View vs Full Desktop View */}
                         {isMobile ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                                {activeTab === 'dashboard' && (
-                                    <>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem', alignItems: 'start' }}>
-                                            <ErrorBoundary>
-                                                <Suspense fallback={<LoadingFallback variant="timer" />}>
-                                                    <DeepWorkTimer
-                                                        tasks={tasks}
-                                                        resetOffsetHours={user?.reset_offset_hours ?? 0}
-                                                    />
-                                                </Suspense>
-                                            </ErrorBoundary>
-                                            <ErrorBoundary>
-                                                <Suspense fallback={<LoadingFallback variant="dashboard" />}>
-                                                    <ProductivityDashboard tasks={tasks} loading={tasksLoading || (checkingAuth && tasks.length === 0)} />
-                                                </Suspense>
-                                            </ErrorBoundary>
-                                            <ErrorBoundary>
-                                                <Suspense fallback={<LoadingFallback variant="calendar-summary" />}>
-                                                    <CalendarSummaryCard onOpenCalendar={() => setShowCalendar(true)} />
-                                                </Suspense>
-                                            </ErrorBoundary>
-                                        </div>
-                                        <ErrorBoundary>
-                                            <Suspense fallback={<LoadingFallback variant="media" />}>
-                                                <MediaHub />
-                                            </Suspense>
-                                        </ErrorBoundary>
-                                        <ErrorBoundary>
-                                            <Suspense fallback={<LoadingFallback variant="notes" />}>
-                                                <Notes />
-                                            </Suspense>
-                                        </ErrorBoundary>
-                                    </>
-                                )}
+                                {activeTab === 'dashboard' && (() => {
+                                    const showTimer = isCardEffectivelyVisible('timer', dashboardCards, spotifyConnected);
+                                    const showStats = isCardEffectivelyVisible('stats', dashboardCards, spotifyConnected);
+                                    const showCalendarCard = isCardEffectivelyVisible('calendar', dashboardCards, spotifyConnected);
+                                    const showSpotify = isCardEffectivelyVisible('spotify', dashboardCards, spotifyConnected);
+                                    const showNotes = isCardEffectivelyVisible('notes', dashboardCards, spotifyConnected);
+                                    const hasTopSection = showTimer || showStats || showCalendarCard;
+
+                                    return (
+                                        <>
+                                            {hasTopSection && (
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem', alignItems: 'start' }}>
+                                                    {showTimer && (
+                                                        <ErrorBoundary>
+                                                            <Suspense fallback={<LoadingFallback variant="timer" />}>
+                                                                <DeepWorkTimer
+                                                                    tasks={tasks}
+                                                                    resetOffsetHours={user?.reset_offset_hours ?? 0}
+                                                                />
+                                                            </Suspense>
+                                                        </ErrorBoundary>
+                                                    )}
+                                                    {showStats && (
+                                                        <ErrorBoundary>
+                                                            <Suspense fallback={<LoadingFallback variant="dashboard" />}>
+                                                                <ProductivityDashboard tasks={tasks} loading={tasksLoading || (checkingAuth && tasks.length === 0)} />
+                                                            </Suspense>
+                                                        </ErrorBoundary>
+                                                    )}
+                                                    {showCalendarCard && (
+                                                        <ErrorBoundary>
+                                                            <Suspense fallback={<LoadingFallback variant="calendar-summary" />}>
+                                                                <CalendarSummaryCard onOpenCalendar={() => setShowCalendar(true)} />
+                                                            </Suspense>
+                                                        </ErrorBoundary>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {showSpotify && (
+                                                <ErrorBoundary>
+                                                    <Suspense fallback={<LoadingFallback variant="media" />}>
+                                                        <MediaHub />
+                                                    </Suspense>
+                                                </ErrorBoundary>
+                                            )}
+                                            {showNotes && (
+                                                <ErrorBoundary>
+                                                    <Suspense fallback={<LoadingFallback variant="notes" />}>
+                                                        <Notes />
+                                                    </Suspense>
+                                                </ErrorBoundary>
+                                            )}
+                                        </>
+                                    );
+                                })()}
 
                                 {activeTab === 'tasks' && (
                                     <div>
@@ -1754,131 +1825,172 @@ function App() {
                         ) : (
                             <>
                                 {/* Desktop Layout */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem', alignItems: 'start' }}>
-                                        <ErrorBoundary>
-                                            <Suspense fallback={<LoadingFallback variant="timer" />}>
-                                                <DeepWorkTimer
-                                                    tasks={tasks}
-                                                    resetOffsetHours={user?.reset_offset_hours ?? 0}
-                                                />
-                                            </Suspense>
-                                        </ErrorBoundary>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
-                                            <ErrorBoundary>
-                                                <Suspense fallback={<LoadingFallback variant="dashboard" />}>
-                                                    <ProductivityDashboard tasks={tasks} loading={tasksLoading || (checkingAuth && tasks.length === 0)} />
-                                                </Suspense>
-                                            </ErrorBoundary>
-                                            <ErrorBoundary>
-                                                <Suspense fallback={<LoadingFallback variant="calendar-summary" />}>
-                                                    <CalendarSummaryCard onOpenCalendar={() => setShowCalendar(true)} />
-                                                </Suspense>
-                                            </ErrorBoundary>
-                                        </div>
-                                    </div>
-                                    <ErrorBoundary>
-                                        <div>
-                                            <div style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                gap: '1rem',
-                                                marginBottom: '1rem'
-                                            }}>
-                                                <div 
-                                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }} 
-                                                    onClick={() => setIsTasksExpanded(!isTasksExpanded)}
-                                                >
-                                                    <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Your Tasks</h2>
-                                                    {isTasksExpanded ? <ChevronUp size={20} style={{ color: 'var(--text-secondary)' }} /> : <ChevronDown size={20} style={{ color: 'var(--text-secondary)' }} />}
-                                                </div>
-                                                {showSidebar && (
-                                                    <button
-                                                        onClick={() => setShowTaskComposer(prev => !prev)}
-                                                        title="Open task composer"
-                                                        style={{
-                                                            width: '42px',
-                                                            height: '42px',
-                                                            borderRadius: '999px',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            background: showTaskComposer ? 'var(--accent-color)' : 'var(--bg-card)',
-                                                            border: `1px solid ${showTaskComposer ? 'var(--accent-color)' : 'var(--border-color)'}`,
-                                                            color: showTaskComposer ? '#ffffff' : 'var(--accent-color)',
-                                                            boxShadow: '0 8px 20px rgba(0, 0, 0, 0.12)'
-                                                        }}
-                                                    >
-                                                        <Plus size={20} />
-                                                    </button>
+                                {(() => {
+                                    const showTimer = isCardEffectivelyVisible('timer', dashboardCards, spotifyConnected);
+                                    const showStats = isCardEffectivelyVisible('stats', dashboardCards, spotifyConnected);
+                                    const showCalendarCard = isCardEffectivelyVisible('calendar', dashboardCards, spotifyConnected);
+                                    const showTasks = isCardEffectivelyVisible('tasks', dashboardCards, spotifyConnected);
+                                    const showHeatmap = isCardEffectivelyVisible('heatmap', dashboardCards, spotifyConnected);
+                                    const showSpotify = isCardEffectivelyVisible('spotify', dashboardCards, spotifyConnected);
+                                    const showNotes = isCardEffectivelyVisible('notes', dashboardCards, spotifyConnected);
+                                    const showHabits = isCardEffectivelyVisible('habits', dashboardCards, spotifyConnected);
+
+                                    const hasStatsColumn = showStats || showCalendarCard;
+                                    const hasTopSection = showTimer || hasStatsColumn;
+                                    const hasRightSidebar = (showSidebar && (showNotes || showHabits)) || showFriends;
+
+                                    return (
+                                        <>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                                                {hasTopSection && (
+                                                    <div style={{
+                                                        display: 'grid',
+                                                        gridTemplateColumns: (showTimer && hasStatsColumn) ? 'repeat(auto-fit, minmax(300px, 1fr))' : '1fr',
+                                                        gap: '2rem',
+                                                        alignItems: 'start'
+                                                    }}>
+                                                        {showTimer && (
+                                                            <ErrorBoundary>
+                                                                <Suspense fallback={<LoadingFallback variant="timer" />}>
+                                                                    <DeepWorkTimer
+                                                                        tasks={tasks}
+                                                                        resetOffsetHours={user?.reset_offset_hours ?? 0}
+                                                                    />
+                                                                </Suspense>
+                                                            </ErrorBoundary>
+                                                        )}
+                                                        {hasStatsColumn && (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
+                                                                {showStats && (
+                                                                    <ErrorBoundary>
+                                                                        <Suspense fallback={<LoadingFallback variant="dashboard" />}>
+                                                                            <ProductivityDashboard tasks={tasks} loading={tasksLoading || (checkingAuth && tasks.length === 0)} />
+                                                                        </Suspense>
+                                                                    </ErrorBoundary>
+                                                                )}
+                                                                {showCalendarCard && (
+                                                                    <ErrorBoundary>
+                                                                        <Suspense fallback={<LoadingFallback variant="calendar-summary" />}>
+                                                                            <CalendarSummaryCard onOpenCalendar={() => setShowCalendar(true)} />
+                                                                        </Suspense>
+                                                                    </ErrorBoundary>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {showTasks && (
+                                                    <ErrorBoundary>
+                                                        <div>
+                                                            <div style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'space-between',
+                                                                gap: '1rem',
+                                                                marginBottom: '1rem'
+                                                            }}>
+                                                                <div 
+                                                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }} 
+                                                                    onClick={() => setIsTasksExpanded(!isTasksExpanded)}
+                                                                >
+                                                                    <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Your Tasks</h2>
+                                                                    {isTasksExpanded ? <ChevronUp size={20} style={{ color: 'var(--text-secondary)' }} /> : <ChevronDown size={20} style={{ color: 'var(--text-secondary)' }} />}
+                                                                </div>
+                                                                {showSidebar && (
+                                                                    <button
+                                                                        onClick={() => setShowTaskComposer(prev => !prev)}
+                                                                        title="Open task composer"
+                                                                        style={{
+                                                                            width: '42px',
+                                                                            height: '42px',
+                                                                            borderRadius: '999px',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'center',
+                                                                            background: showTaskComposer ? 'var(--accent-color)' : 'var(--bg-card)',
+                                                                            border: `1px solid ${showTaskComposer ? 'var(--accent-color)' : 'var(--border-color)'}`,
+                                                                            color: showTaskComposer ? '#ffffff' : 'var(--accent-color)',
+                                                                            boxShadow: '0 8px 20px rgba(0, 0, 0, 0.12)'
+                                                                        }}
+                                                                    >
+                                                                        <Plus size={20} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                            {isTasksExpanded && (
+                                                                (tasksLoading || (checkingAuth && tasks.length === 0)) ? (
+                                                                    <TaskBoardSkeleton count={3} />
+                                                                ) : (
+                                                                    <Suspense fallback={<LoadingFallback variant="taskboard" />}>
+                                                                        <TaskBoard
+                                                                            tasks={tasks}
+                                                                            onTaskUpdate={handleTaskUpdate}
+                                                                            onTaskDelete={handleTaskDelete}
+                                                                            onClearAll={handleClearAll}
+                                                                            onReorder={handleTasksReorder}
+                                                                        />
+                                                                    </Suspense>
+                                                                )
+                                                            )}
+                                                        </div>
+                                                    </ErrorBoundary>
+                                                )}
+
+                                                {showHeatmap && (
+                                                    <ErrorBoundary>
+                                                        <Suspense fallback={<LoadingFallback variant="heatmap" height="300px" />}>
+                                                            <ActivityHeatmap
+                                                                tasks={tasks}
+                                                                resetOffsetHours={user?.reset_offset_hours ?? 0}
+                                                            />
+                                                        </Suspense>
+                                                    </ErrorBoundary>
+                                                )}
+
+                                                {showSpotify && (
+                                                    <ErrorBoundary>
+                                                        <Suspense fallback={<LoadingFallback variant="media" />}>
+                                                            <MediaHub />
+                                                        </Suspense>
+                                                    </ErrorBoundary>
                                                 )}
                                             </div>
-                                            {isTasksExpanded && (
-                                                (tasksLoading || (checkingAuth && tasks.length === 0)) ? (
-                                                    <TaskBoardSkeleton count={3} />
-                                                ) : (
-                                                    <Suspense fallback={<LoadingFallback variant="taskboard" />}>
-                                                        <TaskBoard
-                                                            tasks={tasks}
-                                                            onTaskUpdate={handleTaskUpdate}
-                                                            onTaskDelete={handleTaskDelete}
-                                                            onClearAll={handleClearAll}
-                                                            onReorder={handleTasksReorder}
-                                                        />
-                                                    </Suspense>
-                                                )
-                                            )}
-                                        </div>
-                                    </ErrorBoundary>
 
-                                    <ErrorBoundary>
-                                        {showHeatmap && (
-                                            <Suspense fallback={<LoadingFallback variant="heatmap" height="300px" />}>
-                                                <ActivityHeatmap
-                                                    tasks={tasks}
-                                                    resetOffsetHours={user?.reset_offset_hours ?? 0}
-                                                />
-                                            </Suspense>
-                                        )}
-                                    </ErrorBoundary>
-
-                                    {showMediaHub && (
-                                        <ErrorBoundary>
-                                            <Suspense fallback={<LoadingFallback variant="media" />}>
-                                                <MediaHub />
-                                            </Suspense>
-                                        </ErrorBoundary>
-                                    )}
-                                </div>
-
-                                <div style={{
-                                    display: (showSidebar || showFriends) ? 'flex' : 'none',
-                                    flexDirection: 'column',
-                                    gap: '2rem'
-                                }}>
-                                    {showFriends && (
-                                        <ErrorBoundary>
-                                            <Suspense fallback={<LoadingFallback variant="friends-compact" />}>
-                                                <FriendsPanel compact />
-                                            </Suspense>
-                                        </ErrorBoundary>
-                                    )}
-                                    {showSidebar && (
-                                        <>
-                                            <ErrorBoundary>
-                                                <Suspense fallback={<LoadingFallback variant="notes" />}>
-                                                    <Notes />
-                                                </Suspense>
-                                            </ErrorBoundary>
-                                            <ErrorBoundary>
-                                                <Suspense fallback={<LoadingFallback variant="habits" />}>
-                                                    <HabitTracker />
-                                                </Suspense>
-                                            </ErrorBoundary>
+                                            <div style={{
+                                                display: hasRightSidebar ? 'flex' : 'none',
+                                                flexDirection: 'column',
+                                                gap: '2rem'
+                                            }}>
+                                                {showFriends && (
+                                                    <ErrorBoundary>
+                                                        <Suspense fallback={<LoadingFallback variant="friends-compact" />}>
+                                                            <FriendsPanel compact />
+                                                        </Suspense>
+                                                    </ErrorBoundary>
+                                                )}
+                                                {showSidebar && (
+                                                    <>
+                                                        {showNotes && (
+                                                            <ErrorBoundary>
+                                                                <Suspense fallback={<LoadingFallback variant="notes" />}>
+                                                                    <Notes />
+                                                                </Suspense>
+                                                            </ErrorBoundary>
+                                                        )}
+                                                        {showHabits && (
+                                                            <ErrorBoundary>
+                                                                <Suspense fallback={<LoadingFallback variant="habits" />}>
+                                                                    <HabitTracker />
+                                                                </Suspense>
+                                                            </ErrorBoundary>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
                                         </>
-                                    )}
-                                </div>
+                                    );
+                                })()}
 
                             </>
                         )}
