@@ -14,7 +14,7 @@ import { FilePicker } from '@capawesome/capacitor-file-picker';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { PROFILE_ICON_PRESETS, ProfileIcon } from '../utils/profileIcons.jsx';
-import { getTagColor, loadTagColors, normalizeHexColor, parseTags, saveTagColors } from '../utils/tagColors.js';
+import { getTagColor, isFollowingTheme, loadTagColors, normalizeHexColor, parseTags, saveTagColors, setTagsFollowTheme } from '../utils/tagColors.js';
 import TagColorInput from './TagColorInput.jsx';
 import { nativeConfirm } from '../utils/confirm.js';
 
@@ -150,6 +150,7 @@ const SettingsModal = ({
     );
     const [profileIcon, setProfileIcon] = useState(user?.profile_icon || 'snowball');
     const [tagColors, setTagColors] = useState(() => loadTagColors());
+    const [tagsFollowTheme, setTagsFollowThemeState] = useState(() => isFollowingTheme());
     const [knownTags, setKnownTags] = useState([]);
     const [newTagName, setNewTagName] = useState('');
     const [editingTag, setEditingTag] = useState(null);
@@ -679,6 +680,25 @@ const SettingsModal = ({
         syncTagColorsSilent(nextMap);
     };
 
+    // Keep the toggle in sync when the flag is changed elsewhere (theme change,
+    // backup restore, another tab). Custom colors are preserved on disk while
+    // "Follow theme" is on, they are just paused.
+    useEffect(() => {
+        const syncFollowTheme = () => setTagsFollowThemeState(isFollowingTheme());
+        window.addEventListener('snowball-tag-colors-changed', syncFollowTheme);
+        window.addEventListener('storage', syncFollowTheme);
+        return () => {
+            window.removeEventListener('snowball-tag-colors-changed', syncFollowTheme);
+            window.removeEventListener('storage', syncFollowTheme);
+        };
+    }, []);
+
+    const handleToggleTagsFollowTheme = () => {
+        const next = !tagsFollowTheme;
+        setTagsFollowThemeState(next);
+        setTagsFollowTheme(next);
+    };
+
     const handleTagDelete = async (tagToDelete) => {
         const confirmed = await nativeConfirm(`Are you sure you want to delete the tag "${tagToDelete}"? This will remove the tag from all tasks.`);
         if (!confirmed) return;
@@ -826,7 +846,8 @@ const SettingsModal = ({
         tagColors: parseStoredJson(
             localStorage.getItem('snowball_tag_colors') || localStorage.getItem('snowball_tag_colors_v2'),
             {}
-        )
+        ),
+        tagsFollowTheme: isFollowingTheme()
     });
 
     const applyThemesAndTagsBackup = (data) => {
@@ -856,6 +877,11 @@ const SettingsModal = ({
             const serializedTagColors = JSON.stringify(nextTagColors || {});
             localStorage.setItem('snowball_tag_colors', serializedTagColors);
             localStorage.setItem('snowball_tag_colors_v2', serializedTagColors);
+        }
+
+        if (typeof data.tagsFollowTheme === 'boolean') {
+            setTagsFollowThemeState(data.tagsFollowTheme);
+            setTagsFollowTheme(data.tagsFollowTheme);
         }
     };
 
@@ -1439,6 +1465,56 @@ const SettingsModal = ({
                                 <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
                                     Edit saved tag colors or add a tag color preset for future tasks.
                                 </p>
+
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '0.75rem',
+                                    padding: '0.75rem',
+                                    borderRadius: '0.75rem',
+                                    background: 'var(--bg-secondary)',
+                                    border: '1px solid var(--border-color)',
+                                    marginBottom: '1rem'
+                                }}>
+                                    <div style={{ minWidth: 0 }}>
+                                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                            Follow theme
+                                        </div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
+                                            Tag colors shift with the current accent. Saved custom colors are kept but paused while this is on.
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={tagsFollowTheme}
+                                        aria-label="Follow theme tag colors"
+                                        onClick={handleToggleTagsFollowTheme}
+                                        style={{
+                                            width: '46px',
+                                            height: '26px',
+                                            flexShrink: 0,
+                                            borderRadius: '999px',
+                                            border: `1px solid ${tagsFollowTheme ? 'var(--accent-color)' : 'var(--border-color)'}`,
+                                            background: tagsFollowTheme ? 'var(--accent-color)' : 'var(--bg-primary)',
+                                            cursor: 'pointer',
+                                            padding: '2px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: tagsFollowTheme ? 'flex-end' : 'flex-start',
+                                            transition: 'background 0.15s ease, justify-content 0.15s ease'
+                                        }}
+                                    >
+                                        <span style={{
+                                            width: '20px',
+                                            height: '20px',
+                                            borderRadius: '999px',
+                                            background: tagsFollowTheme ? '#fff' : 'var(--text-secondary)',
+                                            display: 'block'
+                                        }} />
+                                    </button>
+                                </div>
 
                                 <form onSubmit={handleAddTagColor} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
                                     <input
