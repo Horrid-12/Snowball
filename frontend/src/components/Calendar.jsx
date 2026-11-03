@@ -742,6 +742,7 @@ const Calendar = () => {
         if (params.get('gcal') === 'connected') {
             window.history.replaceState({}, '', window.location.pathname);
             setNotice('Google Calendar connected!');
+            window.dispatchEvent(new Event('snowball-gcal-connected'));
             const t = setTimeout(() => setNotice(''), 6000);
             return () => clearTimeout(t);
         }
@@ -821,6 +822,7 @@ const Calendar = () => {
             if (res?.ok) {
                 setGoogleStatus({ connected: false, email: null });
                 setShowGoogleSync(false);
+                window.dispatchEvent(new Event('snowball-gcal-disconnected'));
             }
         } catch (error) {
             console.error("Failed to disconnect Google Calendar:", error);
@@ -847,7 +849,21 @@ const Calendar = () => {
                 const data = await res.json();
                 const eventsList = Array.isArray(data) ? data : (data?.events) || [];
                 const importedIds = new Set(events.filter(e => e.google_event_id).map(e => e.google_event_id));
-                setGoogleEvents(eventsList.map(ev => ({ ...ev, already_imported: importedIds.has(ev.google_event_id) })));
+                // A recurring series is stored locally under its first instance id
+                // (`<seriesId>_<timestamp>`), while the sync response exposes the
+                // stable `series_id`. Compare both so an already-imported weekly
+                // meeting is not offered again just because its next occurrence has
+                // a new instance id.
+                const importedSeries = new Set();
+                for (const id of importedIds) {
+                    const match = String(id).match(/^(.+)_\d{8}T\d{6}Z$/);
+                    if (match) importedSeries.add(match[1]);
+                }
+                setGoogleEvents(eventsList.map(ev => ({
+                    ...ev,
+                    already_imported: importedIds.has(ev.google_event_id)
+                        || (ev.series_id && (importedIds.has(ev.series_id) || importedSeries.has(ev.series_id)))
+                })));
                 setSelectedGoogleEvents(new Set());
                 setShowGoogleSync(true);
             }
@@ -893,6 +909,38 @@ const Calendar = () => {
         setGoogleCalendarSelection(calendarId);
         await fetchGoogleEvents(calendarId);
     }, [loadGoogleCalendars, setGoogleCalendarSelection, fetchGoogleEvents]);
+
+    // The summary prompt in App.jsx sets this flag before opening the Calendar
+    // overlay. Wait for the local event list so `already_imported` is accurate,
+    // then open the import modal automatically.
+    useEffect(() => {
+        if (loading) return;
+        let pending = false;
+        try {
+            pending = sessionStorage.getItem('snowball_open_gcal_import') === '1';
+            if (pending) sessionStorage.removeItem('snowball_open_gcal_import');
+        } catch {
+            /* storage unavailable — fall back to manual import */
+        }
+        if (!pending) return;
+        openGoogleSync();
+    }, [loading, openGoogleSync]);
+
+    // The summary prompt in App.jsx can also fire while this overlay is already
+    // mounted; in that case the sessionStorage flag is not re-read, so listen for
+    // the direct request instead.
+    useEffect(() => {
+        const handleImportRequest = () => {
+            try {
+                sessionStorage.removeItem('snowball_open_gcal_import');
+            } catch {
+                /* ignore */
+            }
+            openGoogleSync();
+        };
+        window.addEventListener('snowball-gcal-import-requested', handleImportRequest);
+        return () => window.removeEventListener('snowball-gcal-import-requested', handleImportRequest);
+    }, [openGoogleSync]);
 
     const registerSubmittedTags = useCallback((submittedTags) => {
         if (!submittedTags || submittedTags.length === 0) return;

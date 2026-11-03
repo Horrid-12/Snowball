@@ -5,7 +5,10 @@ import { isTauriDesktop } from '../config.js';
 const SETTINGS_KEY = 'snowball_notification_settings';
 const DEFAULT_SETTINGS = {
     enabled: false,
-    habitReminderTime: '08:00'
+    habitReminderTime: '08:00',
+    // New-event alerts from Google Calendar are independent of the reminder
+    // master switch: the in-app toast is useful even with OS notifications off.
+    googleCalendarAlerts: true
 };
 const WEB_LOOKAHEAD_MS = 24 * 60 * 60 * 1000;
 const MISSED_NOTIFICATION_GRACE_MS = 15 * 60 * 1000;
@@ -56,7 +59,10 @@ class NotificationService {
     }
 
     saveSettings(nextSettings) {
-        const merged = { ...DEFAULT_SETTINGS, ...nextSettings };
+        // Merge over the *current* settings, not the defaults: callers pass partial
+        // objects (e.g. only `enabled`), and merging with defaults would silently
+        // reset unrelated preferences such as googleCalendarAlerts.
+        const merged = { ...this.loadSettings(), ...nextSettings };
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
         window.dispatchEvent(new CustomEvent('snowball-notification-settings-changed', { detail: merged }));
         return merged;
@@ -342,6 +348,76 @@ class NotificationService {
         const permission = await this.getPermissionStatus();
         if (permission !== 'granted') return;
         await this.syncTimerNotifications(tasks, habits, this.showTauriNotification.bind(this));
+    }
+
+    formatEventWhen(event) {
+        if (!event?.start) return '';
+        const start = new Date(event.start);
+        if (Number.isNaN(start.getTime())) return '';
+
+        if (event.allDay) {
+            return start.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+        }
+
+        return start.toLocaleString(undefined, {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            hour: 'numeric',
+            minute: '2-digit'
+        });
+    }
+
+    // Immediate (one-shot) OS notification. Unlike the reminder paths this is not
+    // scheduled ahead of time, so it reuses the same senders directly.
+    async sendImmediateNotification(title, body, tag) {
+        if (isNativeAndroid) {
+            const { LocalNotifications } = await import('@capacitor/local-notifications');
+            await this.ensureAndroidChannel();
+            await LocalNotifications.schedule({
+                notifications: [{
+                    // 950k range keeps these clear of task (100k+) and habit ids.
+                    id: 950000 + (hashString(tag) % 40000),
+                    title,
+                    body,
+                    schedule: { at: new Date(Date.now() + 500), allowWhileIdle: true },
+                    channelId: ANDROID_CHANNEL_ID,
+                    extra: { type: 'google-calendar' }
+                }]
+            });
+            return;
+        }
+
+        if (isTauriDesktop) {
+            await this.showTauriNotification(title, body);
+            return;
+        }
+
+        await this.showWebNotification(title, body, tag);
+    }
+
+    // The in-app toast is raised by GoogleCalendarWatchService either way; this
+    // only decides whether the OS also gets a copy, which requires the reminder
+    // master switch and granted permission.
+    async notifyNewGoogleEvents(events = []) {
+        const settings = this.loadSettings();
+        if (settings.googleCalendarAlerts === false || !settings.enabled) return;
+
+        const list = (events || []).slice(0, 3);
+        if (list.length === 0) return;
+
+        const permission = await this.getPermissionStatus().catch(() => 'unsupported');
+        if (permission !== 'granted') return;
+
+        for (const event of list) {
+            const when = this.formatEventWhen(event);
+            const detail = [when, event.calendarName].filter(Boolean).join(' · ');
+            await this.sendImmediateNotification(
+                event.title ? `New event: ${event.title}` : 'New event on Google Calendar',
+                detail || 'Just added to your calendar',
+                `gcal_${event.id}`
+            ).catch(() => {});
+        }
     }
 
     async sync({ tasks = [], habits = [] }) {

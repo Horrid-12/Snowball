@@ -3,10 +3,16 @@ import { supabase as serviceDb } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { google } from 'googleapis';
 import jwt from 'jsonwebtoken';
+import { parseSince, selectNewEvents, selectUnimportedEvents, UNIMPORTED_HORIZON_MS } from '../utils/googleCalendarEvents.js';
 
 const router = express.Router();
 
 const getDb = (req) => req?.anonDb || serviceDb;
+
+// Google's per-calendar poll fan-out is capped so a workspace account with
+// dozens of shared calendars cannot turn one app heartbeat into a burst of API
+// calls.
+const MAX_WATCHED_CALENDARS = 10;
 
 const getEnv = (name) => {
     const upper = name.toUpperCase();
@@ -33,26 +39,53 @@ const parseRrule = (rules) => {
     return found.replace(/^\s*RRULE:\s*/i, '') || null;
 };
 
-const getOauth2Client = () => {
-    const clientId = getEnv('GOOGLE_CLIENT_ID');
-    const clientSecret = getEnv('GOOGLE_CLIENT_SECRET');
-    
-    // Redirect URI
-    const isProd = getEnv('VERCEL') === '1' || getEnv('NODE_ENV') === 'production';
-    // The exact redirect URI must match what's in Google Cloud Console
-    let redirectUri = 'http://localhost:3000/api/calendar/google/callback';
-    if (isProd) {
-        const backendUrl = getEnv('BACKEND_URL') || `https://${getEnv('VERCEL_URL')}`;
-        redirectUri = `${backendUrl}/api/calendar/google/callback`;
-    }
-
-    return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
-};
-
 const httpError = (status, message) => {
     const err = new Error(message);
     err.status = status;
     return err;
+};
+
+const isProd = () => getEnv('VERCEL') === '1' || getEnv('NODE_ENV') === 'production';
+
+// Stable public origin for this deployment. VERCEL_URL is deployment-specific
+// (snowball-<hash>-<team>.vercel.app) and changes on every deploy, so a redirect
+// URI built from it can never stay registered in Google Cloud Console. Prefer an
+// explicit BACKEND_URL, then the project's production domain, then VERCEL_URL.
+const publicBaseUrl = () => {
+    const explicit = getEnv('BACKEND_URL');
+    if (explicit) return explicit.replace(/\/+$/, '');
+    const prodDomain = getEnv('VERCEL_PROJECT_PRODUCTION_URL');
+    if (prodDomain) return `https://${prodDomain}`;
+    const deploymentUrl = getEnv('VERCEL_URL');
+    if (deploymentUrl) return `https://${deploymentUrl}`;
+    throw httpError(500, 'Cannot resolve the public backend URL. Set BACKEND_URL in the environment.');
+};
+
+const getOauth2Client = () => {
+    const clientId = getEnv('GOOGLE_CLIENT_ID');
+    const clientSecret = getEnv('GOOGLE_CLIENT_SECRET');
+
+    // google-auth-library silently emits `client_id=&redirect_uri=` when the
+    // credentials are undefined, and Google reports that as the misleading
+    // "Missing required parameter: redirect_uri". Fail loudly instead.
+    if (!clientId || !clientSecret) {
+        console.error('Google Calendar OAuth is not configured: GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are missing from the environment.');
+        throw httpError(500, 'Google Calendar is not configured on this server.');
+    }
+
+    // The exact redirect URI must match what's in Google Cloud Console.
+    const redirectUri = isProd()
+        ? `${publicBaseUrl()}/api/calendar/google/callback`
+        : 'http://localhost:3000/api/calendar/google/callback';
+
+    return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+};
+
+const getFrontendUrl = () => {
+    if (!isProd()) return 'http://localhost:5173';
+    const explicit = getEnv('FRONTEND_URL');
+    if (explicit) return explicit.replace(/\/+$/, '');
+    return publicBaseUrl();
 };
 
 const isAuthFailure = (err) => {
@@ -205,14 +238,12 @@ router.get('/google/callback', async (req, res) => {
             return res.status(500).json({ error: 'Failed to save calendar configuration' });
         }
 
-        const isProd = getEnv('VERCEL') === '1' || getEnv('NODE_ENV') === 'production';
-        const frontendUrl = isProd ? (getEnv('FRONTEND_URL') || `https://${getEnv('VERCEL_URL')}`) : 'http://localhost:5173';
+        const frontendUrl = getFrontendUrl();
         
         res.redirect(`${frontendUrl}/?gcal=connected`);
     } catch (error) {
         console.error('Google Callback Error:', error);
-        const isProd = getEnv('VERCEL') === '1' || getEnv('NODE_ENV') === 'production';
-        const frontendUrl = isProd ? (getEnv('FRONTEND_URL') || `https://${getEnv('VERCEL_URL')}`) : 'http://localhost:5173';
+        const frontendUrl = getFrontendUrl();
         res.redirect(`${frontendUrl}/?gcal=error`);
     }
 });
@@ -469,6 +500,10 @@ router.get('/google/auth-url', async (req, res) => {
 
         res.json({ url });
     } catch (error) {
+        if (error.status) {
+            console.error('Google Calendar OAuth unavailable:', error.message);
+            return res.status(error.status).json({ error: error.message });
+        }
         console.error('Error generating auth URL:', error);
         res.status(500).json({ error: 'Failed to generate authorization URL' });
     }
@@ -492,21 +527,185 @@ router.get('/google/calendars', async (req, res) => {
     }
 });
 
+// POST /google/check-new - Poll for events created on Google Calendar since the
+// client's last check. Stateless: the client echoes back `checkedAt` from the
+// previous response, so no syncToken bookkeeping is required and a lost cursor
+// can never wedge the watch. Returns at most a handful of genuinely new events.
+router.post('/google/check-new', async (req, res) => {
+    try {
+        const now = Date.now();
+        const since = parseSince(req.body?.since, now);
+        const { calendar, clearStoredTokens } = await loadGoogleClient(req);
+
+        const requestedIds = Array.isArray(req.body?.calendarIds)
+            ? req.body.calendarIds
+                .filter((id) => typeof id === 'string' && id.trim() !== '')
+                .slice(0, MAX_WATCHED_CALENDARS)
+            : null;
+
+        const calendarNames = new Map();
+        let calendarIds = requestedIds;
+
+        if (!calendarIds) {
+            const listRes = await calendar.calendarList.list({ minAccessRole: 'reader' });
+            const items = (listRes.data.items || [])
+                .filter((item) => item && !item.deleted && item.selected !== false);
+            for (const item of items) {
+                calendarNames.set(item.id, item.summary || 'Calendar');
+            }
+            calendarIds = items.slice(0, MAX_WATCHED_CALENDARS).map((item) => item.id);
+        }
+
+        const rawEvents = [];
+        for (const calendarId of calendarIds) {
+            try {
+                const response = await calendar.events.list({
+                    calendarId,
+                    updatedMin: since,
+                    showDeleted: false,
+                    // Matches single spend on recurring events: a new series
+                    // notifies once, not once per occurrence.
+                    singleEvents: true,
+                    maxResults: 100,
+                    fields: 'items(id,summary,location,created,status,start,end,htmlLink)',
+                });
+                for (const item of response.data.items || []) {
+                    rawEvents.push({
+                        ...item,
+                        calendarId,
+                        calendarName: calendarNames.get(calendarId) || null,
+                    });
+                }
+            } catch (apiErr) {
+                // An expired grant kills the whole watch, not just one calendar.
+                if (isAuthFailure(apiErr)) {
+                    await clearStoredTokens();
+                    return res.status(401).json({ error: 'Google authorization expired. Please reconnect Google Calendar.' });
+                }
+                console.error(`Failed to check Google calendar ${calendarId}:`, apiErr.message);
+            }
+        }
+
+        res.json({
+            checkedAt: new Date(now).toISOString(),
+            since,
+            events: selectNewEvents(rawEvents, { since, now }),
+        });
+    } catch (error) {
+        if (error.status) return res.status(error.status).json({ error: error.message });
+        console.error('Error checking for new Google events:', error);
+        res.status(500).json({ error: 'Failed to check for new Google events' });
+    }
+});
+
+// Loads every google_event_id already stored for the user. Paginated because
+// PostgREST caps a single response at 1000 rows by default.
+const loadImportedGoogleEventIds = async (req) => {
+    const db = getDb(req);
+    const ids = new Set();
+    const PAGE_SIZE = 1000;
+    const MAX_ROWS = 20000;
+    for (let from = 0; from < MAX_ROWS; from += PAGE_SIZE) {
+        const { data, error } = await db
+            .from('calendar_events')
+            .select('google_event_id')
+            .eq('user_id', req.user.id)
+            .not('google_event_id', 'is', null)
+            .range(from, from + PAGE_SIZE - 1);
+        if (error) throw error;
+        for (const row of data || []) {
+            if (row?.google_event_id) ids.add(row.google_event_id);
+        }
+        if (!data || data.length < PAGE_SIZE) break;
+    }
+    return ids;
+};
+
+// POST /google/unimported - Upcoming Google events that are not in Snowball yet.
+// Unlike /google/check-new this looks forward instead of at `updatedMin`, so it
+// also catches events that existed before the watch baseline. The client shows a
+// single summary prompt instead of one alert per event.
+router.post('/google/unimported', async (req, res) => {
+    try {
+        const now = Date.now();
+        const { calendar, clearStoredTokens } = await loadGoogleClient(req);
+
+        const requestedIds = Array.isArray(req.body?.calendarIds)
+            ? req.body.calendarIds
+                .filter((id) => typeof id === 'string' && id.trim() !== '')
+                .slice(0, MAX_WATCHED_CALENDARS)
+            : null;
+
+        const calendarNames = new Map();
+        let calendarIds = requestedIds;
+
+        if (!calendarIds) {
+            const listRes = await calendar.calendarList.list({ minAccessRole: 'reader' });
+            const items = (listRes.data.items || []).filter((item) => item && !item.deleted && item.selected !== false);
+            for (const item of items) {
+                calendarNames.set(item.id, item.summary || 'Calendar');
+            }
+            calendarIds = items.slice(0, MAX_WATCHED_CALENDARS).map((item) => item.id);
+        }
+
+        const rawEvents = [];
+        for (const calendarId of calendarIds) {
+            try {
+                const response = await calendar.events.list({
+                    calendarId,
+                    timeMin: new Date(now).toISOString(),
+                    timeMax: new Date(now + UNIMPORTED_HORIZON_MS).toISOString(),
+                    showDeleted: false,
+                    singleEvents: true,
+                    orderBy: 'startTime',
+                    maxResults: 250,
+                    fields: 'items(id,summary,status,start,end,location,htmlLink,recurringEventId)'
+                });
+                for (const item of response.data.items || []) {
+                    rawEvents.push({
+                        ...item,
+                        calendarId,
+                        calendarName: calendarNames.get(calendarId) || null
+                    });
+                }
+            } catch (apiErr) {
+                // An expired grant kills the whole watch, not just one calendar.
+                if (isAuthFailure(apiErr)) {
+                    await clearStoredTokens();
+                    return res.status(401).json({ error: 'Google authorization expired. Please reconnect Google Calendar.' });
+                }
+                console.error(`Failed to list upcoming Google events for ${calendarId}:`, apiErr.message);
+            }
+        }
+
+        const importedIds = await loadImportedGoogleEventIds(req);
+        const { events, count } = selectUnimportedEvents(rawEvents, importedIds, { now });
+
+        res.json({ checkedAt: new Date(now).toISOString(), count, events });
+    } catch (error) {
+        if (error.status) return res.status(error.status).json({ error: error.message });
+        console.error('Error checking for unimported Google events:', error);
+        res.status(500).json({ error: 'Failed to check for unimported Google events' });
+    }
+});
+
 // POST /google/sync - Fetch events from a user's Google calendar (defaults to primary)
 router.post('/google/sync', async (req, res) => {
     try {
         const { calendar, clearStoredTokens } = await loadGoogleClient(req);
         const calendarId = (req.body?.calendarId) || 'primary';
+        const now = Date.now();
 
         let response;
         try {
             response = await calendar.events.list({
                 calendarId,
-                // A month of history + 6 months forward is enough for an import view;
-                // any wider and the expansion can exceed the event cap or the sync
-                // takes too long to load.
-                timeMin: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-                timeMax: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
+                // Import only upcoming events: a month of history is noise. Past
+                // one-offs are excluded, but recurring series still appear through
+                // their next future occurrence (singleEvents expands them), so an
+                // ongoing weekly meeting is never lost.
+                timeMin: new Date(now).toISOString(),
+                timeMax: new Date(now + 180 * 24 * 60 * 60 * 1000).toISOString(),
                 maxResults: 500,
                 singleEvents: true,
                 orderBy: 'startTime',
@@ -581,6 +780,16 @@ router.post('/google/sync', async (req, res) => {
             // a terminating end_date right after the first occurrence and kills the
             // whole series. Derive it from the RRULE's UNTIL, or null if it never ends.
             const rrule = event.recurringEventId ? (rruleBySeries.get(event.recurringEventId) || null) : null;
+
+            // Safety net for one-off events that already ended. Google's timeMin
+            // normally excludes them, but an all-day/multi-day event can still come
+            // back as "ongoing". Recurring series are always kept because the
+            // returned instance is a future occurrence.
+            if (!event.recurringEventId) {
+                const endMs = Date.parse(event.end?.dateTime || event.end?.date || '');
+                if (Number.isFinite(endMs) && endMs < now) continue;
+            }
+
             let seriesEnd = null;
             if (rrule) {
                 const untilMatch = String(rrule).match(/UNTIL=(\d{4})(\d{2})(\d{2})/);
@@ -589,6 +798,10 @@ router.post('/google/sync', async (req, res) => {
 
             mappedEvents.push({
                 google_event_id: event.id,
+                // Stable identity for an imported recurring series. The local row
+                // stores the first instance's id, so the client compares this to
+                // the id prefix to avoid offering the same series again.
+                series_id: event.recurringEventId || event.id,
                 title: event.summary || 'Untitled Event',
                 description: event.description || '',
                 event_date: event.start?.dateTime || event.start?.date,

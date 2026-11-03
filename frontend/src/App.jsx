@@ -5,7 +5,7 @@ import AuthModal from './components/AuthModal.jsx';
 import BottomNav from './components/BottomNav.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import LoadingFallback, { TaskBoardSkeleton } from './components/Skeletons.jsx';
-import { Settings as SettingsIcon, History as HistoryIcon, Calculator as CalculatorIcon, Plus, BarChart3, ChevronDown, ChevronUp, Users, CalendarDays } from 'lucide-react';
+import { Settings as SettingsIcon, History as HistoryIcon, Calculator as CalculatorIcon, Plus, BarChart3, ChevronDown, ChevronUp, Users, CalendarDays, Bell, X } from 'lucide-react';
 import appPackage from '../package.json';
 import { useAppContext } from './context/AppContext.jsx';
 import { useOnline } from './context/OnlineContext.jsx';
@@ -14,6 +14,7 @@ import { generateMonetPalette, applyMonetTheme } from './utils/MonetEngine.js';
 import { invalidateMonetTagPaletteCache, saveTagColors } from './utils/tagColors.js';
 import { db, queueMutation } from './db/db';
 import { notificationService } from './services/NotificationService.js';
+import { googleCalendarWatch } from './services/GoogleCalendarWatchService.js';
 import { syncService } from './services/SyncService.js';
 import { desktopUpdateService } from './services/DesktopUpdateService.js';
 import { discordPresenceService } from './services/DiscordPresenceService.js';
@@ -210,6 +211,8 @@ function App() {
     const [profileSyncMessage, setProfileSyncMessage] = useState('');
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [pullDistance, setPullDistance] = useState(0);
+    const [gcalAlerts, setGcalAlerts] = useState([]);
+    const [gcalUnimported, setGcalUnimported] = useState(null);
     const [systemAccentColor, setSystemAccentColor] = useState(null);
     const [updatePrompt, setUpdatePrompt] = useState({
         available: false,
@@ -937,6 +940,82 @@ function App() {
         };
     }, [user, tasks, globalHabits]);
 
+    // Opens the Calendar tab with the Google import modal already loading. The
+    // flag survives the lazy mount so the modal opens even though Calendar is
+    // rendered only after setShowCalendar(true).
+    const openGcalImport = useCallback(() => {
+        setGcalUnimported(null);
+        try {
+            sessionStorage.setItem('snowball_open_gcal_import', '1');
+        } catch {
+            /* storage unavailable — the modal can still be opened manually */
+        }
+        setShowCalendar(true);
+        // If the Calendar overlay is already mounted the flag above is not
+        // consumed again, so wake it directly as well.
+        window.dispatchEvent(new Event('snowball-gcal-import-requested'));
+    }, []);
+
+    // Google Calendar new-event alerts. The watch service owns polling and
+    // cursor bookkeeping; this only renders the in-app toasts it emits.
+    useEffect(() => {
+        if (!user) return undefined;
+
+        const timers = new Set();
+
+        const pushAlerts = (events) => {
+            const incoming = (events || []).slice(0, 5).map((event, index) => ({
+                key: `${event.id}-${Date.now()}-${index}`,
+                event
+            }));
+            if (incoming.length === 0) return;
+
+            setGcalAlerts((previous) => [...previous.slice(-3), ...incoming]);
+
+            incoming.forEach(({ key }) => {
+                const timer = setTimeout(() => {
+                    setGcalAlerts((previous) => previous.filter((alert) => alert.key !== key));
+                    timers.delete(timer);
+                }, 12000);
+                timers.add(timer);
+            });
+        };
+
+        const handleNewEvents = (event) => pushAlerts(event?.detail);
+
+        let unimportedTimer = null;
+        const handleUnimported = (event) => {
+            const detail = event?.detail;
+            const count = Number(detail?.count) || 0;
+            clearTimeout(unimportedTimer);
+            unimportedTimer = null;
+            if (count <= 0) {
+                setGcalUnimported(null);
+                return;
+            }
+            setGcalUnimported({ count, events: detail?.events || [], key: Date.now() });
+            unimportedTimer = setTimeout(() => {
+                setGcalUnimported(null);
+                unimportedTimer = null;
+            }, 20000);
+        };
+
+        window.addEventListener('snowball-gcal-new-events', handleNewEvents);
+        window.addEventListener('snowball-gcal-unimported', handleUnimported);
+        const stopWatching = googleCalendarWatch.start();
+
+        return () => {
+            window.removeEventListener('snowball-gcal-new-events', handleNewEvents);
+            window.removeEventListener('snowball-gcal-unimported', handleUnimported);
+            stopWatching?.();
+            clearTimeout(unimportedTimer);
+            for (const timer of timers) clearTimeout(timer);
+            timers.clear();
+            setGcalAlerts([]);
+            setGcalUnimported(null);
+        };
+    }, [user]);
+
     useEffect(() => {
         if (isTauriDesktop) {
             const unsubscribe = desktopUpdateService.subscribe((state) => {
@@ -1430,6 +1509,200 @@ function App() {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Google Calendar new-event alerts */}
+            <div style={{
+                position: 'fixed',
+                top: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 3.75rem)' : '1.5rem',
+                right: isMobile ? '0.75rem' : '1.5rem',
+                left: isMobile ? '0.75rem' : 'auto',
+                zIndex: 1200,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.6rem',
+                maxWidth: isMobile ? 'none' : '360px',
+                pointerEvents: 'none'
+            }}>
+                <AnimatePresence>
+                    {gcalUnimported && (
+                        <motion.div
+                            key={`gcal-unimported-${gcalUnimported.key}`}
+                            initial={{ opacity: 0, y: -12, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, x: 24 }}
+                            transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                            style={{
+                                pointerEvents: 'auto',
+                                background: 'var(--bg-card)',
+                                border: '1px solid var(--border-color)',
+                                borderLeft: '3px solid #4285F4',
+                                borderRadius: '0.85rem',
+                                padding: '0.75rem 0.85rem',
+                                boxShadow: '0 10px 30px rgba(0, 0, 0, 0.25)',
+                                display: 'flex',
+                                gap: '0.65rem',
+                                alignItems: 'flex-start'
+                            }}
+                        >
+                            <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '0.6rem',
+                                background: 'color-mix(in srgb, #4285F4 18%, transparent)',
+                                color: '#4285F4',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0
+                            }}>
+                                <CalendarDays size={16} />
+                            </div>
+
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{
+                                    fontSize: '0.65rem',
+                                    fontWeight: '700',
+                                    letterSpacing: '0.06em',
+                                    textTransform: 'uppercase',
+                                    color: '#4285F4',
+                                    marginBottom: '0.15rem'
+                                }}>
+                                    Google Calendar
+                                </div>
+                                <div style={{
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600',
+                                    color: 'var(--text-primary)'
+                                }}>
+                                    {gcalUnimported.count} upcoming event{gcalUnimported.count === 1 ? '' : 's'} not in Snowball
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.1rem' }}>
+                                    Import them to see them on your calendar.
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={openGcalImport}
+                                    style={{
+                                        marginTop: '0.5rem',
+                                        padding: '0.35rem 0.75rem',
+                                        borderRadius: '0.5rem',
+                                        background: 'var(--accent-color)',
+                                        color: '#fff',
+                                        border: 'none',
+                                        fontWeight: '600',
+                                        fontSize: '0.78rem',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Import
+                                </button>
+                            </div>
+
+                            <button
+                                type="button"
+                                aria-label="Dismiss import reminder"
+                                onClick={() => setGcalUnimported(null)}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: 'var(--text-secondary)',
+                                    cursor: 'pointer',
+                                    padding: '2px',
+                                    lineHeight: 0,
+                                    flexShrink: 0
+                                }}
+                            >
+                                <X size={14} />
+                            </button>
+                        </motion.div>
+                    )}
+
+                    {gcalAlerts.map(({ key, event }) => {
+                        const when = event.allDay
+                            ? new Date(event.start).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
+                            : new Date(event.start).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+
+                        return (
+                            <motion.div
+                                key={key}
+                                initial={{ opacity: 0, y: -12, scale: 0.98 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, x: 24 }}
+                                transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                                style={{
+                                    pointerEvents: 'auto',
+                                    background: 'var(--bg-card)',
+                                    border: '1px solid var(--border-color)',
+                                    borderLeft: '3px solid var(--accent-color)',
+                                    borderRadius: '0.85rem',
+                                    padding: '0.75rem 0.85rem',
+                                    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.25)',
+                                    display: 'flex',
+                                    gap: '0.65rem',
+                                    alignItems: 'flex-start'
+                                }}
+                            >
+                                <div style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '0.6rem',
+                                    background: 'color-mix(in srgb, var(--accent-color) 18%, transparent)',
+                                    color: 'var(--accent-color)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0
+                                }}>
+                                    <Bell size={16} />
+                                </div>
+
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{
+                                        fontSize: '0.65rem',
+                                        fontWeight: '700',
+                                        letterSpacing: '0.06em',
+                                        textTransform: 'uppercase',
+                                        color: 'var(--accent-color)',
+                                        marginBottom: '0.15rem'
+                                    }}>
+                                        New on Google Calendar
+                                    </div>
+                                    <div style={{
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        color: 'var(--text-primary)',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap'
+                                    }}>
+                                        {event.title}
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.1rem' }}>
+                                        {when}{event.calendarName ? ` · ${event.calendarName}` : ''}
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    aria-label="Dismiss calendar alert"
+                                    onClick={() => setGcalAlerts((previous) => previous.filter((alert) => alert.key !== key))}
+                                    style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: 'var(--text-secondary)',
+                                        cursor: 'pointer',
+                                        padding: '2px',
+                                        lineHeight: 0,
+                                        flexShrink: 0
+                                    }}
+                                >
+                                    <X size={14} />
+                                </button>
+                            </motion.div>
+                        );
+                    })}
+                </AnimatePresence>
+            </div>
 
             <header className="page-header" style={{
                 display: 'flex',

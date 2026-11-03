@@ -159,6 +159,7 @@ const SettingsModal = ({
     const [platform, setPlatform] = useState('web');
     const [notificationsEnabled, setNotificationsEnabled] = useState(() => notificationService.loadSettings().enabled);
     const [habitReminderTime, setHabitReminderTime] = useState(() => notificationService.loadSettings().habitReminderTime);
+    const [googleCalendarAlerts, setGoogleCalendarAlerts] = useState(() => notificationService.loadSettings().googleCalendarAlerts !== false);
     const [notificationPermission, setNotificationPermission] = useState('default');
     const [notificationFeedback, setNotificationFeedback] = useState('');
     const [spotifyClientId, setSpotifyClientId] = useState('');
@@ -331,6 +332,7 @@ const SettingsModal = ({
         const settings = notificationService.loadSettings();
         setNotificationsEnabled(settings.enabled);
         setHabitReminderTime(settings.habitReminderTime);
+        setGoogleCalendarAlerts(settings.googleCalendarAlerts !== false);
     }, []);
 
     useEffect(() => {
@@ -372,6 +374,7 @@ const SettingsModal = ({
             setNotificationPermission(permission);
             setNotificationsEnabled(settings.enabled);
             setHabitReminderTime(settings.habitReminderTime);
+            setGoogleCalendarAlerts(settings.googleCalendarAlerts !== false);
             if (permission === 'denied' && settings.enabled) {
                 setNotificationsEnabled(false);
                 notificationService.saveSettings({
@@ -527,6 +530,13 @@ const SettingsModal = ({
         }
 
         setNotificationFeedback('');
+    };
+
+    const handleGoogleAlertsToggle = (enabled) => {
+        notificationService.saveSettings({ googleCalendarAlerts: enabled });
+        setGoogleCalendarAlerts(enabled);
+        // Re-check immediately when switched back on instead of waiting a full interval.
+        if (enabled) window.dispatchEvent(new Event('snowball-gcal-watch-nudge'));
     };
 
     const handleHabitReminderChange = (value) => {
@@ -1213,6 +1223,34 @@ const SettingsModal = ({
                                             {notificationFeedback}
                                         </div>
                                     )}
+
+                                    <button
+                                        onClick={() => handleGoogleAlertsToggle(!googleCalendarAlerts)}
+                                        style={{
+                                            width: '100%',
+                                            padding: '0.75rem',
+                                            borderRadius: '0.75rem',
+                                            background: googleCalendarAlerts ? 'color-mix(in srgb, var(--accent-color) 14%, transparent)' : 'var(--bg-secondary)',
+                                            color: 'var(--text-primary)',
+                                            border: `1px solid ${googleCalendarAlerts ? 'var(--accent-color)' : 'var(--border-color)'}`,
+                                            fontWeight: '600',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            gap: '0.5rem'
+                                        }}
+                                    >
+                                        <span>Google Calendar alerts</span>
+                                        <span style={{ fontSize: '0.75rem', color: googleCalendarAlerts ? 'var(--accent-color)' : 'var(--text-secondary)' }}>
+                                            {googleCalendarAlerts ? 'On' : 'Off'}
+                                        </span>
+                                    </button>
+
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                                        Shows an in-app alert when a new event is created on your Google Calendar.
+                                        {notificationsEnabled ? '' : ' Enable notifications above to also get an OS notification.'}
+                                    </div>
 
                                     <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.875rem', fontWeight: '500' }}>
                                         Daily Habit Reminder Time
