@@ -37,8 +37,8 @@ const resolveIsDark = () => {
                 ? window.matchMedia('(prefers-color-scheme: dark)').matches
                 : true;
         }
-        if (theme === 'light') return false;
-        if (theme === 'dark' || theme === 'midnight') return true;
+        if (theme === 'light' || theme === 'riff') return false;
+        if (theme === 'dark' || theme === 'shack' || theme === 'midnight') return true;
         if (theme === 'custom') {
             const custom = JSON.parse(localStorage.getItem('snowball_custom_colors') || '{}');
             const bg = String(custom?.bg || '');

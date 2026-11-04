@@ -273,9 +273,9 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
 
     let priorityColor = 'var(--text-secondary)';
     let priorityBg = 'transparent';
-    if (task.priority === 'High') { priorityColor = '#b91c1c'; priorityBg = '#fee2e2'; }
-    else if (task.priority === 'Medium') { priorityColor = '#b45309'; priorityBg = '#fef3c7'; }
-    else if (task.priority === 'Low') { priorityColor = '#15803d'; priorityBg = '#dcfce7'; }
+    if (task.priority === 'High') { priorityColor = 'var(--status-overdue)'; priorityBg = 'color-mix(in srgb, var(--status-overdue) 16%, transparent)'; }
+    else if (task.priority === 'Medium') { priorityColor = 'var(--warning-color)'; priorityBg = 'color-mix(in srgb, var(--warning-color) 16%, transparent)'; }
+    else if (task.priority === 'Low') { priorityColor = 'var(--status-done)'; priorityBg = 'color-mix(in srgb, var(--status-done) 16%, transparent)'; }
 
     const parsedTags = parseTags(localTags);
     const showDetails = !compactMode || isCompactExpanded;
@@ -392,7 +392,7 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                                                     padding: '0.15rem 0.35rem',
                                                     borderRadius: '999px',
                                                     background: 'var(--accent-color)',
-                                                    color: '#fff',
+                                                    color: 'var(--on-accent)',
                                                     display: 'inline-flex',
                                                     alignItems: 'center',
                                                     gap: '0.2rem',

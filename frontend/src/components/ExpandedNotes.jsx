@@ -1042,7 +1042,7 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
                                 style={{
                                     padding: '0.5rem 0.85rem', borderRadius: '0.75rem',
                                     background: activeNoteId === note.id ? 'var(--accent-color)' : 'transparent',
-                                    color: activeNoteId === note.id ? '#fff' : 'var(--text-secondary)',
+                                    color: activeNoteId === note.id ? 'var(--on-accent)' : 'var(--text-secondary)',
                                     cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem',
                                     fontSize: '0.85rem', fontWeight: '600', whiteSpace: 'nowrap', transition: 'all 0.2s',
                                     flexShrink: 0,
@@ -1120,7 +1120,7 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
                 {/* Editor Content */}
                 <div className="expanded-notes-content" style={{ 
                     flex: 1, overflowY: 'auto', padding: '2.5rem',
-                    background: 'var(--notes-bg)', color: 'var(--text-primary)'
+                    background: 'var(--scratchpad-bg)', color: 'var(--text-primary)'
                 }}>
                     {activeNoteId && activeLockInfo && !noteAccess[activeNoteId] ? (
                         <div style={{
@@ -1191,8 +1191,8 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
                                             padding: '0.75rem 1rem',
                                             borderRadius: '0.8rem',
                                             border: 'none',
-                                            background: 'var(--accent-color)',
-                                            color: '#fff',
+                                            background: 'var(--btn-primary-bg)',
+                                            color: 'var(--btn-primary-text)',
                                             cursor: unlockForm.busy ? 'wait' : 'pointer',
                                             fontWeight: 600
                                         }}
@@ -1208,8 +1208,8 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
                                                 padding: '0.75rem 1rem',
                                                 borderRadius: '0.8rem',
                                                 border: 'none',
-                                                background: 'var(--accent-color)',
-                                                color: '#fff',
+                                                background: 'var(--btn-primary-bg)',
+                                                color: 'var(--btn-primary-text)',
                                                 cursor: unlockForm.busy ? 'wait' : 'pointer',
                                                 fontWeight: 600
                                             }}
@@ -1438,8 +1438,8 @@ const EditorToolbar = React.memo(({
                 {syncStatus === 'saved' && <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', opacity: 0.5 }}>Saved</span>}
                 {syncStatus === 'dirty' && <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', opacity: 0.8 }}>Unsaved changes</span>}
                 {syncStatus === 'queued' && <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', opacity: 0.8 }}>Queued for manual sync</span>}
-                {syncStatus === 'error' && <span style={{ fontSize: '0.7rem', color: '#ff4d4d' }}>Sync error</span>}
-                {syncStatus === 'too_large' && <span style={{ fontSize: '0.7rem', color: '#ff9f43' }}>Too large to sync</span>}
+                {syncStatus === 'error' && <span style={{ fontSize: '0.7rem', color: 'var(--danger-color)' }}>Sync error</span>}
+                {syncStatus === 'too_large' && <span style={{ fontSize: '0.7rem', color: 'var(--warning-color)' }}>Too large to sync</span>}
                 {syncStatus === 'empty' && <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', opacity: 0.8 }}>Nothing to save</span>}
 
                 <ToolbarButton
@@ -1536,8 +1536,8 @@ const EditorToolbar = React.memo(({
                                                     padding: '0.65rem 0.8rem',
                                                     borderRadius: '0.6rem',
                                                     border: 'none',
-                                                    background: 'var(--accent-color)',
-                                                    color: '#fff',
+                                                    background: 'var(--btn-primary-bg)',
+                                                    color: 'var(--btn-primary-text)',
                                                     fontWeight: 600
                                                 }}
                                             >
@@ -1678,7 +1678,7 @@ const EditableTitle = ({ title, onUpdate, active }) => {
             onChange={(e) => setVal(e.target.value)} 
             onBlur={() => { setIsEditing(false); onUpdate(val); }}
             onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
-            style={{ background: 'none', border: 'none', color: '#fff', fontSize: 'inherit', fontWeight: 'inherit', width: '80px', outline: 'none' }}
+            style={{ background: 'none', border: 'none', color: 'var(--on-accent)', fontSize: 'inherit', fontWeight: 'inherit', width: '80px', outline: 'none' }}
         />;
     }
     return (

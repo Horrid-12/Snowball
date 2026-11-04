@@ -39,8 +39,8 @@ const HabitItem = React.memo(({ habit, onToggle, onDelete, onRename }) => {
             justifyContent: 'space-between',
             padding: '0.75rem 1rem',
             borderRadius: '1.25rem',
-            background: habit.completedToday ? 'rgba(var(--accent-rgb), 0.1)' : 'var(--bg-secondary)',
-            border: `1px solid ${habit.completedToday ? 'var(--accent-color)' : 'var(--border-color)'}`,
+            background: habit.completedToday ? 'color-mix(in srgb, var(--habit-indicator) 16%, var(--bg-secondary))' : 'var(--bg-secondary)',
+            border: `1px solid ${habit.completedToday ? 'var(--habit-indicator)' : 'var(--border-color)'}`,
             transition: '0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             minWidth: 0
         }}>
@@ -52,11 +52,11 @@ const HabitItem = React.memo(({ habit, onToggle, onDelete, onRename }) => {
                         height: '32px',
                         borderRadius: '50%',
                         border: habit.completedToday ? 'none' : '2px solid var(--border-color)',
-                        background: habit.completedToday ? 'var(--accent-color)' : 'transparent',
+                        background: habit.completedToday ? 'var(--habit-indicator)' : 'transparent',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        color: '#fff',
+                        color: habit.completedToday ? 'var(--on-habit)' : 'transparent',
                         cursor: 'pointer',
                         transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                         transform: habit.completedToday ? 'scale(1.05)' : 'scale(1)',
@@ -309,8 +309,8 @@ const HabitTracker = () => {
                 <button 
                     type="submit" 
                     style={{
-                        background: 'var(--accent-color)',
-                        color: '#fff',
+                        background: 'var(--btn-primary-bg)',
+                        color: 'var(--btn-primary-text)',
                         border: 'none',
                         borderRadius: '50%',
                         width: '38px',

@@ -345,8 +345,8 @@ const TaskForm = ({ onTaskAdded }) => {
                 type="submit"
                 disabled={loading}
                 style={{
-                    backgroundColor: 'var(--accent-color)',
-                    color: '#fff',
+                    backgroundColor: 'var(--btn-primary-bg)',
+                    color: 'var(--btn-primary-text)',
                     padding: '0.75rem 1rem',
                     borderRadius: '0.5rem',
                     fontWeight: '500',

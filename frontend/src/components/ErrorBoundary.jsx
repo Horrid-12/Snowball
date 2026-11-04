@@ -52,7 +52,7 @@ class ErrorBoundary extends React.Component {
                                 this.setState({ hasError: false, error: null });
                             }
                         }}
-                        style={{ marginTop: '1rem', background: '#ef4444', color: '#fff', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer', border: 'none', fontWeight: 600 }}
+                        style={{ marginTop: '1rem', background: 'var(--danger-color)', color: '#fff', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer', border: 'none', fontWeight: 600 }}
                     >
                         {isChunkError ? 'Reload App' : 'Try again'}
                     </button>

@@ -148,7 +148,7 @@ const CalculatorWidget = ({ onClose }) => {
     const numStyle = { ...btnStyle, background: 'var(--bg-secondary)', color: 'var(--text-primary)' };
     const opStyle = { ...btnStyle, background: 'rgba(139, 92, 246, 0.15)', color: 'var(--accent-color)' };
     const spStyle = { ...btnStyle, background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger-color)' };
-    const eqStyle = { ...btnStyle, background: 'var(--accent-color)', color: 'white' };
+    const eqStyle = { ...btnStyle, background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)' };
 
     return (
         <motion.div

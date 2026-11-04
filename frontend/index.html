@@ -9,11 +9,50 @@
   <title>Snowball. | Productivity Era</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  
+  <script>
+    // Paint the saved theme + visual style before React mounts to avoid a flash
+    // of the wrong palette/structure on refresh. Colors are applied by the
+    // theme engine once React hydrates.
+    try {
+      var savedTheme = localStorage.getItem('snowball_theme');
+      // Legacy ids: light was removed (Paper is the light-toned palette now)
+      // and midnight was renamed to Shack.
+      if (savedTheme === 'light') savedTheme = 'riff';
+      if (savedTheme === 'midnight') savedTheme = 'shack';
+      if (savedTheme) {
+        document.documentElement.classList.add('theme-' + savedTheme);
+      }
+
+      // Visual style is stored separately. Installs that predate the style
+      // toggle keep the Riff look on the Paper palette and Classic elsewhere.
+      var savedStyle = localStorage.getItem('snowball_theme_style');
+      if (savedStyle !== 'classic' && savedStyle !== 'riff') {
+        if (savedTheme) {
+          savedStyle = savedTheme === 'riff' ? 'riff' : 'classic';
+        } else {
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          savedStyle = prefersDark ? 'classic' : 'riff';
+        }
+      }
+      document.documentElement.classList.add('style-' + savedStyle);
+
+      // Visual intensity is structural only (borders, shadows, spacing) and is
+      // independent of the palette. Balanced is the default for installs that
+      // predate the setting.
+      var savedIntensity = localStorage.getItem('snowball_visual_intensity');
+      if (savedIntensity !== 'soft' && savedIntensity !== 'balanced' && savedIntensity !== 'bold') {
+        savedIntensity = 'balanced';
+      }
+      document.documentElement.classList.add('intensity-' + savedIntensity);
+    } catch (error) { /* storage unavailable */ }
+  </script>
+
   
   <!-- PWA & Mobile Meta Tags -->
   <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#3b82f6" />
+  <meta name="theme-color" content="#0c51de" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Snowball" />

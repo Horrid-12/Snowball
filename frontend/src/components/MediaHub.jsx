@@ -516,9 +516,9 @@ const MediaHub = ({ onReady, showSpotifyTab = true, showYoutubeTab = true }) => 
                             padding: '0.4rem',
                             borderRadius: '0.4rem',
                             marginBottom: '1rem',
-                            backgroundColor: 'rgba(220, 38, 38, 0.1)',
-                            color: '#ef4444',
-                            border: '1px solid rgba(220, 38, 38, 0.2)'
+                            backgroundColor: 'color-mix(in srgb, var(--danger-color) 10%, transparent)',
+                            color: 'var(--danger-color)',
+                            border: '1px solid color-mix(in srgb, var(--danger-color) 20%, transparent)'
                         }}>
                             {spotifyStatusError}
                         </div>
@@ -545,7 +545,7 @@ const MediaHub = ({ onReady, showSpotifyTab = true, showYoutubeTab = true }) => 
                                     if (d.url) window.location.href = d.url;
                                 });
                         }}
-                        style={{ background: 'var(--accent-color)', color: 'white', padding: '0.4rem 1rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 'bold' }}
+                        style={{ background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)', padding: '0.4rem 1rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 'bold' }}
                     >
                         Connect
                     </button>
@@ -604,7 +604,7 @@ const MediaHub = ({ onReady, showSpotifyTab = true, showYoutubeTab = true }) => 
                         onChange={(e) => setSpotifyQuery(e.target.value)}
                         style={{ flex: 1, background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', padding: '0.4rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.8rem', minWidth: 0 }}
                     />
-                    <button type="submit" disabled={spotifySearching} style={{ background: 'var(--accent-color)', color: 'white', borderRadius: '0.5rem', width: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <button type="submit" disabled={spotifySearching} style={{ background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)', borderRadius: '0.5rem', width: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Search size={16} />
                     </button>
                 </form>
@@ -766,7 +766,7 @@ const MediaHub = ({ onReady, showSpotifyTab = true, showYoutubeTab = true }) => 
                     <button 
                         onClick={handleSpotifyDisconnect}
                         style={{ background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', padding: '0.25rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.65rem', cursor: 'pointer', transition: '0.2s' }}
-                        onMouseEnter={(e) => e.currentTarget.style.borderColor = '#ef4444'}
+                        onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--danger-color)'}
                         onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-color)'}
                     >
                         Disconnect Spotify
