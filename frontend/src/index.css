@@ -12,41 +12,41 @@
     --text-primary: #0f172a;
     --text-secondary: #64748b;
     --border-color: #e2e8f0;
-    --accent-color: #3b82f6;
-    --accent-rgb: 59, 130, 246;
-    --accent-hover: #2563eb;
-    --accent-alt: #8b5cf6;
-    --accent-warm: #f97316;
+    --accent-color: #0c51de;
+    --accent-rgb: 12, 81, 222;
+    --accent-hover: #0a46bf;
+    --accent-alt: #93c5fd;
+    --accent-warm: #fbbf24;
 
     /* ---- Interactive ---- */
-    --btn-primary-bg: #3b82f6;
+    --btn-primary-bg: #0c51de;
     --btn-primary-text: #ffffff;
     --btn-secondary-bg: #f1f5f9;
     --btn-secondary-text: #0f172a;
     --nav-active-bg: #dbeafe;
-    --nav-active-text: #1d4ed8;
+    --nav-active-text: #0b3ea8;
     --hover-bg: #eef2f7;
     --input-bg: #ffffff;
     --input-border: #e2e8f0;
-    --focus-ring: #3b82f6;
+    --focus-ring: #0c51de;
 
     /* ---- Productivity ---- */
     --timer-bg: #ffffff;
-    --timer-progress: #3b82f6;
+    --timer-progress: #0c51de;
     --habit-indicator: #10b981;
-    --calendar-highlight: #3b82f6;
+    --calendar-highlight: #93c5fd;
     --heatmap-empty: #e9edf3;
-    --heatmap-1: #c9d9f8;
-    --heatmap-2: #9cbcf4;
-    --heatmap-3: #6b9cef;
-    --heatmap-4: #3b82f6;
-    --status-active: #3b82f6;
+    --heatmap-1: #dbeafe;
+    --heatmap-2: #93c5fd;
+    --heatmap-3: #60a5fa;
+    --heatmap-4: #0c51de;
+    --status-active: #0c51de;
     --status-done: #10b981;
     --status-overdue: #ef4444;
-    --chart-primary: #3b82f6;
-    --chart-secondary: #8b5cf6;
+    --chart-primary: #0c51de;
+    --chart-secondary: #93c5fd;
     --on-accent: #ffffff;
-    --on-calendar: #ffffff;
+    --on-calendar: #111111;
     --on-habit: #ffffff;
 
     /* ---- Status aliases ---- */
@@ -55,15 +55,25 @@
     --warning-color: #f59e0b;
 
     /* ---- Structure ---- */
+    --border-subtle: 1px;
+    --border-strong: 2px;
     --outline-width: 2px;
     --outline-color: var(--border-color);
+    --shadow-offset-sm: 2px;
     --shadow-offset: 3px;
-    --shadow-color: color-mix(in srgb, var(--text-primary) 14%, transparent);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --shadow-color: color-mix(in srgb, var(--outline-color) 13%, transparent);
+    --shadow-lg: 0 10px 24px -16px rgba(0, 0, 0, 0.18);
     --radius: 1.5rem;
     --radius-lg: 2rem;
     --card-radius: 1.5rem;
     --card-padding: 1.5rem;
+    --section-gap: 2rem;
+    --stack-gap: 1.5rem;
+    --decoration-opacity: 0.55;
+    --texture-opacity: 8%;
+    --weight-heading: 700;
+    --weight-strong: 600;
+    --meta-size: 0.75rem;
     --font-display: 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --skeleton-base: color-mix(in srgb, var(--text-primary) 7%, var(--bg-secondary));
@@ -106,35 +116,35 @@ body,
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
     --border-color: #334155;
-    --accent-color: #3b82f6;
-    --accent-rgb: 59, 130, 246;
-    --accent-hover: #60a5fa;
-    --accent-alt: #a78bfa;
-    --accent-warm: #fb923c;
-    --btn-primary-bg: #3b82f6;
-    --btn-primary-text: #ffffff;
+    --accent-color: #5b9dff;
+    --accent-rgb: 91, 157, 255;
+    --accent-hover: #79afff;
+    --accent-alt: #7dd3fc;
+    --accent-warm: #fbbf24;
+    --btn-primary-bg: #5b9dff;
+    --btn-primary-text: #111111;
     --btn-secondary-bg: #334155;
     --btn-secondary-text: #f8fafc;
-    --nav-active-bg: #1e3a8a;
-    --nav-active-text: #f8fafc;
+    --nav-active-bg: #2c4a7b;
+    --nav-active-text: #ffffff;
     --hover-bg: #26364d;
     --input-bg: #0f172a;
     --input-border: #334155;
-    --focus-ring: #60a5fa;
+    --focus-ring: #79afff;
     --timer-bg: #1e293b;
-    --timer-progress: #60a5fa;
+    --timer-progress: #79afff;
     --habit-indicator: #10b981;
-    --calendar-highlight: #60a5fa;
+    --calendar-highlight: #7dd3fc;
     --heatmap-empty: #1c2b3f;
-    --heatmap-1: #1e3a5f;
-    --heatmap-2: #26548c;
-    --heatmap-3: #2f6fb8;
-    --heatmap-4: #60a5fa;
-    --status-active: #60a5fa;
+    --heatmap-1: #304869;
+    --heatmap-2: #466695;
+    --heatmap-3: #5d87c5;
+    --heatmap-4: #79afff;
+    --status-active: #79afff;
     --status-done: #10b981;
     --status-overdue: #ef4444;
-    --chart-primary: #60a5fa;
-    --chart-secondary: #a78bfa;
+    --chart-primary: #79afff;
+    --chart-secondary: #7dd3fc;
     --outline-color: #334155;
     --skeleton-base: color-mix(in srgb, var(--text-primary) 8%, var(--bg-secondary));
     --skeleton-highlight: color-mix(in srgb, var(--text-primary) 18%, var(--bg-secondary));
@@ -157,94 +167,94 @@ body,
     --popover-bg: #36363a;
     --text-primary: #f2f2f4;
     --text-secondary: #a8a8ae;
-    --accent-color: #6366f1;
-    --accent-rgb: 99, 102, 241;
-    --accent-hover: #818cf8;
-    --accent-alt: #a78bfa;
-    --accent-warm: #fb923c;
+    --accent-color: #5b9dff;
+    --accent-rgb: 91, 157, 255;
+    --accent-hover: #79afff;
+    --accent-alt: #7dd3fc;
+    --accent-warm: #fbbf24;
     --border-color: #3f3f45;
-    --btn-primary-bg: #6366f1;
-    --btn-primary-text: #ffffff;
+    --btn-primary-bg: #5b9dff;
+    --btn-primary-text: #111111;
     --btn-secondary-bg: #36363a;
     --btn-secondary-text: #f2f2f4;
-    --nav-active-bg: #3a3a5c;
-    --nav-active-text: #c7d2fe;
+    --nav-active-bg: #344d74;
+    --nav-active-text: #ffffff;
     --hover-bg: #333337;
     --input-bg: #18181a;
     --input-border: #3f3f45;
-    --focus-ring: #818cf8;
+    --focus-ring: #75adff;
     --timer-bg: #2c2c2f;
-    --timer-progress: #818cf8;
+    --timer-progress: #75adff;
     --habit-indicator: #10b981;
-    --calendar-highlight: #818cf8;
+    --calendar-highlight: #7dd3fc;
     --heatmap-empty: #2a2a2e;
-    --heatmap-1: #34344a;
-    --heatmap-2: #44446a;
-    --heatmap-3: #6363a8;
-    --heatmap-4: #818cf8;
-    --status-active: #818cf8;
+    --heatmap-1: #3b475c;
+    --heatmap-2: #4c658c;
+    --heatmap-3: #5f86c0;
+    --heatmap-4: #75adff;
+    --status-active: #75adff;
     --status-done: #10b981;
     --status-overdue: #ef4444;
-    --chart-primary: #818cf8;
-    --chart-secondary: #a78bfa;
+    --chart-primary: #75adff;
+    --chart-secondary: #7dd3fc;
     --outline-color: #3f3f45;
     --skeleton-base: #2a2a2e;
     --skeleton-highlight: #3a3a3f;
     color-scheme: dark;
 }
 
-/* Paper palette: warm off-white canvas with electric purple, acid lime and
-   coral. Pair it with either visual style in Settings > Themes & Tags. */
+/* Paper palette: an off-white canvas with a light-blue cast, the Snowball logo
+   blue, and an icy secondary. Pair it with either visual style in Settings. */
 .theme-riff {
-    --bg-primary: #f7f5f0;
-    --bg-secondary: #efebe1;
+    --bg-primary: #eaf2fb;
+    --bg-secondary: #ddeaf8;
     --bg-card: #ffffff;
     --bg-elevated: #ffffff;
     --task-card-bg: #ffffff;
     --notes-bg: #ffffff;
-    --scratchpad-bg: #f7f5f0;
+    --scratchpad-bg: #eaf2fb;
     --modal-bg: #ffffff;
     --popover-bg: #ffffff;
     --text-primary: #111111;
     --text-secondary: #4a453d;
     --border-color: #111111;
-    --accent-color: #8b5cf6;
-    --accent-rgb: 139, 92, 246;
-    --accent-hover: #7c3aed;
-    --accent-alt: #e5ff64;
-    --accent-warm: #ff795c;
-    --btn-primary-bg: #8b5cf6;
+    --accent-color: #0c51de;
+    --accent-rgb: 12, 81, 222;
+    --accent-hover: #0a46bf;
+    --accent-alt: #93c5fd;
+    --accent-warm: #fbbf24;
+    --btn-primary-bg: #0c51de;
     --btn-primary-text: #ffffff;
-    --btn-secondary-bg: #e5ff64;
-    --btn-secondary-text: #111111;
-    --nav-active-bg: #e5ff64;
-    --nav-active-text: #111111;
-    --hover-bg: #efe9dc;
+    --btn-secondary-bg: #dbeafe;
+    --btn-secondary-text: #0b3ea8;
+    --nav-active-bg: #bfdbfe;
+    --nav-active-text: #0b3ea8;
+    --hover-bg: #e0ecf8;
     --input-bg: #ffffff;
     --input-border: #111111;
-    --focus-ring: #8b5cf6;
+    --focus-ring: #0c51de;
     --timer-bg: #ffffff;
-    --timer-progress: #8b5cf6;
-    --habit-indicator: #e5ff64;
-    --calendar-highlight: #ff795c;
-    --heatmap-empty: #e7e1d5;
-    --heatmap-1: #ddd0f7;
-    --heatmap-2: #b79df3;
-    --heatmap-3: #9d74f0;
-    --heatmap-4: #8b5cf6;
-    --status-active: #8b5cf6;
+    --timer-progress: #0c51de;
+    --habit-indicator: #38bdf8;
+    --calendar-highlight: #93c5fd;
+    --heatmap-empty: #dce7f5;
+    --heatmap-1: #bfdbfe;
+    --heatmap-2: #93c5fd;
+    --heatmap-3: #60a5fa;
+    --heatmap-4: #0c51de;
+    --status-active: #0c51de;
     --status-done: #2f9e44;
     --status-overdue: #e5484d;
-    --chart-primary: #8b5cf6;
-    --chart-secondary: #ff795c;
+    --chart-primary: #0c51de;
+    --chart-secondary: #93c5fd;
     --on-accent: #ffffff;
     --on-calendar: #111111;
     --on-habit: #111111;
     --success-color: #2f9e44;
     --danger-color: #e5484d;
     --outline-color: #111111;
-    --skeleton-base: #e7e1d5;
-    --skeleton-highlight: #f3efe6;
+    --skeleton-base: #dce7f5;
+    --skeleton-highlight: #eff5fc;
     color-scheme: light;
 }
 
@@ -306,30 +316,85 @@ body,
 }
 
 /* ------------------------------------------------------------------
-   VISUAL STYLE LAYER
-   Visual style is independent of the color palette: "Classic" keeps the
-   calm hairline look, "Riff" turns up the outlines, offset shadows, corner
-   radius, paper texture, and stickers. Both classes are applied to <html>
-   and <body> alongside the theme-<palette> class.
+   VISUAL STYLE + INTENSITY LAYER
+   Style decides the language (Classic = hairline/soft, Riff = ink outlines,
+   texture, stickers). Intensity decides how loud that language is. Both are
+   independent of the color palette and never touch user HEX values.
+   All three classes are applied to <html> and <body> alongside
+   theme-<palette>.
    ------------------------------------------------------------------ */
 .style-classic {
-    --outline-width: 2px;
-    --shadow-offset: 3px;
-    --shadow-color: color-mix(in srgb, var(--text-primary) 14%, transparent);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --style-border-base: 2px;
+    --style-shadow-base: 3px;
     --radius: 1.5rem;
     --radius-lg: 2rem;
     --card-radius: 1.5rem;
 }
 
 .style-riff {
-    --outline-width: 3px;
-    --shadow-offset: 6px;
-    --shadow-color: var(--outline-color);
-    --shadow-lg: 8px 8px 0 var(--shadow-color);
+    --style-border-base: 3px;
+    --style-shadow-base: 6px;
     --radius: 1.75rem;
     --radius-lg: 2.25rem;
     --card-radius: 1.75rem;
+}
+
+/* Soft: thin borders, almost no offset shadow, roomier layout. */
+.intensity-soft {
+    --outline-width: max(1px, calc(var(--style-border-base) * 0.5));
+    --shadow-offset: max(1px, calc(var(--style-shadow-base) * 0.18));
+    --shadow-offset-sm: 1px;
+    --border-subtle: 1px;
+    --border-strong: 1px;
+    --shadow-color: color-mix(in srgb, var(--outline-color) 7%, transparent);
+    --shadow-lg: 0 10px 28px -22px rgba(0, 0, 0, 0.22);
+    --section-gap: 2.5rem;
+    --stack-gap: 1.75rem;
+    --card-padding: 1.6rem;
+    --decoration-opacity: 0.3;
+    --texture-opacity: 5%;
+    --weight-heading: 700;
+    --weight-strong: 600;
+    --meta-size: 0.76rem;
+}
+
+/* Balanced: moderate borders and subtle, clearly-readable offset shadows.
+   This is the recommended default. */
+.intensity-balanced {
+    --outline-width: max(1px, calc(var(--style-border-base) * 0.75));
+    --shadow-offset: max(1px, calc(var(--style-shadow-base) * 0.4));
+    --shadow-offset-sm: 2px;
+    --border-subtle: 1px;
+    --border-strong: 2px;
+    --shadow-color: color-mix(in srgb, var(--outline-color) 14%, transparent);
+    --shadow-lg: 0 12px 30px -22px rgba(0, 0, 0, 0.3);
+    --section-gap: 2rem;
+    --stack-gap: 1.5rem;
+    --card-padding: 1.5rem;
+    --decoration-opacity: 0.55;
+    --texture-opacity: 8%;
+    --weight-heading: 700;
+    --weight-strong: 600;
+    --meta-size: 0.75rem;
+}
+
+/* Bold: the original expressive Neobrutalist volume. */
+.intensity-bold {
+    --outline-width: var(--style-border-base);
+    --shadow-offset: var(--style-shadow-base);
+    --shadow-offset-sm: 3px;
+    --border-subtle: 2px;
+    --border-strong: 2px;
+    --shadow-color: var(--outline-color);
+    --shadow-lg: var(--style-shadow-base) var(--style-shadow-base) 0 var(--shadow-color);
+    --section-gap: 1.75rem;
+    --stack-gap: 1.35rem;
+    --card-padding: 1.35rem;
+    --decoration-opacity: 0.9;
+    --texture-opacity: 12%;
+    --weight-heading: 800;
+    --weight-strong: 700;
+    --meta-size: 0.72rem;
 }
 
 
@@ -372,7 +437,7 @@ input,
 textarea,
 select {
     font-family: inherit;
-    border: var(--outline-width, 2px) solid var(--input-border);
+    border: var(--border-subtle) solid var(--input-border);
     background-color: var(--input-bg);
     color: var(--text-primary);
     border-radius: 0.75rem;
@@ -428,7 +493,7 @@ body {
 .responsive-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 1.5rem;
+    gap: var(--stack-gap);
     align-items: center;
 }
 
@@ -439,7 +504,8 @@ body {
     background: var(--bg-secondary);
     padding: 0.25rem 0.75rem;
     border-radius: 2rem;
-    border: 1px solid var(--border-color);
+    border: var(--border-subtle) solid var(--border-color);
+    font-size: var(--meta-size);
     transition: all 0.2s ease;
 }
 
@@ -859,11 +925,9 @@ input[type="checkbox"].circle-checkbox:checked {
 
 
 /* ==================================================================
-   RIFF-INSPIRED VISUAL SYSTEM
-   Structural layer shared by every theme. Colors always come from the
-   theme tokens above; the "loudness" (outline weight, shadow offset,
-   texture) is driven by per-theme structural variables so the Riff
-   preset can be bold without forcing every theme to be neon.
+   SHARED VISUAL SYSTEM
+   Structure comes from style + intensity tokens. Colors always come
+   from the theme tokens above, so intensity never rewrites a palette.
    ================================================================== */
 
 .app-container {
@@ -871,10 +935,11 @@ input[type="checkbox"].circle-checkbox:checked {
     z-index: 1;
 }
 
-/* Paper texture whenever the Riff visual style is active, for any palette. */
+/* Paper texture whenever the Riff visual style is active, for any palette.
+   Intensity controls how visible it is. */
 body.style-riff {
     background-image:
-        radial-gradient(color-mix(in srgb, var(--text-primary) 12%, transparent) 1px, transparent 1px);
+        radial-gradient(color-mix(in srgb, var(--text-primary) var(--texture-opacity), transparent) 1px, transparent 1px);
     background-size: 22px 22px;
     background-attachment: fixed;
 }
@@ -902,7 +967,16 @@ body.style-riff {
 .card-container h3,
 .card-container h4 {
     font-family: var(--font-display);
+    font-weight: var(--weight-heading);
     letter-spacing: -0.02em;
+}
+
+/* Secondary metadata should recede instead of competing with the content. */
+.card-container h5,
+.card-container h6 {
+    font-family: var(--font-body);
+    font-weight: var(--weight-strong);
+    letter-spacing: 0;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -922,8 +996,8 @@ body.style-riff {
 
 .page-header h1 {
     font-family: var(--font-display);
-    font-weight: 800 !important;
-    letter-spacing: -0.04em !important;
+    font-weight: var(--weight-heading) !important;
+    letter-spacing: -0.03em !important;
 }
 
 @media (max-width: 768px) {
@@ -945,7 +1019,7 @@ body.style-riff {
     justify-content: center;
     background: var(--bg-card);
     border: var(--outline-width) solid var(--outline-color) !important;
-    box-shadow: 2px 2px 0 var(--shadow-color);
+    box-shadow: var(--shadow-offset-sm) var(--shadow-offset-sm) 0 var(--shadow-color);
     color: var(--text-primary);
     transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
@@ -993,16 +1067,16 @@ body.style-riff {
 }
 
 .settings-dialog-header {
-    border-bottom: var(--outline-width) solid var(--outline-color) !important;
+    border-bottom: var(--border-subtle) solid var(--outline-color) !important;
 }
 
 .settings-sidebar {
-    border-right: var(--outline-width) solid var(--outline-color);
+    border-right: var(--border-subtle) solid var(--outline-color);
     background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
 }
 
 .settings-sidebar button {
-    border-width: var(--outline-width) !important;
+    border-width: var(--border-subtle) !important;
     border-style: solid !important;
 }
 
@@ -1018,21 +1092,36 @@ body.style-riff {
     border: var(--outline-width) solid var(--outline-color);
     background: var(--btn-secondary-bg);
     color: var(--btn-secondary-text);
-    font-weight: 700;
+    font-weight: var(--weight-strong);
     font-size: 0.82rem;
-    box-shadow: 2px 2px 0 var(--shadow-color);
+    box-shadow: var(--shadow-offset-sm) var(--shadow-offset-sm) 0 var(--shadow-color);
     transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 
 .riff-btn:hover {
     transform: translate(-1px, -1px);
-    box-shadow: 4px 4px 0 var(--shadow-color);
+    box-shadow: calc(var(--shadow-offset-sm) + 2px) calc(var(--shadow-offset-sm) + 2px) 0 var(--shadow-color);
     background: var(--hover-bg);
 }
 
 .riff-btn:active {
     transform: translate(1px, 1px);
     box-shadow: 0 0 0 var(--shadow-color);
+}
+
+.riff-btn:disabled,
+.riff-btn[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+.riff-btn:disabled:hover,
+.riff-btn[disabled]:hover {
+    box-shadow: none;
+    transform: none;
+    background: var(--btn-secondary-bg);
 }
 
 .riff-btn-primary {
@@ -1067,29 +1156,29 @@ body.style-riff {
     gap: 0.35rem;
     padding: 0.25rem 0.7rem;
     border-radius: 999px;
-    border: 1px solid var(--border-color);
+    border: var(--border-subtle) solid var(--border-color);
     background: var(--bg-secondary);
     color: var(--text-secondary);
-    font-size: 0.7rem;
-    font-weight: 700;
+    font-size: var(--meta-size);
+    font-weight: var(--weight-strong);
     letter-spacing: 0.02em;
 }
 
 .riff-inset {
     border-radius: var(--radius);
-    border: 1px solid var(--border-color);
+    border: var(--border-subtle) solid var(--border-color);
     background: var(--bg-secondary);
 }
 
 .riff-divider {
     height: 0;
-    border-top: var(--outline-width) solid var(--border-color);
+    border-top: var(--border-subtle) solid var(--border-color);
     opacity: 0.7;
 }
 
 .riff-input {
     background: var(--input-bg);
-    border: var(--outline-width) solid var(--input-border);
+    border: var(--border-subtle) solid var(--input-border);
     border-radius: 0.75rem;
     color: var(--text-primary);
     padding: 0.55rem 0.7rem;
@@ -1104,7 +1193,8 @@ body.style-riff {
 /* ---- Decorative doodle layer ------------------------------------ */
 /* Playful accents belong to the Riff VISUAL STYLE, so every palette gets
    them (Dark, Shack, Paper, Custom, Dynamic). The layer is always mounted
-   but stays hidden unless .style-riff is active. */
+   but stays hidden unless .style-riff is active. Intensity controls how
+   many are shown and how strong they are. */
 .doodle-layer {
     display: none;
     position: fixed;
@@ -1112,6 +1202,7 @@ body.style-riff {
     z-index: 0;
     pointer-events: none;
     overflow: hidden;
+    opacity: var(--decoration-opacity);
 }
 
 .style-riff .doodle-layer {
@@ -1120,7 +1211,15 @@ body.style-riff {
 
 .doodle-layer svg {
     position: absolute;
-    opacity: 0.9;
+    opacity: 1;
+}
+
+.intensity-soft .doodle-layer svg:nth-child(n + 3) {
+    display: none;
+}
+
+.intensity-balanced .doodle-layer svg:nth-child(n + 5) {
+    display: none;
 }
 
 @media (max-width: 1100px) {
@@ -1144,7 +1243,7 @@ body.style-riff {
     align-items: center;
     padding: 0.6rem 0.7rem;
     border-radius: 0.9rem;
-    border: 1px solid var(--border-color);
+    border: var(--border-subtle) solid var(--border-color);
     background: var(--bg-card);
 }
 
@@ -1156,7 +1255,7 @@ body.style-riff {
     width: 30px;
     height: 30px;
     border-radius: 0.55rem;
-    border: 2px solid var(--border-color);
+    border: var(--border-subtle) solid var(--border-color);
     flex-shrink: 0;
     cursor: pointer;
 }
@@ -1199,7 +1298,7 @@ body.style-riff {
 .theme-group-chip {
     padding: 0.4rem 0.8rem;
     border-radius: 999px;
-    border: 1px solid var(--border-color);
+    border: var(--border-subtle) solid var(--border-color);
     background: var(--bg-secondary);
     color: var(--text-secondary);
     font-size: 0.75rem;
@@ -1222,19 +1321,20 @@ body.style-riff {
     text-align: left;
     padding: 0.85rem;
     border-radius: var(--radius);
-    border: var(--outline-width) solid var(--border-color);
+    border: var(--border-subtle) solid var(--border-color);
     background: var(--bg-card);
-    box-shadow: 2px 2px 0 var(--shadow-color);
+    box-shadow: var(--shadow-offset-sm) var(--shadow-offset-sm) 0 var(--shadow-color);
     transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .theme-preset-card:hover {
     transform: translate(-1px, -1px);
-    box-shadow: 4px 4px 0 var(--shadow-color);
+    box-shadow: calc(var(--shadow-offset-sm) + 2px) calc(var(--shadow-offset-sm) + 2px) 0 var(--shadow-color);
 }
 
 .theme-preset-card[data-active='true'] {
     border-color: var(--accent-color);
+    border-width: var(--border-strong);
 }
 
 /* ---- Keyboard accessibility ------------------------------------- */

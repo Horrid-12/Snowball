@@ -17,7 +17,8 @@
  */
 
 export const THEME_OVERRIDES_KEY = 'snowball_theme_overrides';
-const OVERRIDES_VERSION = 2;
+// v3 retires the old purple brand defaults from built-in theme buckets.
+const OVERRIDES_VERSION = 4;
 
 /* ------------------------------------------------------------------ */
 /* Color helpers                                                       */
@@ -90,8 +91,8 @@ const relativeLuminance = (hex) => {
 export const isDarkColor = (hex) => relativeLuminance(hex) < 0.45;
 
 /** Pick near-black or white — whichever reads better on the given background. */
-export const getReadableTextColor = (background = '#3b82f6') => {
-    const normalized = normalizeHexColor(background, '#3b82f6');
+export const getReadableTextColor = (background = '#0c51de') => {
+    const normalized = normalizeHexColor(background, '#0c51de');
     const luminance = relativeLuminance(normalized);
     const whiteContrast = 1.05 / (luminance + 0.05);
     const blackContrast = (luminance + 0.05) / 0.05;
@@ -442,9 +443,12 @@ const DARK_BASE = {
     textPrimary: '#f8fafc',
     textSecondary: '#94a3b8',
     border: '#334155',
-    accent: '#3b82f6',
-    accentAlt: '#a78bfa',
-    accentWarm: '#fb923c',
+    // Snowball brand: the logo's deep blue (#0c51de) is lifted to an icy
+    // periwinkle on dark canvases so it clears contrast targets for text,
+    // charts, and thin progress strokes.
+    accent: '#5b9dff',
+    accentAlt: '#7dd3fc',
+    accentWarm: '#fbbf24',
     card: '#1e293b',
     cardElevated: '#243449',
     taskCard: '#1e293b',
@@ -467,9 +471,9 @@ const SHACK_BASE = {
     textPrimary: '#f2f2f4',
     textSecondary: '#a8a8ae',
     border: '#3f3f45',
-    accent: '#6366f1',
-    accentAlt: '#a78bfa',
-    accentWarm: '#fb923c',
+    accent: '#5b9dff',
+    accentAlt: '#7dd3fc',
+    accentWarm: '#fbbf24',
     card: '#2c2c2f',
     cardElevated: '#36363a',
     taskCard: '#2c2c2f',
@@ -481,34 +485,46 @@ const SHACK_BASE = {
     danger: '#ef4444'
 };
 
-/** Riff-inspired paper palette: electric purple, acid lime, coral, warm paper. */
+/** Paper palette: an off-white canvas with a light-blue cast, logo blue, and icy secondary. */
 const RIFF_BASE = {
-    bgPrimary: '#f7f5f0',
-    bgSecondary: '#efebe1',
+    bgPrimary: '#eaf2fb',
+    bgSecondary: '#ddeaf8',
     textPrimary: '#111111',
     textSecondary: '#4a453d',
     border: '#111111',
-    accent: '#8b5cf6',
-    accentAlt: '#e5ff64',
-    accentWarm: '#ff795c',
+    accent: '#0c51de',
+    accentAlt: '#93c5fd',
+    accentWarm: '#fbbf24',
     card: '#ffffff',
     cardElevated: '#ffffff',
     popover: '#ffffff',
     notes: '#ffffff',
-    scratchpad: '#f7f5f0',
+    scratchpad: '#eaf2fb',
     success: '#2f9e44',
     danger: '#e5484d'
 };
 
 const RIFF_DERIVED = {
-    buttonSecondary: '#e5ff64',
-    buttonSecondaryText: '#111111',
-    navActive: '#e5ff64',
-    navActiveText: '#111111',
-    habit: '#e5ff64',
-    calendar: '#ff795c',
-    chartSecondary: '#ff795c',
-    heatmapEmpty: '#e7e1d5'
+    buttonSecondary: '#dbeafe',
+    buttonSecondaryText: '#0b3ea8',
+    navActive: '#bfdbfe',
+    navActiveText: '#0b3ea8',
+    habit: '#38bdf8',
+    calendar: '#93c5fd',
+    chartSecondary: '#93c5fd',
+    heatmapEmpty: '#dce7f5'
+};
+
+/**
+ * Seed colors for the Custom theme. Shared by the theme engine, the app state,
+ * and the customizer so "Reset recipe" restores exactly what the engine uses.
+ */
+export const DEFAULT_CUSTOM_COLORS = {
+    bg: '#ffffff',
+    text: '#1e293b',
+    accent: '#0c51de',
+    card: '#ffffff',
+    notes: '#f8fafc'
 };
 
 export const THEME_BASE_PALETTES = {
@@ -525,7 +541,7 @@ export const THEME_BASE_PALETTES = {
 export const THEME_OPTIONS = [
     { id: 'dark', label: 'Dark', blurb: 'Soft slate contrast' },
     { id: 'shack', label: 'Shack', blurb: 'Warm charcoal gray' },
-    { id: 'riff', label: 'Paper', blurb: 'Warm paper + electric pop' },
+    { id: 'riff', label: 'Paper', blurb: 'Icy light-blue paper + logo blue' },
     { id: 'custom', label: 'Custom', blurb: 'Your five-color recipe' },
     { id: 'dynamic', label: 'Dynamic', blurb: 'Android Material You', platform: 'android' }
 ];
@@ -615,6 +631,59 @@ export const saveThemeStyle = (style) => {
 };
 
 /* ------------------------------------------------------------------ */
+/* Visual intensity (structure only, never colors)                     */
+/* ------------------------------------------------------------------ */
+
+export const THEME_INTENSITY_KEY = 'snowball_visual_intensity';
+export const DEFAULT_THEME_INTENSITY = 'balanced';
+
+export const THEME_INTENSITIES = [
+    {
+        id: 'soft',
+        label: 'Soft',
+        blurb: 'Thin borders, near-flat shadows, and roomier spacing.'
+    },
+    {
+        id: 'balanced',
+        label: 'Balanced',
+        blurb: 'Moderate outlines and subtle offset shadows. Recommended.'
+    },
+    {
+        id: 'bold',
+        label: 'Bold',
+        blurb: 'Full expressive outlines and hard offset shadows.'
+    }
+];
+
+export const THEME_INTENSITY_IDS = THEME_INTENSITIES.map((intensity) => intensity.id);
+
+/** Coerce anything into a known intensity id (used by storage and backups). */
+export const normalizeThemeIntensity = (value, fallback = DEFAULT_THEME_INTENSITY) => {
+    const id = String(value || '')
+        .trim()
+        .toLowerCase();
+    return THEME_INTENSITY_IDS.includes(id) ? id : fallback;
+};
+
+/** Visual intensity is device-local and independent of theme/HEX overrides. */
+export const loadThemeIntensity = () => {
+    try {
+        return normalizeThemeIntensity(localStorage.getItem(THEME_INTENSITY_KEY));
+    } catch {
+        return DEFAULT_THEME_INTENSITY;
+    }
+};
+
+export const saveThemeIntensity = (intensity) => {
+    try {
+        localStorage.setItem(THEME_INTENSITY_KEY, normalizeThemeIntensity(intensity));
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+/* ------------------------------------------------------------------ */
 /* Derivation                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -669,17 +738,17 @@ const derivePalette = (core, extra = {}) => {
         chartSecondary: core.accentAlt
     };
 
-    // Anything a theme explicitly derived (Riff's lime chips, coral calendar...)
-    // must not be overwritten by the generic derivation above.
+    // Anything a theme explicitly derived (e.g. Riff's lavender chips or
+    // calendar highlights) must not be overwritten by the generic derivation.
     return { ...palette, ...extra };
 };
 
 const buildCustomBase = (customColors = {}) => {
-    const bg = normalizeHexColor(customColors.bg, '#ffffff');
-    const text = normalizeHexColor(customColors.text, '#1e293b');
-    const accent = normalizeHexColor(customColors.accent, '#3b82f6');
-    const card = normalizeHexColor(customColors.card, '#ffffff');
-    const notes = normalizeHexColor(customColors.notes, '#f8fafc');
+    const bg = normalizeHexColor(customColors.bg, DEFAULT_CUSTOM_COLORS.bg);
+    const text = normalizeHexColor(customColors.text, DEFAULT_CUSTOM_COLORS.text);
+    const accent = normalizeHexColor(customColors.accent, DEFAULT_CUSTOM_COLORS.accent);
+    const card = normalizeHexColor(customColors.card, DEFAULT_CUSTOM_COLORS.card);
+    const notes = normalizeHexColor(customColors.notes, DEFAULT_CUSTOM_COLORS.notes);
     const dark = isDarkColor(bg);
 
     return {
@@ -690,7 +759,7 @@ const buildCustomBase = (customColors = {}) => {
         border: mixHex(text, bg, 0.82),
         accent,
         accentAlt: mixHex(accent, dark ? '#ffffff' : '#000000', 0.28),
-        accentWarm: '#ff795c',
+        accentWarm: mixHex(accent, dark ? '#ffffff' : '#000000', 0.55),
         card,
         notes,
         scratchpad: notes,
@@ -709,8 +778,8 @@ const buildMonetBase = (palette) => {
         textPrimary: pick('onBackground', '#f8fafc'),
         textSecondary: pick('onSurfaceVariant', '#94a3b8'),
         border: pick('outline', '#334155'),
-        accent: pick('primary', '#3b82f6'),
-        accentAlt: pick('tertiary', '#a78bfa'),
+        accent: pick('primary', '#5b9dff'),
+        accentAlt: pick('tertiary', '#7dd3fc'),
         accentWarm: pick('error', '#ef4444'),
         card: pick('surface', '#1e293b'),
         notes: mixHex(pick('surfaceVariant', '#1e293b'), pick('surface', '#1e293b'), 0.35),
@@ -783,6 +852,75 @@ const emptyBuckets = () => ({
     dynamic: {}
 });
 
+/**
+ * The previous brand pass used this purple family for the built-in palettes and
+ * for the Riff Night preset. Those values can linger in a stored override
+ * bucket, which made the Dark palette render purple even though its base
+ * palette is blue. They are brand defaults rather than user inventions, so drop
+ * only those exact values from the built-in theme buckets and let the current
+ * derivation supply the blue equivalents. Custom-theme overrides are left
+ * untouched: a purple there is an explicit user choice.
+ */
+const LEGACY_BRAND_VALUES = new Set([
+    // Purple family (legacy accents)
+    '#8b5cf6',
+    '#a78bfa',
+    '#c4b5fd',
+    '#f0abfc',
+    '#ede9fe',
+    '#ddd6fe',
+    '#4c1d95',
+    '#7c3aed',
+    // Riff lime and coral
+    '#e5ff64',
+    '#ff795c',
+    // Riff warm paper
+    '#f7f5f0',
+    '#efebe1',
+    '#e7e1d5',
+    // Riff Night dark / eggplant surfaces and borders
+    '#14121b',
+    '#1c1a26',
+    '#211f2c',
+    '#1a1823',
+    '#413d52',
+    '#2a2736',
+    '#2f2b3d',
+    '#262331',
+    // Legacy AMOLED black Shack/Midnight values
+    '#000000',
+    '#0a0a0a',
+    '#0a0a0c',
+    '#121216',
+    '#1a1a20',
+    '#050505',
+    '#050506',
+    '#2a2a31',
+    '#1e1e1e'
+]);
+const LEGACY_BRAND_THEMES = new Set(['dark', 'shack', 'riff']);
+
+const isLegacyRiffNightBucket = (bucket) => {
+    if (!bucket || typeof bucket !== 'object') return false;
+    const bg = String(bucket.bgPrimary || '').toLowerCase();
+    const card = String(bucket.card || '').toLowerCase();
+    const accent = String(bucket.accent || '').toLowerCase();
+    return bg === '#14121b' || card === '#211f2c' || accent === '#8b5cf6' || accent === '#e5ff64';
+};
+
+const stripLegacyBrandValues = (themeId, bucket) => {
+    if (!LEGACY_BRAND_THEMES.has(themeId)) return bucket;
+    if (themeId === 'dark' && isLegacyRiffNightBucket(bucket)) {
+        return {};
+    }
+    const next = {};
+    Object.entries(bucket || {}).forEach(([key, value]) => {
+        const val = String(value).toLowerCase();
+        if (!LEGACY_BRAND_VALUES.has(val)) next[key] = value;
+    });
+    return next;
+};
+
 const sanitizeBucket = (bucket) => {
     const clean = {};
     if (!bucket || typeof bucket !== 'object') return clean;
@@ -802,6 +940,11 @@ export const loadThemeOverrides = () => {
         const parsed = JSON.parse(raw);
         if (!parsed || typeof parsed !== 'object') return buckets;
 
+        // A v2 bucket can still hold the previous purple brand palette. Strip
+        // those exact values once; after this save it becomes v3 and later
+        // deliberate purple choices are preserved normally.
+        const needsBrandMigration = (Number(parsed.__v) || 0) < OVERRIDES_VERSION;
+
         // New format: { __v, dark: {...}, shack: {...}, ... }. Legacy bucket ids
         // (light, midnight) are still recognized so old data migrates instead of
         // being mistaken for a flat token map.
@@ -812,11 +955,17 @@ export const loadThemeOverrides = () => {
         if (hasBuckets) {
             Object.keys(buckets).forEach((themeId) => {
                 if (themeId === '__v') return;
-                if (parsed[themeId]) buckets[themeId] = sanitizeBucket(parsed[themeId]);
+                if (!parsed[themeId]) return;
+                const clean = sanitizeBucket(parsed[themeId]);
+                buckets[themeId] = needsBrandMigration ? stripLegacyBrandValues(themeId, clean) : clean;
             });
             // Midnight was renamed to Shack; carry its customizations over once.
             if (parsed.midnight && !parsed.shack) {
-                buckets.shack = sanitizeBucket(parsed.midnight);
+                const clean = sanitizeBucket(parsed.midnight);
+                buckets.shack = needsBrandMigration ? stripLegacyBrandValues('shack', clean) : clean;
+            }
+            if (needsBrandMigration) {
+                saveThemeOverrides(buckets);
             }
             return buckets;
         }
@@ -832,7 +981,10 @@ export const loadThemeOverrides = () => {
                     return 'riff';
                 }
             })();
-            buckets[active] = flat;
+            buckets[active] = needsBrandMigration ? stripLegacyBrandValues(active, flat) : flat;
+            if (needsBrandMigration) {
+                saveThemeOverrides(buckets);
+            }
         }
         return buckets;
     } catch (_error) {
@@ -912,10 +1064,10 @@ export const applyThemeTokens = (tokens, theme) => {
         setVar(token.var, value);
     });
 
-    const accent = normalizeHexColor(tokens?.accent, '#3b82f6');
+    const accent = normalizeHexColor(tokens?.accent, '#0c51de');
     setVar('--accent-color', accent);
     setVar('--color-accent', accent);
-    setVar('--accent-rgb', hexToRgb(accent) || '59, 130, 246');
+    setVar('--accent-rgb', hexToRgb(accent) || '12, 81, 222');
     setVar('--accent-hover', normalizeHexColor(tokens?.accentHover, accent));
 
     // Readable foregrounds derived from the final (possibly customized) colors.
@@ -949,7 +1101,7 @@ export const applyThemeTokens = (tokens, theme) => {
         setVar('--custom-text', normalizeHexColor(tokens?.textPrimary, '#1e293b'));
         setVar('--custom-text-sec', normalizeHexColor(tokens?.textSecondary, '#64748b'));
         setVar('--custom-accent', accent);
-        setVar('--custom-accent-rgb', hexToRgb(accent) || '59, 130, 246');
+        setVar('--custom-accent-rgb', hexToRgb(accent) || '12, 81, 222');
         setVar('--custom-border', normalizeHexColor(tokens?.border, '#e2e8f0'));
     }
 };
@@ -979,7 +1131,7 @@ export const THEME_PRESETS = [
         id: 'riff',
         label: 'Riff Paper',
         blurb: 'Paper palette + Riff style: thick ink outlines and stickers.',
-        swatches: ['#f7f5f0', '#8b5cf6', '#e5ff64', '#ff795c'],
+        swatches: ['#eaf2fb', '#0c51de', '#93c5fd', '#fbbf24'],
         theme: 'riff',
         style: 'riff',
         overrides: {}
@@ -987,40 +1139,17 @@ export const THEME_PRESETS = [
     {
         id: 'riff-night',
         label: 'Riff Night',
-        blurb: 'Dark palette with bold Riff outlines, lime, and coral.',
-        swatches: ['#14121b', '#e5ff64', '#8b5cf6', '#ff795c'],
+        blurb: 'Dark palette with bold Riff outlines and icy highlights.',
+        swatches: ['#0f172a', '#5b9dff', '#7dd3fc', '#1e293b'],
         theme: 'dark',
         style: 'riff',
-        overrides: {
-            bgPrimary: '#14121b',
-            bgSecondary: '#1c1a26',
-            card: '#211f2c',
-            notes: '#1a1823',
-            scratchpad: '#1a1823',
-            textPrimary: '#f7f5f0',
-            textSecondary: '#a8a3b8',
-            border: '#413d52',
-            accent: '#e5ff64',
-            accentAlt: '#8b5cf6',
-            accentWarm: '#ff795c',
-            buttonPrimaryText: '#111111',
-            buttonSecondary: '#2a2736',
-            buttonSecondaryText: '#f7f5f0',
-            navActive: '#2f2b3d',
-            navActiveText: '#e5ff64',
-            timerProgress: '#e5ff64',
-            habit: '#e5ff64',
-            calendar: '#ff795c',
-            chartPrimary: '#e5ff64',
-            chartSecondary: '#ff795c',
-            heatmapEmpty: '#262331'
-        }
+        overrides: {}
     },
     {
         id: 'classic-dark',
         label: 'Classic Dark',
         blurb: 'The default slate palette with clean, quiet Classic structure.',
-        swatches: ['#0f172a', '#3b82f6', '#a78bfa', '#1e293b'],
+        swatches: ['#0f172a', '#5b9dff', '#7dd3fc', '#1e293b'],
         theme: 'dark',
         style: 'classic',
         overrides: {}
@@ -1029,7 +1158,7 @@ export const THEME_PRESETS = [
         id: 'classic-shack',
         label: 'Classic Shack',
         blurb: 'Charcoal-gray palette with clean, quiet Classic structure.',
-        swatches: ['#1c1c1e', '#6366f1', '#a78bfa', '#2c2c2f'],
+        swatches: ['#1c1c1e', '#5b9dff', '#7dd3fc', '#2c2c2f'],
         theme: 'shack',
         style: 'classic',
         overrides: {}

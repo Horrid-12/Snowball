@@ -37,13 +37,22 @@
         }
       }
       document.documentElement.classList.add('style-' + savedStyle);
+
+      // Visual intensity is structural only (borders, shadows, spacing) and is
+      // independent of the palette. Balanced is the default for installs that
+      // predate the setting.
+      var savedIntensity = localStorage.getItem('snowball_visual_intensity');
+      if (savedIntensity !== 'soft' && savedIntensity !== 'balanced' && savedIntensity !== 'bold') {
+        savedIntensity = 'balanced';
+      }
+      document.documentElement.classList.add('intensity-' + savedIntensity);
     } catch (error) { /* storage unavailable */ }
   </script>
 
   
   <!-- PWA & Mobile Meta Tags -->
   <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#3b82f6" />
+  <meta name="theme-color" content="#0c51de" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Snowball" />

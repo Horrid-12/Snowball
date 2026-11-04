@@ -1,12 +1,14 @@
 import { AlertTriangle, Palette, RotateCcw, Sparkles } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import {
+    DEFAULT_CUSTOM_COLORS,
+    DEFAULT_THEME_INTENSITY,
     getContrastRatio,
     isHexColor,
     normalizeHexColor,
     resolveThemeTokens,
+    THEME_INTENSITIES,
     THEME_OPTIONS,
-    THEME_PRESETS,
     THEME_STYLES,
     THEME_TOKEN_GROUPS,
     THEME_TOKENS,
@@ -152,20 +154,14 @@ const TokenRow = ({ token, value, isOverridden, onChange, onReset, preview }) =>
     );
 };
 
-const MiniPreview = ({ tokens, themeStyle }) => {
-    const structural =
-        themeStyle === 'riff'
-            ? { '--outline-width': '3px', '--shadow-offset': '6px', '--shadow-color': 'var(--outline-color)' }
-            : {
-                  '--outline-width': '2px',
-                  '--shadow-offset': '3px',
-                  '--shadow-color': 'color-mix(in srgb, var(--text-primary) 14%, transparent)'
-              };
-
+// The preview inherits the real style/intensity classes, so it shows the same
+// border weight, shadow offset, and palette the app is about to use. No
+// structural values are duplicated here.
+const MiniPreview = ({ tokens, themeStyle, visualIntensity }) => {
     return (
         <div
-            className="theme-preview-card"
-            style={{ ...tokenStyle(tokens), ...structural, background: 'var(--bg-primary)', padding: '0.85rem' }}
+            className={`theme-preview-card style-${themeStyle} intensity-${visualIntensity}`}
+            style={{ ...tokenStyle(tokens), background: 'var(--bg-primary)', padding: '0.85rem' }}
         >
             <div
                 style={{
@@ -402,9 +398,20 @@ const LegacyCustomColors = ({ customColors, setCustomColors }) => {
                 gap: '0.55rem'
             }}
         >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <Palette size={14} style={{ color: 'var(--accent-color)' }} />
-                <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>Custom theme recipe</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Palette size={14} style={{ color: 'var(--accent-color)' }} />
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>Custom theme recipe</span>
+                </div>
+                <button
+                    type="button"
+                    className="riff-btn riff-btn-ghost"
+                    style={{ fontSize: '0.64rem', minHeight: '26px', padding: '0.25rem 0.5rem' }}
+                    onClick={() => setCustomColors({ ...DEFAULT_CUSTOM_COLORS })}
+                    title="Restore the default Custom theme recipe"
+                >
+                    <RotateCcw size={11} /> Reset recipe
+                </button>
             </div>
             <p style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', margin: 0 }}>
                 These five colors seed the Custom theme. Fine-tune individual components below.
@@ -462,6 +469,8 @@ const ThemeCustomizer = ({
     setTheme,
     themeStyle = 'classic',
     onThemeStyleChange,
+    visualIntensity = DEFAULT_THEME_INTENSITY,
+    onVisualIntensityChange,
     customColors,
     setCustomColors,
     themeTokens,
@@ -470,8 +479,6 @@ const ThemeCustomizer = ({
     onResetThemeColor,
     onResetThemeGroup,
     onResetAllThemeColors,
-    onApplyThemePreset,
-    activeThemePreset,
     showDynamic = false
 }) => {
     const [activeGroup, setActiveGroup] = useState('global');
@@ -487,14 +494,15 @@ const ThemeCustomizer = ({
     const themeSwatches = useMemo(() => {
         const map = {};
         visibleThemes.forEach((option) => {
-            const resolved = resolveThemeTokens(option.id, {
-                customColors,
-                overrides: option.id === theme ? themeOverrides : {}
-            });
+            // These cards summarize the BASE palette. Component overrides are a
+            // separate layer (shown in the live preview and Component colors
+            // below), so including them here made an active theme's card drift
+            // away from the palette it claims to represent.
+            const resolved = resolveThemeTokens(option.id, { customColors });
             map[option.id] = [resolved.bgPrimary, resolved.accent, resolved.accentAlt, resolved.card];
         });
         return map;
-    }, [visibleThemes, customColors, theme, themeOverrides]);
+    }, [visibleThemes, customColors]);
 
     const groupTokens = THEME_TOKENS.filter((token) => token.group === activeGroup);
     const groupOverrideCount = (groupId) =>
@@ -502,6 +510,23 @@ const ThemeCustomizer = ({
             (count, token) => count + (themeOverrides?.[token.key] ? 1 : 0),
             0
         );
+
+    // The Custom theme has a second layer of user colors: the five-color recipe.
+    // "Reset all" must clear both layers, otherwise the visible palette can stay
+    // customized even after every component override is gone.
+    const customRecipeIsCustomized =
+        theme === 'custom' &&
+        Boolean(customColors) &&
+        Object.keys(DEFAULT_CUSTOM_COLORS).some(
+            (key) => normalizeHexColor(customColors[key], DEFAULT_CUSTOM_COLORS[key]) !== DEFAULT_CUSTOM_COLORS[key]
+        );
+
+    const handleResetAllColors = () => {
+        if (onResetAllThemeColors) onResetAllThemeColors();
+        if (theme === 'custom' && setCustomColors) {
+            setCustomColors({ ...DEFAULT_CUSTOM_COLORS });
+        }
+    };
 
     const activeGroupMeta = THEME_TOKEN_GROUPS.find((group) => group.id === activeGroup);
 
@@ -535,15 +560,15 @@ const ThemeCustomizer = ({
                             : 'Theme defaults'}
                     </span>
                 </div>
-                <MiniPreview tokens={tokens} themeStyle={themeStyle} />
+                <MiniPreview tokens={tokens} themeStyle={themeStyle} visualIntensity={visualIntensity} />
             </div>
 
             {/* Visual style */}
             <div>
                 <h3 style={{ fontSize: '0.95rem', margin: '0 0 0.35rem' }}>Visual style</h3>
                 <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: '0 0 0.6rem' }}>
-                    Structure only — outlines, shadows, corners, texture, and stickers. Pair it with any color palette
-                    below.
+                    Base structure only — outline language, corners, texture, and stickers. Pair it with an intensity
+                    and any color palette below.
                 </p>
                 <div
                     style={{
@@ -630,33 +655,31 @@ const ThemeCustomizer = ({
                 </div>
             </div>
 
-            {/* Presets */}
+            {/* Visual intensity */}
             <div>
-                <h3 style={{ fontSize: '0.95rem', margin: '0 0 0.35rem' }}>Preset combos</h3>
+                <h3 style={{ fontSize: '0.95rem', margin: '0 0 0.35rem' }}>Visual intensity</h3>
                 <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: '0 0 0.6rem' }}>
-                    A preset is a ready-made <strong>style + palette</strong> combination (plus a few color overrides).
-                    Applying one switches the visual style and the color palette together; every token stays editable
-                    afterwards.
+                    How loud the structure is — border weight, shadow depth, and spacing. It never changes your palette,
+                    HEX overrides, or tag colors.
                 </p>
                 <div
                     style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
                         gap: '0.6rem'
                     }}
                 >
-                    {THEME_PRESETS.map((preset) => {
-                        const isActive = activeThemePreset === preset.id;
-                        const styleLabel = preset.style === 'riff' ? 'Riff' : 'Classic';
-                        const paletteLabel =
-                            THEME_OPTIONS.find((option) => option.id === preset.theme)?.label || preset.theme;
+                    {THEME_INTENSITIES.map((intensity) => {
+                        const isActive = visualIntensity === intensity.id;
                         return (
                             <button
-                                key={preset.id}
+                                key={intensity.id}
                                 type="button"
                                 className="theme-preset-card"
                                 data-active={isActive}
-                                onClick={() => onApplyThemePreset?.(preset.id)}
+                                onClick={() => onVisualIntensityChange?.(intensity.id)}
+                                aria-pressed={isActive}
+                                style={{ textAlign: 'left' }}
                             >
                                 <div
                                     style={{
@@ -673,7 +696,7 @@ const ThemeCustomizer = ({
                                             fontFamily: 'var(--font-display)'
                                         }}
                                     >
-                                        {preset.label}
+                                        {intensity.label}
                                     </span>
                                     {isActive && (
                                         <span
@@ -689,35 +712,35 @@ const ThemeCustomizer = ({
                                         </span>
                                     )}
                                 </div>
-                                <div style={{ display: 'flex', gap: '0.25rem', margin: '0.45rem 0' }}>
-                                    {preset.swatches.map((swatch) => (
-                                        <span
-                                            key={swatch}
-                                            style={{
-                                                width: '18px',
-                                                height: '18px',
-                                                borderRadius: '50%',
-                                                background: swatch,
-                                                border: '1.5px solid var(--border-color)',
-                                                display: 'inline-block'
-                                            }}
-                                        />
-                                    ))}
+                                <div
+                                    className={`intensity-${intensity.id}`}
+                                    style={{ display: 'flex', gap: '0.3rem', margin: '0.45rem 0' }}
+                                    aria-hidden="true"
+                                >
+                                    <span
+                                        style={{
+                                            display: 'inline-block',
+                                            width: '34px',
+                                            height: '22px',
+                                            borderRadius: '6px',
+                                            border: 'var(--outline-width) solid var(--border-color)',
+                                            background: 'var(--bg-card)',
+                                            boxShadow: 'var(--shadow-offset) var(--shadow-offset) 0 var(--shadow-color)'
+                                        }}
+                                    />
+                                    <span
+                                        style={{
+                                            display: 'inline-block',
+                                            width: '22px',
+                                            height: '22px',
+                                            borderRadius: '999px',
+                                            background: 'var(--accent-color)',
+                                            border: 'var(--outline-width) solid var(--border-color)'
+                                        }}
+                                    />
                                 </div>
                                 <div style={{ fontSize: '0.66rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                                    {preset.blurb}
-                                </div>
-                                <div
-                                    style={{
-                                        marginTop: '0.4rem',
-                                        fontSize: '0.58rem',
-                                        fontWeight: 700,
-                                        letterSpacing: '0.04em',
-                                        textTransform: 'uppercase',
-                                        color: 'var(--text-secondary)'
-                                    }}
-                                >
-                                    {styleLabel} style · {paletteLabel} palette
+                                    {intensity.blurb}
                                 </div>
                             </button>
                         );
@@ -806,9 +829,13 @@ const ThemeCustomizer = ({
                         type="button"
                         className="riff-btn riff-btn-ghost"
                         style={{ fontSize: '0.7rem', minHeight: '30px', padding: '0.3rem 0.6rem' }}
-                        onClick={onResetAllThemeColors}
-                        disabled={overrideCount === 0}
-                        title="Remove every override for this theme"
+                        onClick={handleResetAllColors}
+                        disabled={overrideCount === 0 && !customRecipeIsCustomized}
+                        title={
+                            theme === 'custom'
+                                ? 'Reset the Custom recipe and every component override for this theme'
+                                : 'Remove every override for this theme'
+                        }
                     >
                         <RotateCcw size={12} /> Reset all
                     </button>

@@ -48,12 +48,14 @@ import {
 import { invalidateMonetTagPaletteCache, saveTagColors } from './utils/tagColors.js';
 import {
     applyThemeTokens,
-    getPresetById,
+    DEFAULT_CUSTOM_COLORS,
     getThemeOverridesFor,
+    loadThemeIntensity,
     loadThemeOverrides,
     loadThemeStyle,
     normalizeThemeId,
     resolveThemeTokens,
+    saveThemeIntensity,
     saveThemeOverrides,
     saveThemeStyle,
     withThemeGroupReset,
@@ -122,14 +124,6 @@ const hexToRgb = (hex) => {
     return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : null;
 };
 
-const DEFAULT_CUSTOM_COLORS = {
-    bg: '#ffffff',
-    text: '#1e293b',
-    accent: '#3b82f6',
-    card: '#ffffff',
-    notes: '#f8fafc'
-};
-
 const loadingMessages = [
     'Packing the snow...',
     'Starting the avalanche...',
@@ -176,6 +170,11 @@ function App() {
     // Visual style is independent of the color palette (Classic vs Riff).
     // Kept in its own key so switching palettes never changes structure.
     const [themeStyle, setThemeStyle] = useState(() => loadThemeStyle());
+
+    // Visual intensity only controls structure (border weight, shadow offset,
+    // spacing, decoration opacity). It never carries color values, so it can
+    // never overwrite a palette or a user's HEX overrides.
+    const [visualIntensity, setVisualIntensity] = useState(() => loadThemeIntensity());
 
     // Per-component color overrides, bucketed by theme so switching themes never
     // destroys a user's custom palette (see utils/themeTokens.js).
@@ -538,21 +537,28 @@ function App() {
             // Invalidate cached monet tag palette so tags pick up the new seed
             invalidateMonetTagPaletteCache();
 
-            // Palette and visual style are orthogonal: theme-<palette> only sets
-            // colors, style-<classic|riff> only sets structure.
-            const bodyClass = [theme ? `theme-${theme}` : '', themeStyle ? `style-${themeStyle}` : '']
+            // Palette, visual style, and intensity are orthogonal:
+            // theme-<palette> sets colors, style-<classic|riff> sets the
+            // structural language, intensity-<soft|balanced|bold> sets how
+            // loud that language is.
+            const bodyClass = [
+                theme ? `theme-${theme}` : '',
+                themeStyle ? `style-${themeStyle}` : '',
+                visualIntensity ? `intensity-${visualIntensity}` : ''
+            ]
                 .filter(Boolean)
                 .join(' ');
             document.body.className = bodyClass;
             document.documentElement.className = bodyClass;
             localStorage.setItem('snowball_theme', theme);
             saveThemeStyle(themeStyle);
+            saveThemeIntensity(visualIntensity);
 
             const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)')?.matches;
             const isDarkMode = theme === 'dynamic' ? prefersDark : theme === 'dark' || theme === 'shack';
 
             const seedAccent =
-                theme === 'custom' ? customColors.accent : systemAccentColor || user?.profile_color || '#3b82f6';
+                theme === 'custom' ? customColors.accent : systemAccentColor || user?.profile_color || '#0c51de';
 
             let monetPalette = null;
             if (theme === 'dynamic') {
@@ -581,7 +587,7 @@ function App() {
             console.error('Critical theme error caught:', error);
             // Fallback to basic CSS if possible
         }
-    }, [theme, themeStyle, customColors, systemAccentColor, user, themeOverrides]);
+    }, [theme, themeStyle, visualIntensity, customColors, systemAccentColor, user, themeOverrides]);
 
     // Persist per-component overrides whenever they change.
     useEffect(() => {
@@ -1263,6 +1269,12 @@ function App() {
         }
     }, []);
 
+    // Intensity is independent of style and palette, so it never clears the
+    // active preset and never touches color overrides.
+    const handleVisualIntensityChange = useCallback((intensity) => {
+        setVisualIntensity(intensity);
+    }, []);
+
     const handleThemeColorChange = useCallback(
         (key, value) => {
             setThemeOverrides((prev) => withThemeOverride(prev, theme, key, value));
@@ -1287,23 +1299,6 @@ function App() {
     const handleResetAllThemeColors = useCallback(() => {
         setThemeOverrides((prev) => withThemeReset(prev, theme));
     }, [theme]);
-
-    const handleApplyThemePreset = useCallback((presetId) => {
-        const preset = getPresetById(presetId);
-        if (!preset) return;
-        setTheme(preset.theme);
-        if (preset.style) setThemeStyle(preset.style);
-        setThemeOverrides((prev) => ({
-            ...prev,
-            [preset.theme]: { ...preset.overrides }
-        }));
-        setActiveThemePreset(preset.id);
-        try {
-            localStorage.setItem('snowball_theme_preset', preset.id);
-        } catch {
-            /* storage unavailable */
-        }
-    }, []);
 
     const resolvedThemeTokens = useMemo(
         () =>
@@ -1951,7 +1946,7 @@ function App() {
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    marginBottom: '1.5rem',
+                    marginBottom: 'var(--section-gap)',
                     padding: isMobile ? '0.5rem 0' : '0'
                 }}
             >
@@ -2224,7 +2219,7 @@ function App() {
                         !isMobile
                             ? 'minmax(0, 1fr) 300px'
                             : 'minmax(0, 1fr)',
-                    gap: '2rem',
+                    gap: 'var(--section-gap)',
                     alignItems: 'start',
                     minHeight: '600px'
                 }}
@@ -2275,6 +2270,8 @@ function App() {
                             setTheme={handleThemeChange}
                             themeStyle={themeStyle}
                             onThemeStyleChange={handleThemeStyleChange}
+                            visualIntensity={visualIntensity}
+                            onVisualIntensityChange={handleVisualIntensityChange}
                             customColors={customColors}
                             setCustomColors={setCustomColors}
                             themeTokens={resolvedThemeTokens}
@@ -2284,7 +2281,6 @@ function App() {
                             onResetThemeColor={handleResetThemeColor}
                             onResetThemeGroup={handleResetThemeGroup}
                             onResetAllThemeColors={handleResetAllThemeColors}
-                            onApplyThemePreset={handleApplyThemePreset}
                             activeThemePreset={activeThemePreset}
                             onImportThemeOverrides={setThemeOverrides}
                             onThemePresetChange={setActiveThemePreset}
@@ -2328,7 +2324,7 @@ function App() {
                     <>
                         {/* Tab-based Mobile View vs Full Desktop View */}
                         {isMobile ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--section-gap)' }}>
                                 {activeTab === 'dashboard' &&
                                     (() => {
                                         const showTimer = isCardEffectivelyVisible(
@@ -2371,7 +2367,7 @@ function App() {
                                                         style={{
                                                             display: 'grid',
                                                             gridTemplateColumns: '1fr',
-                                                            gap: '2rem',
+                                                            gap: 'var(--section-gap)',
                                                             alignItems: 'start'
                                                         }}
                                                     >
@@ -2592,7 +2588,13 @@ function App() {
 
                                     return (
                                         <>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                                            <div
+                                                style={{
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    gap: 'var(--section-gap)'
+                                                }}
+                                            >
                                                 {hasTopSection && (
                                                     <div
                                                         style={{
@@ -2601,7 +2603,7 @@ function App() {
                                                                 showTimer && hasStatsColumn
                                                                     ? 'repeat(auto-fit, minmax(300px, 1fr))'
                                                                     : '1fr',
-                                                            gap: '2rem',
+                                                            gap: 'var(--section-gap)',
                                                             alignItems: 'start'
                                                         }}
                                                     >
@@ -2622,7 +2624,7 @@ function App() {
                                                                 style={{
                                                                     display: 'flex',
                                                                     flexDirection: 'column',
-                                                                    gap: '1.5rem',
+                                                                    gap: 'var(--stack-gap)',
                                                                     width: '100%'
                                                                 }}
                                                             >
@@ -2780,7 +2782,7 @@ function App() {
                                                 style={{
                                                     display: hasRightSidebar ? 'flex' : 'none',
                                                     flexDirection: 'column',
-                                                    gap: '2rem'
+                                                    gap: 'var(--stack-gap)'
                                                 }}
                                             >
                                                 {showFriends && (

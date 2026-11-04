@@ -42,12 +42,16 @@ import {
     setTagsFollowTheme
 } from '../utils/tagColors.js';
 import {
+    DEFAULT_THEME_INTENSITY,
     isHexColor,
     loadThemeOverrides,
     normalizeThemeId,
+    normalizeThemeIntensity,
     normalizeThemeStyle,
+    saveThemeIntensity,
     saveThemeOverrides,
     saveThemeStyle,
+    THEME_INTENSITY_KEY,
     THEME_STYLE_KEY,
     THEME_TOKENS
 } from '../utils/themeTokens.js';
@@ -100,6 +104,8 @@ const SettingsModal = ({
     setTheme,
     themeStyle = 'classic',
     onThemeStyleChange = null,
+    visualIntensity = DEFAULT_THEME_INTENSITY,
+    onVisualIntensityChange = null,
     customColors,
     setCustomColors,
     themeTokens = null,
@@ -109,7 +115,6 @@ const SettingsModal = ({
     onResetThemeColor = null,
     onResetThemeGroup = null,
     onResetAllThemeColors = null,
-    onApplyThemePreset = null,
     activeThemePreset = '',
     onImportThemeOverrides = null,
     onThemePresetChange = null,
@@ -936,6 +941,9 @@ const SettingsModal = ({
         exportedAt: new Date().toISOString(),
         theme: normalizeThemeId(localStorage.getItem('snowball_theme') || theme, 'riff'),
         themeStyle: normalizeThemeStyle(localStorage.getItem(THEME_STYLE_KEY) || themeStyle),
+        // Structural loudness only. Importing an older backup without this
+        // field leaves the current intensity untouched.
+        visualIntensity: normalizeThemeIntensity(localStorage.getItem(THEME_INTENSITY_KEY) || visualIntensity),
         customColors: parseStoredJson(localStorage.getItem('snowball_custom_colors'), customColors || null),
         // Complete per-component color configuration, bucketed per theme.
         // Older Snowball builds ignore this field; older backups simply do not
@@ -967,6 +975,12 @@ const SettingsModal = ({
             const restoredStyle = normalizeThemeStyle(data.themeStyle);
             saveThemeStyle(restoredStyle);
             if (onThemeStyleChange) onThemeStyleChange(restoredStyle);
+        }
+
+        if (data.visualIntensity) {
+            const restoredIntensity = normalizeThemeIntensity(data.visualIntensity);
+            saveThemeIntensity(restoredIntensity);
+            if (onVisualIntensityChange) onVisualIntensityChange(restoredIntensity);
         }
 
         if (data.customColors) {
@@ -2163,8 +2177,8 @@ const SettingsModal = ({
                                     <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: 700 }}>Appearance</h3>
                                 </div>
                                 <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '0 0 1rem' }}>
-                                    Visual style, color palette, preset combos, and per-component HEX colors. Everything
-                                    previews live and is saved on this device.
+                                    Visual style, visual intensity, color palette, and per-component HEX colors.
+                                    Everything previews live and is saved on this device.
                                 </p>
 
                                 <ThemeCustomizer
@@ -2172,6 +2186,8 @@ const SettingsModal = ({
                                     setTheme={setTheme}
                                     themeStyle={themeStyle}
                                     onThemeStyleChange={onThemeStyleChange}
+                                    visualIntensity={visualIntensity}
+                                    onVisualIntensityChange={onVisualIntensityChange}
                                     customColors={customColors}
                                     setCustomColors={setCustomColors}
                                     themeTokens={themeTokens}
@@ -2180,8 +2196,6 @@ const SettingsModal = ({
                                     onResetThemeColor={onResetThemeColor}
                                     onResetThemeGroup={onResetThemeGroup}
                                     onResetAllThemeColors={onResetAllThemeColors}
-                                    onApplyThemePreset={onApplyThemePreset}
-                                    activeThemePreset={activeThemePreset}
                                     showDynamic={platform === 'android'}
                                 />
 
@@ -2206,8 +2220,8 @@ const SettingsModal = ({
                                     </button>
                                 </div>
                                 <p style={{ fontSize: '0.64rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-                                    Backups include every theme, every component color, custom tag colors, and the
-                                    Follow theme flag. Older backups still import safely.
+                                    Backups include every theme, the visual style and intensity, every component color,
+                                    custom tag colors, and the Follow theme flag. Older backups still import safely.
                                 </p>
                             </div>
                         </div>

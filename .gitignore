@@ -101,3 +101,8 @@ Decisions.md
 # Dependency vulnerability reports
 alerts.json
 prod-ca-2021.crt
+
+# Graphify
+graphify-out/
+.graphify/
+.graphifyignore
