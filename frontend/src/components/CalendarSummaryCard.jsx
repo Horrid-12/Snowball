@@ -183,7 +183,7 @@ const CalendarSummaryCard = ({ onOpenCalendar }) => {
                                     nearestDDay.diff === 0
                                         ? '1px solid rgba(239, 68, 68, 0.35)'
                                         : '1px solid rgba(var(--accent-rgb), 0.25)',
-                                color: nearestDDay.diff === 0 ? '#ef4444' : 'var(--accent-color)',
+                                color: nearestDDay.diff === 0 ? 'var(--status-overdue)' : 'var(--accent-color)',
                                 transition: 'all 0.15s ease'
                             }}
                         >
@@ -432,8 +432,8 @@ const CalendarSummaryCard = ({ onOpenCalendar }) => {
                                 padding: '0.45rem 0.65rem',
                                 borderRadius: 'calc(var(--radius) - 2px)',
                                 border: 'none',
-                                background: 'var(--accent-color)',
-                                color: '#ffffff',
+                                background: 'var(--btn-primary-bg)',
+                                color: 'var(--btn-primary-text)',
                                 fontSize: '0.8rem',
                                 fontWeight: '600',
                                 display: 'flex',

@@ -378,12 +378,12 @@ const HabitHeatmapPanel = ({ habitLogs, globalHabits, days, today, columns = 53,
 
 const StudyHeatmapPanel = ({ days, today, maxDuration, columns = 53, compact = false }) => {
     const getStudyColor = (duration) => {
-        if (duration <= 0) return 'rgba(128, 128, 128, 0.1)';
+        if (duration <= 0) return 'var(--heatmap-empty)';
         const ratio = maxDuration > 0 ? duration / maxDuration : 0;
-        if (ratio < 0.25) return 'color-mix(in srgb, var(--accent-color), transparent 82%)';
-        if (ratio < 0.5) return 'color-mix(in srgb, var(--accent-color), transparent 62%)';
-        if (ratio < 0.75) return 'color-mix(in srgb, var(--accent-color), transparent 38%)';
-        return 'var(--accent-color)';
+        if (ratio < 0.25) return 'var(--heatmap-1)';
+        if (ratio < 0.5) return 'var(--heatmap-2)';
+        if (ratio < 0.75) return 'var(--heatmap-3)';
+        return 'var(--heatmap-4)';
     };
 
     return (
@@ -833,11 +833,11 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
     }, [resetOffsetHours, studyNow, studyRefreshKey, today]);
 
     const getColor = (score) => {
-        if (score === 0) return 'rgba(128, 128, 128, 0.1)';
-        if (score < 20) return 'color-mix(in srgb, var(--accent-color), transparent 90%)';
-        if (score < 50) return 'color-mix(in srgb, var(--accent-color), transparent 50%)';
-        if (score < 100) return 'color-mix(in srgb, var(--accent-color), transparent 25%)';
-        return 'var(--accent-color)';
+        if (score === 0) return 'var(--heatmap-empty)';
+        if (score < 20) return 'var(--heatmap-1)';
+        if (score < 50) return 'var(--heatmap-2)';
+        if (score < 100) return 'var(--heatmap-3)';
+        return 'var(--heatmap-4)';
     };
 
     if (loading) return <ActivityHeatmapSkeleton />;

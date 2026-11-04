@@ -183,11 +183,11 @@ const GoogleEventRow = memo(({ ev, isImported, isSelected, onToggle, rruleLabel 
     }}>
         <div style={{
             width: '20px', height: '20px', borderRadius: '50%',
-            border: `2px solid ${isImported || isSelected ? 'var(--accent-color)' : 'var(--text-secondary)'}`,
+            border: `2px solid ${isImported || isSelected ? 'var(--calendar-highlight)' : 'var(--text-secondary)'}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backgroundColor: isImported || isSelected ? 'var(--accent-color)' : 'transparent'
+            backgroundColor: isImported || isSelected ? 'var(--calendar-highlight)' : 'transparent'
         }}>
-            {(isImported || isSelected) && <Check size={14} color="#fff" />}
+            {(isImported || isSelected) && <Check size={14} color="var(--on-calendar)" />}
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -217,11 +217,11 @@ const CalendarCell = memo(({ dateStr, day, currentMonth, isToday, isSelected, da
                 containerType: 'inline-size',
                 padding: '4px',
                 borderRadius: '0.5rem',
-                border: isSelected ? '2px solid var(--accent-color)' : '1px solid var(--border-color)',
+                border: isSelected ? '2px solid var(--calendar-highlight)' : '1px solid var(--border-color)',
                 backgroundColor: isSelected
-                    ? 'color-mix(in srgb, var(--accent-color) 12%, var(--bg-card))'
+                    ? 'color-mix(in srgb, var(--calendar-highlight) 12%, var(--bg-card))'
                     : (currentMonth ? 'var(--bg-primary)' : 'var(--bg-secondary)'),
-                boxShadow: isSelected ? '0 0 0 1px var(--accent-color)' : 'none',
+                boxShadow: isSelected ? '0 0 0 1px var(--calendar-highlight)' : 'none',
                 opacity: currentMonth ? 1 : 0.55,
                 cursor: 'pointer',
                 display: 'flex',
@@ -241,14 +241,14 @@ const CalendarCell = memo(({ dateStr, day, currentMonth, isToday, isSelected, da
                     justifyContent: 'center',
                     borderRadius: '50%',
                     backgroundColor: isSelected
-                        ? 'var(--accent-color)'
-                        : (isToday ? 'rgba(var(--accent-rgb), 0.2)' : 'transparent'),
+                        ? 'var(--calendar-highlight)'
+                        : (isToday ? 'color-mix(in srgb, var(--calendar-highlight) 24%, transparent)' : 'transparent'),
                     color: isSelected
-                        ? '#ffffff'
-                        : (isToday ? 'var(--accent-color)' : 'var(--text-primary)'),
+                        ? 'var(--on-calendar)'
+                        : (isToday ? 'var(--calendar-highlight)' : 'var(--text-primary)'),
                     fontSize: '0.85rem',
                     fontWeight: (isSelected || isToday) ? 700 : 500,
-                    border: (isToday && !isSelected) ? '1.5px solid var(--accent-color)' : 'none',
+                    border: (isToday && !isSelected) ? '1.5px solid var(--calendar-highlight)' : 'none',
                     boxSizing: 'border-box'
                 }}>
                     {day}
@@ -294,7 +294,7 @@ const CalendarCell = memo(({ dateStr, day, currentMonth, isToday, isSelected, da
                         return (
                             <span key={`dday-${i}`} style={{
                                 background: isDDay ? 'rgba(239, 68, 68, 0.15)' : 'rgba(var(--accent-rgb), 0.15)',
-                                color: isDDay ? '#ef4444' : 'var(--accent-color)',
+                                color: isDDay ? 'var(--status-overdue)' : 'var(--accent-color)',
                                 fontSize: '0.65rem',
                                 fontWeight: 800,
                                 borderRadius: '999px',
@@ -494,7 +494,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 flexShrink: 0, boxSizing: 'border-box', transition: 'all 0.15s ease'
                             }}>
-                                {formData.is_all_day && <Check size={13} color="#fff" strokeWidth={3} />}
+                                {formData.is_all_day && <Check size={13} color="var(--on-accent)" strokeWidth={3} />}
                             </div>
                             <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>All Day</span>
                         </div>
@@ -637,7 +637,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     flexShrink: 0, boxSizing: 'border-box', transition: 'all 0.15s ease'
                                 }}>
-                                    {formData.is_dday && <Check size={13} color="#fff" strokeWidth={3} />}
+                                    {formData.is_dday && <Check size={13} color="var(--on-accent)" strokeWidth={3} />}
                                 </div>
                                 <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>Enable D-Day Countdown</span>
                             </div>
@@ -656,7 +656,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                             <button type="button" onClick={onClose} style={{ flex: 1, padding: '0.75rem', borderRadius: '0.5rem', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', cursor: 'pointer' }}>
                                 {initialData?._import ? 'Skip' : 'Cancel'}
                             </button>
-                            <button type="submit" style={{ flex: 1, padding: '0.75rem', borderRadius: '0.5rem', backgroundColor: 'var(--accent-color)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                            <button type="submit" style={{ flex: 1, padding: '0.75rem', borderRadius: '0.5rem', backgroundColor: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)', border: 'none', cursor: 'pointer' }}>
                                 Save Event
                             </button>
                         </div>
@@ -1323,7 +1323,7 @@ const importSelectedGoogleEvents = useCallback(() => {
                         style={{
                             display: 'flex', alignItems: 'center', gap: '0.25rem',
                             padding: '0.5rem 0.75rem', borderRadius: '0.5rem',
-                            backgroundColor: 'var(--accent-color)', color: '#fff',
+                            backgroundColor: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)',
                             border: 'none', cursor: 'pointer', fontSize: '0.9rem'
                         }}
                     >
@@ -1373,7 +1373,7 @@ const importSelectedGoogleEvents = useCallback(() => {
                                             {ev.is_dday && ev.dday_target_date && (
                                                 <span style={{
                                                     background: getDDayText(ev.dday_target_date) === 'D-DAY!' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(var(--accent-rgb), 0.15)',
-                                                    color: getDDayText(ev.dday_target_date) === 'D-DAY!' ? '#ef4444' : 'var(--accent-color)',
+                                                    color: getDDayText(ev.dday_target_date) === 'D-DAY!' ? 'var(--status-overdue)' : 'var(--accent-color)',
                                                     fontSize: '0.7rem', fontWeight: 800, borderRadius: '999px', padding: '2px 8px'
                                                 }}>
                                                     {getDDayText(ev.dday_target_date)}
@@ -1400,7 +1400,7 @@ const importSelectedGoogleEvents = useCallback(() => {
                                         <button onClick={() => openEventForm(ev)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
                                             <Edit2 size={16} />
                                         </button>
-                                        <button onClick={() => deleteEvent(ev)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
+                                        <button onClick={() => deleteEvent(ev)} style={{ background: 'transparent', border: 'none', color: 'var(--status-overdue)', cursor: 'pointer' }}>
                                             <Trash2 size={16} />
                                         </button>
                                     </div>
@@ -1507,14 +1507,14 @@ const importSelectedGoogleEvents = useCallback(() => {
                         </div>
 
                         <div style={{ display: 'flex', gap: '1rem' }}>
-                            <button onClick={handleDisconnectGoogle} style={{ padding: '0.75rem', borderRadius: '0.5rem', backgroundColor: 'var(--bg-secondary)', color: '#ef4444', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <button onClick={handleDisconnectGoogle} style={{ padding: '0.75rem', borderRadius: '0.5rem', backgroundColor: 'var(--bg-secondary)', color: 'var(--status-overdue)', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <LogOut size={16} /> Disconnect
                             </button>
                             <div style={{ flex: 1 }}></div>
                             <button onClick={() => setShowGoogleSync(false)} style={{ padding: '0.75rem', borderRadius: '0.5rem', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', cursor: 'pointer' }}>
                                 Cancel
                             </button>
-                            <button onClick={importSelectedGoogleEvents} disabled={selectedGoogleEvents.size === 0 || syncing} style={{ padding: '0.75rem', borderRadius: '0.5rem', backgroundColor: 'var(--accent-color)', color: '#fff', border: 'none', cursor: selectedGoogleEvents.size === 0 ? 'not-allowed' : 'pointer', opacity: selectedGoogleEvents.size === 0 ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <button onClick={importSelectedGoogleEvents} disabled={selectedGoogleEvents.size === 0 || syncing} style={{ padding: '0.75rem', borderRadius: '0.5rem', backgroundColor: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)', border: 'none', cursor: selectedGoogleEvents.size === 0 ? 'not-allowed' : 'pointer', opacity: selectedGoogleEvents.size === 0 ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 {syncing ? <RefreshCcw size={16} className="spin" /> : <Cloud size={16} />}
                                 Import ({selectedGoogleEvents.size})
                             </button>
@@ -1683,7 +1683,7 @@ const importSelectedGoogleEvents = useCallback(() => {
                                 </button>
                                 <button
                                     onClick={confirmDeleteAll}
-                                    style={{ padding: '0.7rem 1rem', borderRadius: '0.5rem', backgroundColor: 'var(--bg-secondary)', color: '#ef4444', border: '1px solid var(--border-color)', cursor: 'pointer', textAlign: 'left' }}
+                                    style={{ padding: '0.7rem 1rem', borderRadius: '0.5rem', backgroundColor: 'var(--bg-secondary)', color: 'var(--status-overdue)', border: '1px solid var(--border-color)', cursor: 'pointer', textAlign: 'left' }}
                                 >
                                     <span style={{ fontWeight: 600 }}>Delete all occurrences</span>
                                     <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>

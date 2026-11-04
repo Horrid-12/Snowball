@@ -342,8 +342,8 @@ const SessionEditorModal = ({ sessions, dayStart, dayEnd, subjects, tagColors, o
                                             }}>Cancel</button>
                                             <button onClick={saveEdit} style={{
                                                 padding: '0.4rem 0.7rem', borderRadius: '0.45rem',
-                                                border: 'none', background: 'var(--accent-color)',
-                                                color: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600
+                                                border: 'none', background: 'var(--btn-primary-bg)',
+                                                color: 'var(--btn-primary-text)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600
                                             }}>Save</button>
                                         </div>
                                     </div>
@@ -373,7 +373,7 @@ const SessionEditorModal = ({ sessions, dayStart, dayEnd, subjects, tagColors, o
                                             </button>
                                             <button onClick={() => onDelete(session.id)} style={{
                                                 background: 'none', border: 'none', cursor: 'pointer',
-                                                color: '#ff4d4d', padding: '0.3rem'
+                                                color: 'var(--danger-color)', padding: '0.3rem'
                                             }} title="Delete session">
                                                 <Trash2 size={15} />
                                             </button>
@@ -457,8 +457,8 @@ const AddSessionForm = ({ subjects, onAdd, onCancel }) => {
                 }}>Cancel</button>
                 <button onClick={handleAdd} style={{
                     padding: '0.4rem 0.7rem', borderRadius: '0.45rem',
-                    border: 'none', background: 'var(--accent-color)',
-                    color: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600
+                    border: 'none', background: 'var(--btn-primary-bg)',
+                    color: 'var(--btn-primary-text)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600
                 }}>Add</button>
             </div>
         </div>
@@ -1228,8 +1228,8 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                             />
                             <button onClick={handleAddSubject} style={{
                                 padding: '0.45rem 0.6rem', borderRadius: '0.45rem',
-                                border: 'none', background: 'var(--accent-color)',
-                                color: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600
+                                border: 'none', background: 'var(--btn-primary-bg)',
+                                color: 'var(--btn-primary-text)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600
                             }}>Add</button>
                             <button onClick={() => setShowAddSubject(false)} style={{
                                 padding: '0.45rem 0.6rem', borderRadius: '0.45rem',
@@ -1344,7 +1344,7 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                                             {formatDuration(duration)}
                                         </span>
                                     </div>
-                                    <div style={{ height: '6px', borderRadius: '999px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                                    <div style={{ height: '6px', borderRadius: '999px', background: 'var(--heatmap-empty)', overflow: 'hidden' }}>
                                         <div style={{ width, height: '100%', borderRadius: '999px', background: color }} />
                                     </div>
                                 </div>

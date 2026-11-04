@@ -1,24 +1,76 @@
 :root {
+    /* ---- Global ---- */
     --bg-primary: #f8fafc;
     --bg-secondary: #f1f5f9;
     --bg-card: #ffffff;
+    --bg-elevated: #ffffff;
+    --task-card-bg: #ffffff;
     --notes-bg: #f8fafc;
+    --scratchpad-bg: #f8fafc;
+    --modal-bg: #ffffff;
+    --popover-bg: #ffffff;
     --text-primary: #0f172a;
     --text-secondary: #64748b;
+    --border-color: #e2e8f0;
     --accent-color: #3b82f6;
     --accent-rgb: 59, 130, 246;
     --accent-hover: #2563eb;
-    --border-color: #e2e8f0;
+    --accent-alt: #8b5cf6;
+    --accent-warm: #f97316;
+
+    /* ---- Interactive ---- */
+    --btn-primary-bg: #3b82f6;
+    --btn-primary-text: #ffffff;
+    --btn-secondary-bg: #f1f5f9;
+    --btn-secondary-text: #0f172a;
+    --nav-active-bg: #dbeafe;
+    --nav-active-text: #1d4ed8;
+    --hover-bg: #eef2f7;
+    --input-bg: #ffffff;
+    --input-border: #e2e8f0;
+    --focus-ring: #3b82f6;
+
+    /* ---- Productivity ---- */
+    --timer-bg: #ffffff;
+    --timer-progress: #3b82f6;
+    --habit-indicator: #10b981;
+    --calendar-highlight: #3b82f6;
+    --heatmap-empty: #e9edf3;
+    --heatmap-1: #c9d9f8;
+    --heatmap-2: #9cbcf4;
+    --heatmap-3: #6b9cef;
+    --heatmap-4: #3b82f6;
+    --status-active: #3b82f6;
+    --status-done: #10b981;
+    --status-overdue: #ef4444;
+    --chart-primary: #3b82f6;
+    --chart-secondary: #8b5cf6;
+    --on-accent: #ffffff;
+    --on-calendar: #ffffff;
+    --on-habit: #ffffff;
+
+    /* ---- Status aliases ---- */
     --success-color: #10b981;
     --danger-color: #ef4444;
+    --warning-color: #f59e0b;
+
+    /* ---- Structure ---- */
+    --outline-width: 2px;
+    --outline-color: var(--border-color);
+    --shadow-offset: 3px;
+    --shadow-color: color-mix(in srgb, var(--text-primary) 14%, transparent);
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
     --radius: 1.5rem;
     --radius-lg: 2rem;
+    --card-radius: 1.5rem;
     --card-padding: 1.5rem;
+    --font-display: 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --skeleton-base: color-mix(in srgb, var(--text-primary) 7%, var(--bg-secondary));
     --skeleton-highlight: color-mix(in srgb, var(--text-primary) 15%, var(--bg-secondary));
-    color-scheme: dark;
+    color-scheme: light;
 }
+
 
 html {
     margin: 0;
@@ -45,32 +97,157 @@ body,
     --bg-primary: #0f172a;
     --bg-secondary: #1e293b;
     --bg-card: #1e293b;
+    --bg-elevated: #243449;
+    --task-card-bg: #1e293b;
     --notes-bg: #0f172a;
+    --scratchpad-bg: #0f172a;
+    --modal-bg: #1e293b;
+    --popover-bg: #243449;
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
+    --border-color: #334155;
     --accent-color: #3b82f6;
     --accent-rgb: 59, 130, 246;
     --accent-hover: #60a5fa;
-    --border-color: #334155;
+    --accent-alt: #a78bfa;
+    --accent-warm: #fb923c;
+    --btn-primary-bg: #3b82f6;
+    --btn-primary-text: #ffffff;
+    --btn-secondary-bg: #334155;
+    --btn-secondary-text: #f8fafc;
+    --nav-active-bg: #1e3a8a;
+    --nav-active-text: #f8fafc;
+    --hover-bg: #26364d;
+    --input-bg: #0f172a;
+    --input-border: #334155;
+    --focus-ring: #60a5fa;
+    --timer-bg: #1e293b;
+    --timer-progress: #60a5fa;
+    --habit-indicator: #10b981;
+    --calendar-highlight: #60a5fa;
+    --heatmap-empty: #1c2b3f;
+    --heatmap-1: #1e3a5f;
+    --heatmap-2: #26548c;
+    --heatmap-3: #2f6fb8;
+    --heatmap-4: #60a5fa;
+    --status-active: #60a5fa;
+    --status-done: #10b981;
+    --status-overdue: #ef4444;
+    --chart-primary: #60a5fa;
+    --chart-secondary: #a78bfa;
+    --outline-color: #334155;
     --skeleton-base: color-mix(in srgb, var(--text-primary) 8%, var(--bg-secondary));
     --skeleton-highlight: color-mix(in srgb, var(--text-primary) 18%, var(--bg-secondary));
+    color-scheme: dark;
 }
 
 
-.theme-midnight {
-    /* True AMOLED Black */
-    --bg-primary: #000000;
-    --bg-secondary: #000000;
-    --bg-card: #0a0a0a;
-    --notes-bg: #050505;
-    --text-primary: #f8fafc;
-    --text-secondary: #94a3b8;
+
+.theme-shack {
+    /* Shack: charcoal-gray dark theme. Neutral graphite canvas with clear
+       card/elevated steps so surfaces read like the other themes. */
+    --bg-primary: #1c1c1e;
+    --bg-secondary: #242426;
+    --bg-card: #2c2c2f;
+    --bg-elevated: #36363a;
+    --task-card-bg: #2c2c2f;
+    --notes-bg: #18181a;
+    --scratchpad-bg: #18181a;
+    --modal-bg: #2c2c2f;
+    --popover-bg: #36363a;
+    --text-primary: #f2f2f4;
+    --text-secondary: #a8a8ae;
     --accent-color: #6366f1;
     --accent-rgb: 99, 102, 241;
-    --border-color: #1e1e1e;
-    --skeleton-base: #18181b;
-    --skeleton-highlight: #27272a;
+    --accent-hover: #818cf8;
+    --accent-alt: #a78bfa;
+    --accent-warm: #fb923c;
+    --border-color: #3f3f45;
+    --btn-primary-bg: #6366f1;
+    --btn-primary-text: #ffffff;
+    --btn-secondary-bg: #36363a;
+    --btn-secondary-text: #f2f2f4;
+    --nav-active-bg: #3a3a5c;
+    --nav-active-text: #c7d2fe;
+    --hover-bg: #333337;
+    --input-bg: #18181a;
+    --input-border: #3f3f45;
+    --focus-ring: #818cf8;
+    --timer-bg: #2c2c2f;
+    --timer-progress: #818cf8;
+    --habit-indicator: #10b981;
+    --calendar-highlight: #818cf8;
+    --heatmap-empty: #2a2a2e;
+    --heatmap-1: #34344a;
+    --heatmap-2: #44446a;
+    --heatmap-3: #6363a8;
+    --heatmap-4: #818cf8;
+    --status-active: #818cf8;
+    --status-done: #10b981;
+    --status-overdue: #ef4444;
+    --chart-primary: #818cf8;
+    --chart-secondary: #a78bfa;
+    --outline-color: #3f3f45;
+    --skeleton-base: #2a2a2e;
+    --skeleton-highlight: #3a3a3f;
+    color-scheme: dark;
 }
+
+/* Paper palette: warm off-white canvas with electric purple, acid lime and
+   coral. Pair it with either visual style in Settings > Themes & Tags. */
+.theme-riff {
+    --bg-primary: #f7f5f0;
+    --bg-secondary: #efebe1;
+    --bg-card: #ffffff;
+    --bg-elevated: #ffffff;
+    --task-card-bg: #ffffff;
+    --notes-bg: #ffffff;
+    --scratchpad-bg: #f7f5f0;
+    --modal-bg: #ffffff;
+    --popover-bg: #ffffff;
+    --text-primary: #111111;
+    --text-secondary: #4a453d;
+    --border-color: #111111;
+    --accent-color: #8b5cf6;
+    --accent-rgb: 139, 92, 246;
+    --accent-hover: #7c3aed;
+    --accent-alt: #e5ff64;
+    --accent-warm: #ff795c;
+    --btn-primary-bg: #8b5cf6;
+    --btn-primary-text: #ffffff;
+    --btn-secondary-bg: #e5ff64;
+    --btn-secondary-text: #111111;
+    --nav-active-bg: #e5ff64;
+    --nav-active-text: #111111;
+    --hover-bg: #efe9dc;
+    --input-bg: #ffffff;
+    --input-border: #111111;
+    --focus-ring: #8b5cf6;
+    --timer-bg: #ffffff;
+    --timer-progress: #8b5cf6;
+    --habit-indicator: #e5ff64;
+    --calendar-highlight: #ff795c;
+    --heatmap-empty: #e7e1d5;
+    --heatmap-1: #ddd0f7;
+    --heatmap-2: #b79df3;
+    --heatmap-3: #9d74f0;
+    --heatmap-4: #8b5cf6;
+    --status-active: #8b5cf6;
+    --status-done: #2f9e44;
+    --status-overdue: #e5484d;
+    --chart-primary: #8b5cf6;
+    --chart-secondary: #ff795c;
+    --on-accent: #ffffff;
+    --on-calendar: #111111;
+    --on-habit: #111111;
+    --success-color: #2f9e44;
+    --danger-color: #e5484d;
+    --outline-color: #111111;
+    --skeleton-base: #e7e1d5;
+    --skeleton-highlight: #f3efe6;
+    color-scheme: light;
+}
+
 
 
 
@@ -78,25 +255,83 @@ body,
     --bg-primary: var(--custom-bg);
     --bg-secondary: var(--custom-secondary);
     --bg-card: var(--custom-card);
+    --bg-elevated: var(--custom-card);
+    --task-card-bg: var(--custom-card);
     --notes-bg: var(--custom-notes);
+    --scratchpad-bg: var(--custom-notes);
+    --modal-bg: var(--custom-card);
+    --popover-bg: var(--custom-card);
     --text-primary: var(--custom-text);
     --text-secondary: var(--custom-text-sec);
     --accent-color: var(--custom-accent);
     --accent-rgb: var(--custom-accent-rgb);
+    --accent-hover: var(--custom-accent);
     --border-color: var(--custom-border);
+    --outline-color: var(--custom-border);
+    --btn-primary-bg: var(--custom-accent);
+    --nav-active-bg: var(--custom-accent);
+    --timer-bg: var(--custom-card);
+    --timer-progress: var(--custom-accent);
+    --calendar-highlight: var(--custom-accent);
+    --input-bg: var(--custom-bg);
+    --input-border: var(--custom-border);
+    --focus-ring: var(--custom-accent);
 }
 
 .theme-dynamic {
     --bg-primary: var(--m3-background);
     --bg-secondary: var(--m3-surfaceVariant);
     --bg-card: var(--m3-surface);
+    --bg-elevated: var(--m3-surfaceVariant);
+    --task-card-bg: var(--m3-surface);
     --notes-bg: color-mix(in srgb, var(--m3-surfaceVariant) 65%, var(--m3-surface));
+    --scratchpad-bg: color-mix(in srgb, var(--m3-surfaceVariant) 65%, var(--m3-surface));
+    --modal-bg: var(--m3-surface);
+    --popover-bg: var(--m3-surfaceVariant);
     --text-primary: var(--m3-onBackground);
     --text-secondary: var(--m3-onSurfaceVariant);
     --accent-color: var(--m3-primary);
     --accent-rgb: var(--m3-primary-rgb);
+    --accent-hover: var(--m3-primary);
     --border-color: var(--m3-outline);
+    --outline-color: var(--m3-outline);
+    --btn-primary-bg: var(--m3-primary);
+    --nav-active-bg: var(--m3-primary);
+    --timer-bg: var(--m3-surface);
+    --timer-progress: var(--m3-primary);
+    --calendar-highlight: var(--m3-primary);
+    --input-bg: var(--m3-background);
+    --input-border: var(--m3-outline);
+    --focus-ring: var(--m3-primary);
 }
+
+/* ------------------------------------------------------------------
+   VISUAL STYLE LAYER
+   Visual style is independent of the color palette: "Classic" keeps the
+   calm hairline look, "Riff" turns up the outlines, offset shadows, corner
+   radius, paper texture, and stickers. Both classes are applied to <html>
+   and <body> alongside the theme-<palette> class.
+   ------------------------------------------------------------------ */
+.style-classic {
+    --outline-width: 2px;
+    --shadow-offset: 3px;
+    --shadow-color: color-mix(in srgb, var(--text-primary) 14%, transparent);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --radius: 1.5rem;
+    --radius-lg: 2rem;
+    --card-radius: 1.5rem;
+}
+
+.style-riff {
+    --outline-width: 3px;
+    --shadow-offset: 6px;
+    --shadow-color: var(--outline-color);
+    --shadow-lg: 8px 8px 0 var(--shadow-color);
+    --radius: 1.75rem;
+    --radius-lg: 2.25rem;
+    --card-radius: 1.75rem;
+}
+
 
 * {
     box-sizing: border-box;
@@ -106,7 +341,7 @@ body,
 
 
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: var(--font-body);
     background-color: var(--bg-primary);
     color: var(--text-primary);
     transition: background-color 0.3s ease, color 0.3s ease;
@@ -120,8 +355,9 @@ h3,
 h4,
 h5,
 h6 {
-    font-weight: 600;
-    letter-spacing: -0.025em;
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.03em;
 }
 
 button {
@@ -133,22 +369,25 @@ button {
 }
 
 input,
-textarea {
+textarea,
+select {
     font-family: inherit;
-    border: 1px solid var(--border-color);
-    background-color: var(--bg-primary);
+    border: var(--outline-width, 2px) solid var(--input-border);
+    background-color: var(--input-bg);
     color: var(--text-primary);
-    border-radius: 0.5rem;
+    border-radius: 0.75rem;
     padding: 0.5rem 0.75rem;
     outline: none;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 input:focus,
-textarea:focus {
-    border-color: var(--accent-color);
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+textarea:focus,
+select:focus {
+    border-color: var(--focus-ring);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 26%, transparent);
 }
+
 
 
 /* Aesthetic Floating Scrollbars */
@@ -214,6 +453,7 @@ body {
     :root {
         --radius: 1rem;
         --radius-lg: 1.25rem;
+        --card-radius: 1rem;
         --card-padding: 0.75rem;
     }
 
@@ -377,15 +617,15 @@ body {
     left: 0.5rem;
     right: 0.5rem;
     width: auto;
-    background: color-mix(in srgb, var(--bg-card) 88%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border-color) 82%, transparent);
+    background: var(--bg-card);
+    border: var(--outline-width) solid var(--outline-color);
     border-radius: calc(var(--radius-lg) + 0.25rem);
     justify-content: space-between;
     align-items: center;
     padding: 0.45rem;
     padding-bottom: calc(0.45rem + env(safe-area-inset-bottom, 0px));
     z-index: 1000;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow-color);
     box-sizing: border-box;
     overflow: hidden;
 }
@@ -403,10 +643,10 @@ body {
     justify-content: center;
     gap: 0.2rem;
     background: none;
-    border: none;
+    border: 2px solid transparent;
     border-radius: 1rem;
     font-size: 0.68rem;
-    font-weight: 600;
+    font-weight: 700;
     padding: 0.45rem 0.2rem 0.3rem;
     min-width: 0;
     flex: 1;
@@ -416,9 +656,11 @@ body {
 }
 
 .bottom-nav button.active {
-    color: var(--accent-color);
-    background: color-mix(in srgb, var(--accent-color) 14%, transparent);
+    color: var(--nav-active-text);
+    background: var(--nav-active-bg);
+    border-color: var(--outline-color);
 }
+
 
 .bottom-nav button span {
     opacity: 0.95;
@@ -615,3 +857,405 @@ input[type="checkbox"].circle-checkbox:checked {
     }
 }
 
+
+/* ==================================================================
+   RIFF-INSPIRED VISUAL SYSTEM
+   Structural layer shared by every theme. Colors always come from the
+   theme tokens above; the "loudness" (outline weight, shadow offset,
+   texture) is driven by per-theme structural variables so the Riff
+   preset can be bold without forcing every theme to be neon.
+   ================================================================== */
+
+.app-container {
+    position: relative;
+    z-index: 1;
+}
+
+/* Paper texture whenever the Riff visual style is active, for any palette. */
+body.style-riff {
+    background-image:
+        radial-gradient(color-mix(in srgb, var(--text-primary) 12%, transparent) 1px, transparent 1px);
+    background-size: 22px 22px;
+    background-attachment: fixed;
+}
+
+/* ---- Cards ------------------------------------------------------- */
+.card-container {
+    border-width: var(--outline-width) !important;
+    border-style: solid !important;
+    border-radius: var(--card-radius) !important;
+    box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow-color) !important;
+    background-clip: padding-box;
+    transition: box-shadow 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.task-card.card-container {
+    background-color: var(--task-card-bg) !important;
+}
+
+.timer-card.card-container {
+    background-color: var(--timer-bg) !important;
+}
+
+.card-container h1,
+.card-container h2,
+.card-container h3,
+.card-container h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .card-container:hover {
+        box-shadow: calc(var(--shadow-offset) + 2px) calc(var(--shadow-offset) + 2px) 0 var(--shadow-color) !important;
+    }
+}
+
+/* ---- Page header ------------------------------------------------- */
+.page-header {
+    background: var(--bg-card);
+    border: var(--outline-width) solid var(--outline-color);
+    border-radius: var(--card-radius);
+    padding: 0.85rem 1.25rem !important;
+    box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow-color);
+}
+
+.page-header h1 {
+    font-family: var(--font-display);
+    font-weight: 800 !important;
+    letter-spacing: -0.04em !important;
+}
+
+@media (max-width: 768px) {
+    .page-header {
+        background: transparent;
+        border-color: transparent;
+        box-shadow: none;
+        padding: 0.25rem 0 !important;
+    }
+}
+
+/* ---- Header action buttons --------------------------------------- */
+.header-icon-btn,
+.settings-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 999px !important;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card);
+    border: var(--outline-width) solid var(--outline-color) !important;
+    box-shadow: 2px 2px 0 var(--shadow-color);
+    color: var(--text-primary);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.header-icon-btn {
+    display: inline-flex;
+}
+
+.header-icon-btn:hover,
+.settings-btn:hover {
+    background: var(--hover-bg);
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0 var(--shadow-color);
+}
+
+.header-icon-btn:active,
+.settings-btn:active {
+    transform: translate(1px, 1px);
+    box-shadow: 1px 1px 0 var(--shadow-color);
+}
+
+@media (max-width: 768px) {
+    .header-icon-btn {
+        width: 36px;
+        height: 36px;
+        box-shadow: none;
+    }
+}
+
+/* ---- Settings shell --------------------------------------------- */
+/* No backdrop-filter here on purpose. A full-screen blur over the Riff
+   style's fixed background texture forces the compositor to re-blur the
+   whole viewport on every repaint, which makes the settings menu feel
+   laggy on WebView2/Tauri and mid-range Android. A slightly stronger
+   scrim gives the same separation for a fraction of the cost. */
+.settings-overlay {
+    backdrop-filter: none;
+}
+
+.settings-dialog {
+    background: var(--modal-bg) !important;
+    border: var(--outline-width) solid var(--outline-color) !important;
+    border-radius: calc(var(--card-radius) + 0.25rem) !important;
+    box-shadow: calc(var(--shadow-offset) + 4px) calc(var(--shadow-offset) + 4px) 0 var(--shadow-color) !important;
+}
+
+.settings-dialog-header {
+    border-bottom: var(--outline-width) solid var(--outline-color) !important;
+}
+
+.settings-sidebar {
+    border-right: var(--outline-width) solid var(--outline-color);
+    background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
+}
+
+.settings-sidebar button {
+    border-width: var(--outline-width) !important;
+    border-style: solid !important;
+}
+
+/* ---- Reusable interactive primitives ----------------------------- */
+.riff-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    min-height: 38px;
+    padding: 0.55rem 0.95rem;
+    border-radius: 999px;
+    border: var(--outline-width) solid var(--outline-color);
+    background: var(--btn-secondary-bg);
+    color: var(--btn-secondary-text);
+    font-weight: 700;
+    font-size: 0.82rem;
+    box-shadow: 2px 2px 0 var(--shadow-color);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.riff-btn:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0 var(--shadow-color);
+    background: var(--hover-bg);
+}
+
+.riff-btn:active {
+    transform: translate(1px, 1px);
+    box-shadow: 0 0 0 var(--shadow-color);
+}
+
+.riff-btn-primary {
+    background: var(--btn-primary-bg);
+    color: var(--btn-primary-text);
+}
+
+.riff-btn-primary:hover {
+    background: var(--accent-hover);
+}
+
+.riff-btn-lime {
+    background: var(--accent-alt);
+    color: var(--text-primary);
+}
+
+.riff-btn-ghost {
+    background: transparent;
+    color: var(--text-primary);
+    box-shadow: none;
+}
+
+.riff-btn-ghost:hover {
+    background: var(--hover-bg);
+    box-shadow: none;
+    transform: none;
+}
+
+.riff-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.riff-inset {
+    border-radius: var(--radius);
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.riff-divider {
+    height: 0;
+    border-top: var(--outline-width) solid var(--border-color);
+    opacity: 0.7;
+}
+
+.riff-input {
+    background: var(--input-bg);
+    border: var(--outline-width) solid var(--input-border);
+    border-radius: 0.75rem;
+    color: var(--text-primary);
+    padding: 0.55rem 0.7rem;
+    font-size: 0.82rem;
+}
+
+.riff-input:focus {
+    border-color: var(--focus-ring);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 26%, transparent);
+}
+
+/* ---- Decorative doodle layer ------------------------------------ */
+/* Playful accents belong to the Riff VISUAL STYLE, so every palette gets
+   them (Dark, Shack, Paper, Custom, Dynamic). The layer is always mounted
+   but stays hidden unless .style-riff is active. */
+.doodle-layer {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.style-riff .doodle-layer {
+    display: block;
+}
+
+.doodle-layer svg {
+    position: absolute;
+    opacity: 0.9;
+}
+
+@media (max-width: 1100px) {
+    .doodle-layer {
+        display: none !important;
+    }
+}
+
+/* ---- Theme customizer ------------------------------------------- */
+.theme-preview-card {
+    border: var(--outline-width) solid var(--outline-color);
+    border-radius: var(--card-radius);
+    box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow-color);
+    overflow: hidden;
+}
+
+.theme-token-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.65rem;
+    align-items: center;
+    padding: 0.6rem 0.7rem;
+    border-radius: 0.9rem;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+}
+
+.theme-token-row:hover {
+    border-color: var(--accent-color);
+}
+
+.theme-token-swatch {
+    width: 30px;
+    height: 30px;
+    border-radius: 0.55rem;
+    border: 2px solid var(--border-color);
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.theme-token-hex {
+    width: 92px;
+    padding: 0.35rem 0.45rem;
+    border-radius: 0.55rem;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.72rem;
+    text-transform: lowercase;
+}
+
+.theme-token-reset {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+    background: transparent;
+}
+
+.theme-token-reset:hover {
+    color: var(--text-primary);
+    background: var(--hover-bg);
+    border-color: var(--border-color);
+}
+
+.theme-token-reset:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.theme-group-chip {
+    padding: 0.4rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.theme-group-chip[data-active='true'] {
+    background: var(--nav-active-bg);
+    color: var(--nav-active-text);
+    border-color: var(--outline-color);
+}
+
+.theme-group-chip:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.theme-preset-card {
+    text-align: left;
+    padding: 0.85rem;
+    border-radius: var(--radius);
+    border: var(--outline-width) solid var(--border-color);
+    background: var(--bg-card);
+    box-shadow: 2px 2px 0 var(--shadow-color);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.theme-preset-card:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0 var(--shadow-color);
+}
+
+.theme-preset-card[data-active='true'] {
+    border-color: var(--accent-color);
+}
+
+/* ---- Keyboard accessibility ------------------------------------- */
+:where(button, [role='button'], a, input, textarea, select):focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .card-container,
+    .riff-btn,
+    .header-icon-btn,
+    .theme-preset-card {
+        transition: none !important;
+    }
+
+    .card-container:hover,
+    .riff-btn:hover,
+    .header-icon-btn:hover,
+    .settings-btn:hover,
+    .theme-preset-card:hover {
+        transform: none !important;
+    }
+}

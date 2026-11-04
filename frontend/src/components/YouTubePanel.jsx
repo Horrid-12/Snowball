@@ -681,8 +681,8 @@ function YouTubePanel({ backgroundPlayback = false, onBackgroundPlaybackChange =
                         type="submit"
                         disabled={ytSearching}
                         style={{
-                            background: 'var(--accent-color)',
-                            color: 'white',
+                            background: 'var(--btn-primary-bg)',
+                            color: 'var(--btn-primary-text)',
                             borderRadius: '0.5rem',
                             width: '32px',
                             display: 'flex',
@@ -768,7 +768,7 @@ function YouTubePanel({ backgroundPlayback = false, onBackgroundPlaybackChange =
                     </div>
 
                     {playlistImportState.error && (
-                        <div style={{ fontSize: '0.68rem', color: '#ef4444' }}>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--danger-color)' }}>
                             {playlistImportState.error}
                         </div>
                     )}
@@ -964,10 +964,10 @@ function YouTubePanel({ backgroundPlayback = false, onBackgroundPlaybackChange =
                     {playerError && (
                         <div style={{
                             ...sectionCardStyle,
-                            color: '#ef4444',
+                            color: 'var(--danger-color)',
                             fontSize: '0.72rem',
                             textAlign: 'left',
-                            borderColor: 'rgba(239,68,68,0.25)'
+                            borderColor: 'color-mix(in srgb, var(--danger-color) 25%, transparent)'
                         }}>
                             {playerError}
                         </div>

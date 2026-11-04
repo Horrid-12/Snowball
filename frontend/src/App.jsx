@@ -1,31 +1,65 @@
-import React, { useState, useEffect, useCallback, useRef, Suspense, useMemo } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './index.css';
 
+import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+    BarChart3,
+    Bell,
+    Calculator as CalculatorIcon,
+    CalendarDays,
+    ChevronDown,
+    ChevronUp,
+    History as HistoryIcon,
+    Plus,
+    RefreshCcw,
+    Settings as SettingsIcon,
+    Users,
+    Wifi,
+    WifiOff,
+    X
+} from 'lucide-react';
+import appPackage from '../package.json';
 import AuthModal from './components/AuthModal.jsx';
 import BottomNav from './components/BottomNav.jsx';
+import { DoodleLayer, SnowballMark } from './components/Doodles.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import LoadingFallback, { TaskBoardSkeleton } from './components/Skeletons.jsx';
-import { Settings as SettingsIcon, History as HistoryIcon, Calculator as CalculatorIcon, Plus, BarChart3, ChevronDown, ChevronUp, Users, CalendarDays, Bell, X } from 'lucide-react';
-import appPackage from '../package.json';
+import { API_URL, isTauriDesktop } from './config.js';
 import { useAppContext } from './context/AppContext.jsx';
 import { useOnline } from './context/OnlineContext.jsx';
-import { API_URL, isTauriDesktop } from './config.js';
-import { generateMonetPalette, applyMonetTheme } from './utils/MonetEngine.js';
-import { invalidateMonetTagPaletteCache, saveTagColors } from './utils/tagColors.js';
 import { db, queueMutation } from './db/db';
-import { notificationService } from './services/NotificationService.js';
-import { googleCalendarWatch } from './services/GoogleCalendarWatchService.js';
-import { syncService } from './services/SyncService.js';
 import { desktopUpdateService } from './services/DesktopUpdateService.js';
 import { discordPresenceService } from './services/DiscordPresenceService.js';
-import { apiFetch, hasPersistedSession, setUserData, clearSession, initAuthFromStorage } from './utils/apiClient.js';
-import { getStoredCardPreferences, saveCardPreferences, isCardEffectivelyVisible } from './utils/dashboardCards.js';
-import { getCachedSpotifyStatus, setCachedSpotifyStatus, checkSpotifyStatus, notifySpotifyStatusChanged } from './utils/spotifyStatus.js';
+import { googleCalendarWatch } from './services/GoogleCalendarWatchService.js';
+import { notificationService } from './services/NotificationService.js';
+import { syncService } from './services/SyncService.js';
+import { apiFetch, clearSession, hasPersistedSession, initAuthFromStorage, setUserData } from './utils/apiClient.js';
+import { getStoredCardPreferences, isCardEffectivelyVisible, saveCardPreferences } from './utils/dashboardCards.js';
+import { applyMonetTheme, generateMonetPalette } from './utils/MonetEngine.js';
 import { calculateProductivityScore, filterTasksForDate, formatLocalDate } from './utils/productivityScore.js';
-import { registerPlugin, Capacitor } from '@capacitor/core';
-import { App as CapacitorApp } from '@capacitor/app';
-import { Wifi, WifiOff, RefreshCcw } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import {
+    checkSpotifyStatus,
+    getCachedSpotifyStatus,
+    notifySpotifyStatusChanged,
+    setCachedSpotifyStatus
+} from './utils/spotifyStatus.js';
+import { invalidateMonetTagPaletteCache, saveTagColors } from './utils/tagColors.js';
+import {
+    applyThemeTokens,
+    getPresetById,
+    getThemeOverridesFor,
+    loadThemeOverrides,
+    loadThemeStyle,
+    normalizeThemeId,
+    resolveThemeTokens,
+    saveThemeOverrides,
+    saveThemeStyle,
+    withThemeGroupReset,
+    withThemeOverride,
+    withThemeReset
+} from './utils/themeTokens.js';
 
 // Lazy-loaded components (split by tab/modal to reduce initial bundle)
 const TaskBoard = React.lazy(() => import('./components/TaskBoard.jsx'));
@@ -47,11 +81,18 @@ const DynamicColorPlugin = registerPlugin('DynamicColor');
 
 const GITHUB_LATEST_RELEASE_URL = 'https://api.github.com/repos/Horrid-12/Snowball/releases/latest';
 
-const normalizeVersion = (value = '') => String(value || '').trim().replace(/^v/i, '');
+const normalizeVersion = (value = '') =>
+    String(value || '')
+        .trim()
+        .replace(/^v/i, '');
 
 const compareVersions = (left = '', right = '') => {
-    const leftParts = normalizeVersion(left).split('.').map((part) => Number.parseInt(part, 10) || 0);
-    const rightParts = normalizeVersion(right).split('.').map((part) => Number.parseInt(part, 10) || 0);
+    const leftParts = normalizeVersion(left)
+        .split('.')
+        .map((part) => Number.parseInt(part, 10) || 0);
+    const rightParts = normalizeVersion(right)
+        .split('.')
+        .map((part) => Number.parseInt(part, 10) || 0);
     const length = Math.max(leftParts.length, rightParts.length);
     for (let index = 0; index < length; index += 1) {
         const delta = (leftParts[index] || 0) - (rightParts[index] || 0);
@@ -90,13 +131,13 @@ const DEFAULT_CUSTOM_COLORS = {
 };
 
 const loadingMessages = [
-    "Packing the snow...",
-    "Starting the avalanche...",
-    "Sharpening the axe...",
-    "Warming up the engines...",
-    "Brewing digital coffee...",
-    "Reticulating splines...",
-    "Finding the perfect Spotify playlist...",
+    'Packing the snow...',
+    'Starting the avalanche...',
+    'Sharpening the axe...',
+    'Warming up the engines...',
+    'Brewing digital coffee...',
+    'Reticulating splines...',
+    'Finding the perfect Spotify playlist...'
 ];
 
 function App() {
@@ -111,22 +152,39 @@ function App() {
 
     const [theme, setTheme] = useState(() => {
         const stored = localStorage.getItem('snowball_theme');
-        if (stored) return stored;
+        if (stored) return normalizeThemeId(stored);
         if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
             return 'dynamic';
         }
-        return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light';
+        return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'riff';
     });
 
     const [customColors, setCustomColors] = useState(() => {
         try {
             const saved = localStorage.getItem('snowball_custom_colors');
-            return saved ? {
-                ...DEFAULT_CUSTOM_COLORS,
-                ...JSON.parse(saved)
-            } : DEFAULT_CUSTOM_COLORS;
+            return saved
+                ? {
+                      ...DEFAULT_CUSTOM_COLORS,
+                      ...JSON.parse(saved)
+                  }
+                : DEFAULT_CUSTOM_COLORS;
         } catch (_e) {
             return DEFAULT_CUSTOM_COLORS;
+        }
+    });
+
+    // Visual style is independent of the color palette (Classic vs Riff).
+    // Kept in its own key so switching palettes never changes structure.
+    const [themeStyle, setThemeStyle] = useState(() => loadThemeStyle());
+
+    // Per-component color overrides, bucketed by theme so switching themes never
+    // destroys a user's custom palette (see utils/themeTokens.js).
+    const [themeOverrides, setThemeOverrides] = useState(() => loadThemeOverrides());
+    const [activeThemePreset, setActiveThemePreset] = useState(() => {
+        try {
+            return localStorage.getItem('snowball_theme_preset') || '';
+        } catch {
+            return '';
         }
     });
 
@@ -243,7 +301,10 @@ function App() {
     const todaysTasks = useMemo(() => filterTasksForDate(tasks), [tasks]);
     const { displayScore } = useMemo(() => calculateProductivityScore(tasks, globalHabits), [tasks, globalHabits]);
     const remainingTasks = useMemo(() => tasks.filter(isTaskIncomplete).length, [tasks, isTaskIncomplete]);
-    const todaysRemainingTasks = useMemo(() => todaysTasks.filter(isTaskIncomplete).length, [todaysTasks, isTaskIncomplete]);
+    const todaysRemainingTasks = useMemo(
+        () => todaysTasks.filter(isTaskIncomplete).length,
+        [todaysTasks, isTaskIncomplete]
+    );
 
     useEffect(() => {
         const handleNotesVisibility = (event) => {
@@ -267,12 +328,14 @@ function App() {
         }
 
         if (isTauriDesktop && !isNativeAndroid) {
-            discordPresenceService.update({
-                details,
-                state,
-            }).catch((error) => {
-                console.warn('Failed to update Discord Rich Presence', error);
-            });
+            discordPresenceService
+                .update({
+                    details,
+                    state
+                })
+                .catch((error) => {
+                    console.warn('Failed to update Discord Rich Presence', error);
+                });
         }
 
         if (!user?.id || !token || !isOnline) {
@@ -304,7 +367,20 @@ function App() {
             controller.abort();
             window.clearTimeout(timer);
         };
-    }, [activePresenceNoteTitle, displayScore, globalHabits, isNativeAndroid, isNotesEditorOpen, isOnline, isWindowMaximized, remainingTasks, tasks, todaysRemainingTasks, token, user?.id]);
+    }, [
+        activePresenceNoteTitle,
+        displayScore,
+        globalHabits,
+        isNativeAndroid,
+        isNotesEditorOpen,
+        isOnline,
+        isWindowMaximized,
+        remainingTasks,
+        tasks,
+        todaysRemainingTasks,
+        token,
+        user?.id
+    ]);
 
     // Initial Auth Load — skip local cache on fresh login to avoid stale data flash
     const isNewLoginRef = useRef(false);
@@ -333,7 +409,6 @@ function App() {
         };
         loadLocalTasks();
     }, [token]);
-
 
     //Scrollbar JS
     useEffect(() => {
@@ -369,10 +444,10 @@ function App() {
             if ((e.ctrlKey || e.metaKey) && isTauriDesktop) {
                 if (e.key === '=' || e.key === '+') {
                     e.preventDefault();
-                    setZoomLevel(prev => Math.min(prev + 0.1, 2.0));
+                    setZoomLevel((prev) => Math.min(prev + 0.1, 2.0));
                 } else if (e.key === '-') {
                     e.preventDefault();
-                    setZoomLevel(prev => Math.max(prev - 0.1, 0.5));
+                    setZoomLevel((prev) => Math.max(prev - 0.1, 0.5));
                 } else if (e.key === '0') {
                     e.preventDefault();
                     setZoomLevel(1.0);
@@ -404,8 +479,8 @@ function App() {
             if (e.ctrlKey || e.metaKey) {
                 e.preventDefault();
                 // Sub-pixel scaling for buttery smooth trackpad pinch detection
-                const zoomFactor = -e.deltaY * 0.005; 
-                setZoomLevel(prev => {
+                const zoomFactor = -e.deltaY * 0.005;
+                setZoomLevel((prev) => {
                     const newZoom = prev + zoomFactor;
                     return Math.max(0.5, Math.min(newZoom, 2.0));
                 });
@@ -423,10 +498,10 @@ function App() {
                 const { value } = await DynamicColorPlugin.getAccentColor();
                 if (value) {
                     setSystemAccentColor(value);
-                    console.log("Got native Material You seed:", value);
+                    console.log('Got native Material You seed:', value);
                 }
             } catch (_e) {
-                console.log("No native dynamic color available.");
+                console.log('No native dynamic color available.');
             }
         };
         fetchSystemColor();
@@ -439,8 +514,11 @@ function App() {
                 if (isActive) {
                     fetchSystemColor();
                 }
-            }).then(listener => {
-                if (appStateCancelled) { listener.remove(); return; }
+            }).then((listener) => {
+                if (appStateCancelled) {
+                    listener.remove();
+                    return;
+                }
                 appStateListener = listener;
             });
         }
@@ -453,68 +531,62 @@ function App() {
         };
     }, []);
 
-    // Theme effect
+    // Theme effect — resolves the full token map (base theme + per-component
+    // overrides) and pushes it onto the root as CSS custom properties.
     useEffect(() => {
         try {
             // Invalidate cached monet tag palette so tags pick up the new seed
             invalidateMonetTagPaletteCache();
 
-            document.body.className = theme === 'light' ? '' : `theme-${theme}`;
-            document.documentElement.className = document.body.className;
+            // Palette and visual style are orthogonal: theme-<palette> only sets
+            // colors, style-<classic|riff> only sets structure.
+            const bodyClass = [theme ? `theme-${theme}` : '', themeStyle ? `style-${themeStyle}` : '']
+                .filter(Boolean)
+                .join(' ');
+            document.body.className = bodyClass;
+            document.documentElement.className = bodyClass;
             localStorage.setItem('snowball_theme', theme);
-            const root = document.documentElement;
-            const resolvedAccent = theme === 'custom'
-                ? customColors.accent
-                : (systemAccentColor || user?.profile_color || '#3b82f6');
-            const resolvedAccentRgb = hexToRgb(resolvedAccent);
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            const isDarkMode = theme === 'dynamic'
-                ? prefersDark
-                : (theme === 'dark' || theme === 'midnight');
+            saveThemeStyle(themeStyle);
 
+            const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)')?.matches;
+            const isDarkMode = theme === 'dynamic' ? prefersDark : theme === 'dark' || theme === 'shack';
+
+            const seedAccent =
+                theme === 'custom' ? customColors.accent : systemAccentColor || user?.profile_color || '#3b82f6';
+
+            let monetPalette = null;
             if (theme === 'dynamic') {
-                const monetPalette = generateMonetPalette(resolvedAccent, isDarkMode);
+                monetPalette = generateMonetPalette(seedAccent, isDarkMode);
                 if (monetPalette) {
                     applyMonetTheme(monetPalette);
-                    root.style.setProperty('--accent-color', monetPalette.primary);
-                    root.style.setProperty('--color-accent', monetPalette.primary);
-                    if (monetPalette['primary-rgb']) {
-                        root.style.setProperty('--accent-rgb', monetPalette['primary-rgb']);
-                    }
-                    localStorage.setItem('snowball_accent_color', monetPalette.primary);
                 }
-            } else {
-                root.style.setProperty('--accent-color', resolvedAccent);
-                root.style.setProperty('--color-accent', resolvedAccent);
-                if (resolvedAccentRgb) {
-                    root.style.setProperty('--accent-rgb', resolvedAccentRgb);
-                }
-                localStorage.setItem('snowball_accent_color', resolvedAccent);
             }
-            window.dispatchEvent(new Event('snowball-tag-colors-changed'));
 
+            const tokens = resolveThemeTokens(theme, {
+                customColors,
+                overrides: getThemeOverridesFor(themeOverrides, theme),
+                monetPalette
+            });
+
+            applyThemeTokens(tokens, theme);
+            localStorage.setItem('snowball_accent_color', tokens.accent);
+
+            // Keep the legacy custom-theme payload in sync for backups.
             if (theme === 'custom') {
-                root.style.setProperty('--custom-bg', customColors.bg);
-                root.style.setProperty('--custom-text', customColors.text);
-                root.style.setProperty('--custom-accent', customColors.accent);
-                root.style.setProperty('--custom-accent-rgb', hexToRgb(customColors.accent));
-                root.style.setProperty('--custom-card', customColors.card);
-                root.style.setProperty('--custom-notes', customColors.notes);
-                // Derive subtle variations
-                root.style.setProperty('--custom-secondary', customColors.bg);
-                root.style.setProperty('--custom-text-sec', `${customColors.text}aa`);
-                root.style.setProperty('--custom-border', `${customColors.text}22`);
                 localStorage.setItem('snowball_custom_colors', JSON.stringify(customColors));
-            } else {
-                ['bg', 'text', 'accent', 'accent-rgb', 'card', 'notes', 'secondary', 'text-sec', 'border'].forEach(p => {
-                    root.style.removeProperty(`--custom-${p}`);
-                });
             }
+
+            window.dispatchEvent(new Event('snowball-tag-colors-changed'));
         } catch (error) {
-            console.error("Critical theme error caught:", error);
+            console.error('Critical theme error caught:', error);
             // Fallback to basic CSS if possible
         }
-    }, [theme, customColors, systemAccentColor, user]);
+    }, [theme, themeStyle, customColors, systemAccentColor, user, themeOverrides]);
+
+    // Persist per-component overrides whenever they change.
+    useEffect(() => {
+        saveThemeOverrides(themeOverrides);
+    }, [themeOverrides]);
 
     // Sync dashboard card preferences from authenticated user
     useEffect(() => {
@@ -608,17 +680,17 @@ function App() {
 
     const checkAndResetTasks = useCallback(async (userOffset) => {
         const now = new Date();
-        const shifted = new Date(now.getTime() - (userOffset * 60 * 60 * 1000));
+        const shifted = new Date(now.getTime() - userOffset * 60 * 60 * 1000);
         const logicalToday = formatLocalDate(shifted);
         const lastReset = localStorage.getItem('snowball_tasks_last_reset');
 
         if (lastReset && lastReset !== logicalToday) {
             console.log(`🌙 (Tasks) Day changed. Resetting recurring tasks locally...`);
             const allTasks = await db.tasks.toArray();
-            const resetTasks = allTasks.map(t => {
+            const resetTasks = allTasks.map((t) => {
                 const taskDateStr = (t.date || lastReset || logicalToday).split(' ')[0];
                 const diffDays = Math.floor((new Date(logicalToday) - new Date(taskDateStr)) / (1000 * 60 * 60 * 24));
-                
+
                 let shouldReset = false;
                 if (t.recurring === 'daily' && diffDays >= 1) shouldReset = true;
                 else if (t.recurring === 'weekly' && isDifferentWeek(logicalToday, taskDateStr)) shouldReset = true;
@@ -628,14 +700,17 @@ function App() {
                     if (todayDate.getMonth() !== tDate.getMonth() || todayDate.getFullYear() !== tDate.getFullYear()) {
                         shouldReset = true;
                     }
-                }
-                else if (t.recurring?.startsWith('custom:')) {
+                } else if (t.recurring?.startsWith('custom:')) {
                     const n = parseInt(t.recurring.split(':')[1], 10) || 1;
                     if (diffDays >= n) shouldReset = true;
                 }
 
                 if (shouldReset) {
-                    return { ...t, tasksCompleted: 0, date: logicalToday + (t.date?.includes(' ') ? ` ${t.date.split(' ')[1]}` : '') };
+                    return {
+                        ...t,
+                        tasksCompleted: 0,
+                        date: logicalToday + (t.date?.includes(' ') ? ` ${t.date.split(' ')[1]}` : '')
+                    };
                 }
                 return t;
             });
@@ -663,17 +738,24 @@ function App() {
                         setUserData(cachedProfile);
                         setCheckingAuth(false);
                     }
-                } catch { /* noop */ }
+                } catch {
+                    /* noop */
+                }
 
                 apiFetch('/api/auth/me')
-                    .then(async res => {
+                    .then(async (res) => {
                         if (res.status === 401 || res.status === 403) {
                             logout();
                             return;
                         }
                         if (!res.ok) {
                             const payload = await res.json().catch(() => null);
-                            throw new Error(payload?.error?.message || payload?.error || payload?.message || `Session check failed (${res.status})`);
+                            throw new Error(
+                                payload?.error?.message ||
+                                    payload?.error ||
+                                    payload?.message ||
+                                    `Session check failed (${res.status})`
+                            );
                         }
                         const data = await res.json();
                         if (data?.id) {
@@ -774,7 +856,7 @@ function App() {
             ]);
 
             // Artificial delay for premium feel
-            await new Promise(r => setTimeout(r, 600));
+            await new Promise((r) => setTimeout(r, 600));
         } finally {
             setIsRefreshing(false);
         }
@@ -785,16 +867,16 @@ function App() {
     // Pull-to-Refresh Logic safely implemented for Capacitor
     useEffect(() => {
         if (!isMobile) return;
-        
+
         let startY = 0;
         let pDistance = 0;
-        
+
         const handleTouchStart = (e) => {
             if (window.scrollY === 0) {
                 startY = e.touches[0].clientY;
             }
         };
-        
+
         const handleTouchMove = (e) => {
             if (startY > 0 && window.scrollY <= 0) {
                 const distance = e.touches[0].clientY - startY;
@@ -815,7 +897,7 @@ function App() {
                 });
             }
         };
-        
+
         const handleTouchEnd = () => {
             if (pDistance > 70) {
                 handleRefresh();
@@ -828,11 +910,11 @@ function App() {
             }
             setPullDistance(0);
         };
-        
+
         window.addEventListener('touchstart', handleTouchStart, { passive: true });
         window.addEventListener('touchmove', handleTouchMove, { passive: true });
         window.addEventListener('touchend', handleTouchEnd);
-        
+
         return () => {
             window.removeEventListener('touchstart', handleTouchStart);
             window.removeEventListener('touchmove', handleTouchMove);
@@ -847,8 +929,6 @@ function App() {
             setCheckingAuth(false);
         });
     }, [token, user, isOnline]);
-
-
 
     // Auto-refresh tasks when window regains focus (cross-device sync)
     useEffect(() => {
@@ -922,10 +1002,15 @@ function App() {
             if (isActive) {
                 syncNotifications();
             }
-        }).then(listener => {
-            if (listenerCancelled) { listener.remove(); return; }
-            appStateListener = listener;
-        }).catch(() => {});
+        })
+            .then((listener) => {
+                if (listenerCancelled) {
+                    listener.remove();
+                    return;
+                }
+                appStateListener = listener;
+            })
+            .catch(() => {});
 
         window.addEventListener('snowball-notification-settings-changed', handleSettingsChanged);
         return () => {
@@ -1118,7 +1203,7 @@ function App() {
             db.noteSecrets.clear(),
             db.stats.clear(),
             db.profile.clear(),
-            db.calendarEvents.clear(),
+            db.calendarEvents.clear()
         ]);
     }, []);
 
@@ -1160,22 +1245,95 @@ function App() {
 
     const handleThemeChange = useCallback((newTheme) => {
         setTheme(newTheme);
+        setActiveThemePreset('');
+        try {
+            localStorage.removeItem('snowball_theme_preset');
+        } catch {
+            /* storage unavailable */
+        }
     }, []);
 
-    const handleUpdateDashboardCards = useCallback((nextCards) => {
-        setDashboardCards(nextCards);
-        saveCardPreferences(nextCards, user, handleUpdateUser);
-    }, [user, handleUpdateUser]);
+    const handleThemeStyleChange = useCallback((newStyle) => {
+        setThemeStyle(newStyle);
+        setActiveThemePreset('');
+        try {
+            localStorage.removeItem('snowball_theme_preset');
+        } catch {
+            /* storage unavailable */
+        }
+    }, []);
+
+    const handleThemeColorChange = useCallback(
+        (key, value) => {
+            setThemeOverrides((prev) => withThemeOverride(prev, theme, key, value));
+        },
+        [theme]
+    );
+
+    const handleResetThemeColor = useCallback(
+        (key) => {
+            setThemeOverrides((prev) => withThemeOverride(prev, theme, key, null));
+        },
+        [theme]
+    );
+
+    const handleResetThemeGroup = useCallback(
+        (groupId) => {
+            setThemeOverrides((prev) => withThemeGroupReset(prev, theme, groupId));
+        },
+        [theme]
+    );
+
+    const handleResetAllThemeColors = useCallback(() => {
+        setThemeOverrides((prev) => withThemeReset(prev, theme));
+    }, [theme]);
+
+    const handleApplyThemePreset = useCallback((presetId) => {
+        const preset = getPresetById(presetId);
+        if (!preset) return;
+        setTheme(preset.theme);
+        if (preset.style) setThemeStyle(preset.style);
+        setThemeOverrides((prev) => ({
+            ...prev,
+            [preset.theme]: { ...preset.overrides }
+        }));
+        setActiveThemePreset(preset.id);
+        try {
+            localStorage.setItem('snowball_theme_preset', preset.id);
+        } catch {
+            /* storage unavailable */
+        }
+    }, []);
+
+    const resolvedThemeTokens = useMemo(
+        () =>
+            resolveThemeTokens(theme, {
+                customColors,
+                overrides: getThemeOverridesFor(themeOverrides, theme)
+            }),
+        [theme, customColors, themeOverrides]
+    );
+
+    const handleUpdateDashboardCards = useCallback(
+        (nextCards) => {
+            setDashboardCards(nextCards);
+            saveCardPreferences(nextCards, user, handleUpdateUser);
+        },
+        [user, handleUpdateUser]
+    );
 
     const showHeatmap = isCardEffectivelyVisible('heatmap', dashboardCards, spotifyConnected);
 
-    const setShowHeatmap = useCallback((updater) => {
-        const nextValue = typeof updater === 'function' ? updater(showHeatmap) : Boolean(updater);
-        handleUpdateDashboardCards({
-            ...dashboardCards,
-            heatmap: nextValue
-        });
-    }, [showHeatmap, dashboardCards, handleUpdateDashboardCards]);
+    const setShowHeatmap = useCallback(
+        (updater) => {
+            const nextValue = typeof updater === 'function' ? updater(showHeatmap) : Boolean(updater);
+            handleUpdateDashboardCards({
+                ...dashboardCards,
+                heatmap: nextValue
+            });
+        },
+        [showHeatmap, dashboardCards, handleUpdateDashboardCards]
+    );
 
     const keyboardDismissedRef = useRef(false);
 
@@ -1187,7 +1345,9 @@ function App() {
         if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
             document.activeElement.blur();
             keyboardDismissedRef.current = true;
-            setTimeout(() => { keyboardDismissedRef.current = false; }, 400);
+            setTimeout(() => {
+                keyboardDismissedRef.current = false;
+            }, 400);
             return true;
         }
         if (showSettings) {
@@ -1236,18 +1396,18 @@ function App() {
         const routeKey = showSettings
             ? 'settings'
             : showHistory
-                ? 'history'
-                : showCalculator
-                    ? 'calculator'
-                    : showCalendar
-                        ? 'calendar'
-                        : showTaskComposer
-                            ? 'composer'
-                            : showFriends
-                                ? 'friends-panel'
-                                : isMobile
-                                    ? activeTab
-                                    : 'dashboard';
+              ? 'history'
+              : showCalculator
+                ? 'calculator'
+                : showCalendar
+                  ? 'calendar'
+                  : showTaskComposer
+                    ? 'composer'
+                    : showFriends
+                      ? 'friends-panel'
+                      : isMobile
+                        ? activeTab
+                        : 'dashboard';
 
         if (!window.history.state?.snowballRoute) {
             window.history.replaceState({ snowballRoute: 'dashboard' }, '', window.location.pathname);
@@ -1258,7 +1418,17 @@ function App() {
         }
 
         lastAndroidRouteRef.current = routeKey;
-    }, [isNativeAndroid, showSettings, showHistory, showCalculator, showCalendar, showTaskComposer, showFriends, isMobile, activeTab]);
+    }, [
+        isNativeAndroid,
+        showSettings,
+        showHistory,
+        showCalculator,
+        showCalendar,
+        showTaskComposer,
+        showFriends,
+        isMobile,
+        activeTab
+    ]);
 
     useEffect(() => {
         if (!isNativeAndroid) return;
@@ -1281,7 +1451,9 @@ function App() {
             if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
                 document.activeElement.blur();
                 keyboardDismissedRef.current = true;
-                setTimeout(() => { keyboardDismissedRef.current = false; }, 400);
+                setTimeout(() => {
+                    keyboardDismissedRef.current = false;
+                }, 400);
                 return;
             }
             if (handleInAppBack()) {
@@ -1294,8 +1466,11 @@ function App() {
             }
 
             CapacitorApp.exitApp();
-        }).then(listener => {
-            if (backCancelled) { listener.remove(); return; }
+        }).then((listener) => {
+            if (backCancelled) {
+                listener.remove();
+                return;
+            }
             backListener = listener;
         });
 
@@ -1307,93 +1482,112 @@ function App() {
         };
     }, [isNativeAndroid, handleInAppBack]);
 
-    const handleTaskAdded = useCallback(async (newTask) => {
-        // 1. Optimistic UI update
-        setTasks(prev => [newTask, ...prev]);
-        await db.tasks.add(newTask);
+    const handleTaskAdded = useCallback(
+        async (newTask) => {
+            // 1. Optimistic UI update
+            setTasks((prev) => [newTask, ...prev]);
+            await db.tasks.add(newTask);
 
-        if (isOnline) {
-            try {
-                const response = await apiFetch('/api/tasks', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(newTask)
-                });
-                if (response.ok) {
-                    const actualTask = await response.json();
-                    // Replace temp task with actual task (real ID)
-                    setTasks(prev => prev.map(t => t.id === newTask.id ? actualTask : t));
-                    await db.tasks.delete(newTask.id);
-                    await db.tasks.add(actualTask);
-                } else {
-                    console.warn("Server rejected new task, queueing...", response.status);
-                    await queueMutation('task_add', 'POST', `${API_URL}/api/tasks`, newTask);
-                }
-            } catch (err) {
-                console.error("Failed to sync new task, queueing...", err);
-                await queueMutation('task_add', 'POST', `${API_URL}/api/tasks`, newTask);
-            }
-        } else {
-            await queueMutation('task_add', 'POST', `${API_URL}/api/tasks`, newTask);
-        }
-    }, [isOnline]);
-
-    const handleTaskUpdate = useCallback(async (updatedTask) => {
-        // 1. Optimistic UI update
-        setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
-        await db.tasks.put(updatedTask);
-
-        if (isOnline) {
-            try {
-                // If it's a temp ID, we shouldn't attempt PUT yet, it should wait for the POST to sync
-                if (!String(updatedTask.id).startsWith('temp-')) {
-                    const response = await apiFetch(`/api/tasks/${updatedTask.id}`, {
-                        method: 'PUT',
+            if (isOnline) {
+                try {
+                    const response = await apiFetch('/api/tasks', {
+                        method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify(updatedTask)
+                        body: JSON.stringify(newTask)
                     });
-                    if (!response.ok) {
-                        console.warn("Server rejected task update, queueing...", response.status);
-                        await queueMutation('task_update', 'PUT', `${API_URL}/api/tasks/${updatedTask.id}`, updatedTask);
+                    if (response.ok) {
+                        const actualTask = await response.json();
+                        // Replace temp task with actual task (real ID)
+                        setTasks((prev) => prev.map((t) => (t.id === newTask.id ? actualTask : t)));
+                        await db.tasks.delete(newTask.id);
+                        await db.tasks.add(actualTask);
+                    } else {
+                        console.warn('Server rejected new task, queueing...', response.status);
+                        await queueMutation('task_add', 'POST', `${API_URL}/api/tasks`, newTask);
                     }
-                } else {
+                } catch (err) {
+                    console.error('Failed to sync new task, queueing...', err);
+                    await queueMutation('task_add', 'POST', `${API_URL}/api/tasks`, newTask);
+                }
+            } else {
+                await queueMutation('task_add', 'POST', `${API_URL}/api/tasks`, newTask);
+            }
+        },
+        [isOnline]
+    );
+
+    const handleTaskUpdate = useCallback(
+        async (updatedTask) => {
+            // 1. Optimistic UI update
+            setTasks((prev) => prev.map((t) => (t.id === updatedTask.id ? updatedTask : t)));
+            await db.tasks.put(updatedTask);
+
+            if (isOnline) {
+                try {
                     // If it's a temp ID, we shouldn't attempt PUT yet, it should wait for the POST to sync
+                    if (!String(updatedTask.id).startsWith('temp-')) {
+                        const response = await apiFetch(`/api/tasks/${updatedTask.id}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(updatedTask)
+                        });
+                        if (!response.ok) {
+                            console.warn('Server rejected task update, queueing...', response.status);
+                            await queueMutation(
+                                'task_update',
+                                'PUT',
+                                `${API_URL}/api/tasks/${updatedTask.id}`,
+                                updatedTask
+                            );
+                        }
+                    } else {
+                        // If it's a temp ID, we shouldn't attempt PUT yet, it should wait for the POST to sync
+                        await queueMutation(
+                            'task_update',
+                            'PUT',
+                            `${API_URL}/api/tasks/${updatedTask.id}`,
+                            updatedTask
+                        );
+                    }
+                } catch (err) {
+                    console.error('Failed to sync update, queueing...', err);
                     await queueMutation('task_update', 'PUT', `${API_URL}/api/tasks/${updatedTask.id}`, updatedTask);
                 }
-            } catch (err) {
-                console.error("Failed to sync update, queueing...", err);
+            } else {
                 await queueMutation('task_update', 'PUT', `${API_URL}/api/tasks/${updatedTask.id}`, updatedTask);
             }
-        } else {
-            await queueMutation('task_update', 'PUT', `${API_URL}/api/tasks/${updatedTask.id}`, updatedTask);
-        }
-    }, [isOnline]);
+        },
+        [isOnline]
+    );
 
-    const handleTaskDelete = useCallback(async (id) => {
-        setTasks(prev => prev.filter(t => t.id !== id));
-        await db.tasks.delete(id);
+    const handleTaskDelete = useCallback(
+        async (id) => {
+            setTasks((prev) => prev.filter((t) => t.id !== id));
+            await db.tasks.delete(id);
 
-        if (isOnline && !String(id).startsWith('temp-')) {
-            try {
-                const response = await apiFetch(`/api/tasks/${id}`, { method: 'DELETE' });
-                if (!response.ok) {
+            if (isOnline && !String(id).startsWith('temp-')) {
+                try {
+                    const response = await apiFetch(`/api/tasks/${id}`, { method: 'DELETE' });
+                    if (!response.ok) {
+                        await queueMutation('task_delete', 'DELETE', `${API_URL}/api/tasks/${id}`, null);
+                    }
+                } catch (_err) {
                     await queueMutation('task_delete', 'DELETE', `${API_URL}/api/tasks/${id}`, null);
                 }
-            } catch (_err) {
+            } else {
                 await queueMutation('task_delete', 'DELETE', `${API_URL}/api/tasks/${id}`, null);
             }
-        } else {
-            await queueMutation('task_delete', 'DELETE', `${API_URL}/api/tasks/${id}`, null);
-        }
-    }, [isOnline]);
+        },
+        [isOnline]
+    );
 
     const handleBulkTasksUpdate = useCallback(async (updatedTasks) => {
-        setTasks(prev => {
-            const byId = new Map(prev.map(t => [t.id, t]));
+        setTasks((prev) => {
+            const byId = new Map(prev.map((t) => [t.id, t]));
             updatedTasks.forEach((t) => {
                 byId.set(t.id, t);
             });
@@ -1402,45 +1596,48 @@ function App() {
         await db.tasks.bulkPut(updatedTasks);
     }, []);
 
-    const handleTasksReorder = useCallback(async (reorderedTasks) => {
-        setTasks(reorderedTasks);
-        // Bulk update local DB
-        await db.tasks.bulkPut(reorderedTasks);
+    const handleTasksReorder = useCallback(
+        async (reorderedTasks) => {
+            setTasks(reorderedTasks);
+            // Bulk update local DB
+            await db.tasks.bulkPut(reorderedTasks);
 
-        if (isOnline) {
-            try {
-                const response = await apiFetch('/api/tasks/reorder/all', {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        tasks: reorderedTasks.map(t => ({ id: t.id, position: t.position }))
-                    })
-                });
-                if (!response.ok) {
+            if (isOnline) {
+                try {
+                    const response = await apiFetch('/api/tasks/reorder/all', {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            tasks: reorderedTasks.map((t) => ({ id: t.id, position: t.position }))
+                        })
+                    });
+                    if (!response.ok) {
+                        await queueMutation('tasks_reorder', 'PUT', `${API_URL}/api/tasks/reorder/all`, {
+                            tasks: reorderedTasks.map((t) => ({ id: t.id, position: t.position }))
+                        });
+                    }
+                } catch (_err) {
                     await queueMutation('tasks_reorder', 'PUT', `${API_URL}/api/tasks/reorder/all`, {
-                        tasks: reorderedTasks.map(t => ({ id: t.id, position: t.position }))
+                        tasks: reorderedTasks.map((t) => ({ id: t.id, position: t.position }))
                     });
                 }
-            } catch (_err) {
+            } else {
                 await queueMutation('tasks_reorder', 'PUT', `${API_URL}/api/tasks/reorder/all`, {
-                    tasks: reorderedTasks.map(t => ({ id: t.id, position: t.position }))
+                    tasks: reorderedTasks.map((t) => ({ id: t.id, position: t.position }))
                 });
             }
-        } else {
-            await queueMutation('tasks_reorder', 'PUT', `${API_URL}/api/tasks/reorder/all`, {
-                tasks: reorderedTasks.map(t => ({ id: t.id, position: t.position }))
-            });
-        }
-    }, [isOnline]);
+        },
+        [isOnline]
+    );
 
     const handleClearAll = useCallback(async () => {
-        const toKeep = tasks.filter(t => t.isSticky || (t.recurring && t.recurring !== 'none'));
-        const toDelete = tasks.filter(t => !t.isSticky && (!t.recurring || t.recurring === 'none'));
+        const toKeep = tasks.filter((t) => t.isSticky || (t.recurring && t.recurring !== 'none'));
+        const toDelete = tasks.filter((t) => !t.isSticky && (!t.recurring || t.recurring === 'none'));
 
         setTasks(toKeep);
-        await db.tasks.filter(t => !t.isSticky && (!t.recurring || t.recurring === 'none')).delete();
+        await db.tasks.filter((t) => !t.isSticky && (!t.recurring || t.recurring === 'none')).delete();
 
         if (isOnline) {
             for (const task of toDelete) {
@@ -1450,7 +1647,7 @@ function App() {
                         await queueMutation('task_delete', 'DELETE', `${API_URL}/api/tasks/${task.id}`, null);
                     }
                 } catch (err) {
-                    console.error("Failed to delete task during clear all, queueing...", err);
+                    console.error('Failed to delete task during clear all, queueing...', err);
                     await queueMutation('task_delete', 'DELETE', `${API_URL}/api/tasks/${task.id}`, null);
                 }
             }
@@ -1462,16 +1659,20 @@ function App() {
     }, [isOnline, tasks]);
 
     return (
-        <div className="app-container" style={{
-            padding: isMobile
-                ? `calc(env(safe-area-inset-top, 0px) + 0.65rem) 0.5rem calc(env(safe-area-inset-bottom, 0px) + 0.5rem)`
-                : '2rem',
-            maxWidth: isMobile ? '100vw' : '1200px',
-            margin: isMobile ? '0' : '0 auto',
-            width: '100%',
-            boxSizing: 'border-box',
-            overflowX: 'hidden'
-        }}>
+        <div
+            className="app-container"
+            style={{
+                padding: isMobile
+                    ? `calc(env(safe-area-inset-top, 0px) + 0.65rem) 0.5rem calc(env(safe-area-inset-bottom, 0px) + 0.5rem)`
+                    : '2rem',
+                maxWidth: isMobile ? '100vw' : '1200px',
+                margin: isMobile ? '0' : '0 auto',
+                width: '100%',
+                boxSizing: 'border-box',
+                overflowX: 'hidden'
+            }}
+        >
+            <DoodleLayer />
             {/* Pull-to-Refresh Indicator */}
             <AnimatePresence>
                 {(pullDistance > 0 || isRefreshing) && (
@@ -1483,10 +1684,14 @@ function App() {
                             rotate: isRefreshing ? 360 : pullDistance * 2
                         }}
                         exit={{ opacity: 0, y: -20 }}
-                        transition={isRefreshing ? {
-                            rotate: { repeat: Infinity, duration: 1, ease: "linear" },
-                            y: { type: "spring", stiffness: 300, damping: 30 }
-                        } : { type: "spring", stiffness: 500, damping: 30 }}
+                        transition={
+                            isRefreshing
+                                ? {
+                                      rotate: { repeat: Infinity, duration: 1, ease: 'linear' },
+                                      y: { type: 'spring', stiffness: 300, damping: 30 }
+                                  }
+                                : { type: 'spring', stiffness: 500, damping: 30 }
+                        }
                         style={{
                             position: 'fixed',
                             top: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 0.75rem)' : '1rem',
@@ -1511,18 +1716,20 @@ function App() {
             </AnimatePresence>
 
             {/* Google Calendar new-event alerts */}
-            <div style={{
-                position: 'fixed',
-                top: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 3.75rem)' : '1.5rem',
-                right: isMobile ? '0.75rem' : '1.5rem',
-                left: isMobile ? '0.75rem' : 'auto',
-                zIndex: 1200,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.6rem',
-                maxWidth: isMobile ? 'none' : '360px',
-                pointerEvents: 'none'
-            }}>
+            <div
+                style={{
+                    position: 'fixed',
+                    top: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 3.75rem)' : '1.5rem',
+                    right: isMobile ? '0.75rem' : '1.5rem',
+                    left: isMobile ? '0.75rem' : 'auto',
+                    zIndex: 1200,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.6rem',
+                    maxWidth: isMobile ? 'none' : '360px',
+                    pointerEvents: 'none'
+                }}
+            >
                 <AnimatePresence>
                     {gcalUnimported && (
                         <motion.div
@@ -1544,39 +1751,48 @@ function App() {
                                 alignItems: 'flex-start'
                             }}
                         >
-                            <div style={{
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '0.6rem',
-                                background: 'color-mix(in srgb, #4285F4 18%, transparent)',
-                                color: '#4285F4',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0
-                            }}>
+                            <div
+                                style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '0.6rem',
+                                    background: 'color-mix(in srgb, #4285F4 18%, transparent)',
+                                    color: '#4285F4',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0
+                                }}
+                            >
                                 <CalendarDays size={16} />
                             </div>
 
                             <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{
-                                    fontSize: '0.65rem',
-                                    fontWeight: '700',
-                                    letterSpacing: '0.06em',
-                                    textTransform: 'uppercase',
-                                    color: '#4285F4',
-                                    marginBottom: '0.15rem'
-                                }}>
+                                <div
+                                    style={{
+                                        fontSize: '0.65rem',
+                                        fontWeight: '700',
+                                        letterSpacing: '0.06em',
+                                        textTransform: 'uppercase',
+                                        color: '#4285F4',
+                                        marginBottom: '0.15rem'
+                                    }}
+                                >
                                     Google Calendar
                                 </div>
-                                <div style={{
-                                    fontSize: '0.9rem',
-                                    fontWeight: '600',
-                                    color: 'var(--text-primary)'
-                                }}>
-                                    {gcalUnimported.count} upcoming event{gcalUnimported.count === 1 ? '' : 's'} not in Snowball
+                                <div
+                                    style={{
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        color: 'var(--text-primary)'
+                                    }}
+                                >
+                                    {gcalUnimported.count} upcoming event{gcalUnimported.count === 1 ? '' : 's'} not in
+                                    Snowball
                                 </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.1rem' }}>
+                                <div
+                                    style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.1rem' }}
+                                >
                                     Import them to see them on your calendar.
                                 </div>
                                 <button
@@ -1586,8 +1802,8 @@ function App() {
                                         marginTop: '0.5rem',
                                         padding: '0.35rem 0.75rem',
                                         borderRadius: '0.5rem',
-                                        background: 'var(--accent-color)',
-                                        color: '#fff',
+                                        background: 'var(--btn-primary-bg)',
+                                        color: 'var(--btn-primary-text)',
                                         border: 'none',
                                         fontWeight: '600',
                                         fontSize: '0.78rem',
@@ -1619,8 +1835,18 @@ function App() {
 
                     {gcalAlerts.map(({ key, event }) => {
                         const when = event.allDay
-                            ? new Date(event.start).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
-                            : new Date(event.start).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+                            ? new Date(event.start).toLocaleDateString(undefined, {
+                                  weekday: 'short',
+                                  day: 'numeric',
+                                  month: 'short'
+                              })
+                            : new Date(event.start).toLocaleString(undefined, {
+                                  weekday: 'short',
+                                  day: 'numeric',
+                                  month: 'short',
+                                  hour: 'numeric',
+                                  minute: '2-digit'
+                              });
 
                         return (
                             <motion.div
@@ -1642,50 +1868,65 @@ function App() {
                                     alignItems: 'flex-start'
                                 }}
                             >
-                                <div style={{
-                                    width: '32px',
-                                    height: '32px',
-                                    borderRadius: '0.6rem',
-                                    background: 'color-mix(in srgb, var(--accent-color) 18%, transparent)',
-                                    color: 'var(--accent-color)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    flexShrink: 0
-                                }}>
+                                <div
+                                    style={{
+                                        width: '32px',
+                                        height: '32px',
+                                        borderRadius: '0.6rem',
+                                        background: 'color-mix(in srgb, var(--accent-color) 18%, transparent)',
+                                        color: 'var(--accent-color)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        flexShrink: 0
+                                    }}
+                                >
                                     <Bell size={16} />
                                 </div>
 
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{
-                                        fontSize: '0.65rem',
-                                        fontWeight: '700',
-                                        letterSpacing: '0.06em',
-                                        textTransform: 'uppercase',
-                                        color: 'var(--accent-color)',
-                                        marginBottom: '0.15rem'
-                                    }}>
+                                    <div
+                                        style={{
+                                            fontSize: '0.65rem',
+                                            fontWeight: '700',
+                                            letterSpacing: '0.06em',
+                                            textTransform: 'uppercase',
+                                            color: 'var(--accent-color)',
+                                            marginBottom: '0.15rem'
+                                        }}
+                                    >
                                         New on Google Calendar
                                     </div>
-                                    <div style={{
-                                        fontSize: '0.9rem',
-                                        fontWeight: '600',
-                                        color: 'var(--text-primary)',
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap'
-                                    }}>
+                                    <div
+                                        style={{
+                                            fontSize: '0.9rem',
+                                            fontWeight: '600',
+                                            color: 'var(--text-primary)',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                    >
                                         {event.title}
                                     </div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.1rem' }}>
-                                        {when}{event.calendarName ? ` · ${event.calendarName}` : ''}
+                                    <div
+                                        style={{
+                                            fontSize: '0.75rem',
+                                            color: 'var(--text-secondary)',
+                                            marginTop: '0.1rem'
+                                        }}
+                                    >
+                                        {when}
+                                        {event.calendarName ? ` · ${event.calendarName}` : ''}
                                     </div>
                                 </div>
 
                                 <button
                                     type="button"
                                     aria-label="Dismiss calendar alert"
-                                    onClick={() => setGcalAlerts((previous) => previous.filter((alert) => alert.key !== key))}
+                                    onClick={() =>
+                                        setGcalAlerts((previous) => previous.filter((alert) => alert.key !== key))
+                                    }
                                     style={{
                                         background: 'transparent',
                                         border: 'none',
@@ -1704,21 +1945,31 @@ function App() {
                 </AnimatePresence>
             </div>
 
-            <header className="page-header" style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '1.5rem',
-                padding: isMobile ? '0.5rem 0' : '0'
-            }}>
+            <header
+                className="page-header"
+                style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '1.5rem',
+                    padding: isMobile ? '0.5rem 0' : '0'
+                }}
+            >
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <h1 style={{
-                        fontSize: isMobile ? '1.5rem' : '2rem',
-                        fontWeight: '800',
-                        letterSpacing: '-1px',
-                        color: 'var(--text-primary)',
-                        margin: 0
-                    }}>Snowball.</h1>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.45rem' : '0.6rem' }}>
+                        <SnowballMark size={isMobile ? 26 : 34} />
+                        <h1
+                            style={{
+                                fontSize: isMobile ? '1.5rem' : '2rem',
+                                fontWeight: '800',
+                                letterSpacing: '-1px',
+                                color: 'var(--text-primary)',
+                                margin: 0
+                            }}
+                        >
+                            Snowball.
+                        </h1>
+                    </div>
                     {updatePrompt.available && (
                         <button
                             type="button"
@@ -1746,8 +1997,8 @@ function App() {
                             {updatePrompt.installing
                                 ? 'Updating...'
                                 : updatePrompt.platform === 'web'
-                                    ? 'Refresh update'
-                                    : `Update${updatePrompt.nextVersion ? ` ${updatePrompt.nextVersion}` : ''}`}
+                                  ? 'Refresh update'
+                                  : `Update${updatePrompt.nextVersion ? ` ${updatePrompt.nextVersion}` : ''}`}
                         </button>
                     )}
                 </div>
@@ -1756,24 +2007,37 @@ function App() {
                     {user && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                                <span style={{
-                                    fontSize: '0.8rem',
-                                    color: 'var(--text-secondary)',
-                                    fontWeight: '600',
-                                    opacity: 0.9
-                                }}>
+                                <span
+                                    style={{
+                                        fontSize: '0.8rem',
+                                        color: 'var(--text-secondary)',
+                                        fontWeight: '600',
+                                        opacity: 0.9
+                                    }}
+                                >
                                     Hi, {user.username}
                                 </span>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                     {!isOnline ? (
                                         <>
                                             <WifiOff size={10} style={{ color: '#ef4444' }} />
-                                            <span style={{ fontSize: '0.6rem', color: '#ef4444', fontWeight: '700' }}>OFFLINE</span>
+                                            <span style={{ fontSize: '0.6rem', color: '#ef4444', fontWeight: '700' }}>
+                                                OFFLINE
+                                            </span>
                                         </>
                                     ) : (
                                         <>
                                             <Wifi size={10} style={{ color: 'var(--success-color)' }} />
-                                            <span style={{ fontSize: '0.6rem', color: 'var(--success-color)', fontWeight: '700', opacity: 0.8 }}>ONLINE</span>
+                                            <span
+                                                style={{
+                                                    fontSize: '0.6rem',
+                                                    color: 'var(--success-color)',
+                                                    fontWeight: '700',
+                                                    opacity: 0.8
+                                                }}
+                                            >
+                                                ONLINE
+                                            </span>
                                         </>
                                     )}
                                 </div>
@@ -1788,7 +2052,7 @@ function App() {
                             <button
                                 onClick={() => setShowHeatmap(!showHeatmap)}
                                 className="header-icon-btn"
-                                title={showHeatmap ? "Hide Heatmap" : "Show Heatmap"}
+                                title={showHeatmap ? 'Hide Heatmap' : 'Show Heatmap'}
                                 style={{
                                     display: isMobile ? 'none' : 'flex',
                                     color: showHeatmap ? 'var(--accent-color)' : 'var(--text-primary)'
@@ -1800,7 +2064,12 @@ function App() {
                                 onClick={() => setShowCalendar(true)}
                                 className="header-icon-btn"
                                 title="Calendar"
-                                style={{ color: 'var(--text-primary)', padding: isMobile ? '5px' : '0', display: 'flex', alignItems: 'center' }}
+                                style={{
+                                    color: 'var(--text-primary)',
+                                    padding: isMobile ? '5px' : '0',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                }}
                             >
                                 <CalendarDays size={isMobile ? 20 : 18} />
                             </button>
@@ -1808,15 +2077,25 @@ function App() {
                                 onClick={() => setShowCalculator(true)}
                                 className="header-icon-btn"
                                 title="Calculator"
-                                style={{ color: 'var(--text-primary)', padding: isMobile ? '5px' : '0', display: 'flex', alignItems: 'center' }}
+                                style={{
+                                    color: 'var(--text-primary)',
+                                    padding: isMobile ? '5px' : '0',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                }}
                             >
                                 <CalculatorIcon size={isMobile ? 20 : 18} />
                             </button>
                             <button
-                                onClick={() => setShowFriends(prev => !prev)}
+                                onClick={() => setShowFriends((prev) => !prev)}
                                 className="header-icon-btn"
                                 title="Friends"
-                                style={{ color: showFriends ? 'var(--accent-color)' : 'var(--text-primary)', padding: isMobile ? '5px' : '0', display: isMobile ? 'none' : 'flex', alignItems: 'center' }}
+                                style={{
+                                    color: showFriends ? 'var(--accent-color)' : 'var(--text-primary)',
+                                    padding: isMobile ? '5px' : '0',
+                                    display: isMobile ? 'none' : 'flex',
+                                    alignItems: 'center'
+                                }}
                             >
                                 <Users size={18} />
                             </button>
@@ -1824,7 +2103,12 @@ function App() {
                                 onClick={() => setShowHistory(true)}
                                 className="header-icon-btn"
                                 title="History Vault"
-                                style={{ color: 'var(--text-primary)', padding: isMobile ? '5px' : '0', display: 'flex', alignItems: 'center' }}
+                                style={{
+                                    color: 'var(--text-primary)',
+                                    padding: isMobile ? '5px' : '0',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                }}
                             >
                                 <HistoryIcon size={isMobile ? 20 : 18} />
                             </button>
@@ -1837,7 +2121,7 @@ function App() {
                                     borderRadius: '50%',
                                     width: isMobile ? '36px' : '40px',
                                     height: isMobile ? '36px' : '40px',
-                                    display: (isMobile || isNativeAndroid) ? 'none' : 'flex',
+                                    display: isMobile || isNativeAndroid ? 'none' : 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     cursor: 'pointer',
@@ -1852,50 +2136,99 @@ function App() {
                 </div>
             </header>
 
-                {showCalendar && user && (
-                    <div style={{
-                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            {showCalendar && user && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
                         backgroundColor: 'rgba(0,0,0,0.7)',
                         /* 1001: BottomNav also uses z-index 1000 and is rendered later in the
                            DOM, so it would otherwise paint on top of this modal. */
                         zIndex: 1001,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        padding: isMobile ? '1rem 0.5rem' : '2rem',
-                    }}>
-                        <div style={{
-                            width: '100%', maxWidth: '800px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: isMobile ? '1rem 0.5rem' : '2rem'
+                    }}
+                >
+                    <div
+                        style={{
+                            width: '100%',
+                            maxWidth: '800px',
                             maxHeight: isMobile ? '95vh' : '90vh',
-                            display: 'flex', flexDirection: 'column',
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
-                                <button
-                                    onClick={() => setShowCalendar(false)}
-                                    style={{
-                                        background: 'var(--bg-card)', border: '1px solid var(--border-color)',
-                                        borderRadius: '50%', width: '36px', height: '36px',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        cursor: 'pointer', color: 'var(--text-secondary)',
-                                        boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-                                    }}
+                            display: 'flex',
+                            flexDirection: 'column'
+                        }}
+                    >
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
+                            <button
+                                onClick={() => setShowCalendar(false)}
+                                style={{
+                                    background: 'var(--bg-card)',
+                                    border: '1px solid var(--border-color)',
+                                    borderRadius: '50%',
+                                    width: '36px',
+                                    height: '36px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    color: 'var(--text-secondary)',
+                                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                                }}
+                            >
+                                <svg
+                                    width="18"
+                                    height="18"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
                                 >
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                </button>
-                            </div>
-                            <Suspense fallback={<LoadingFallback variant="calendar-modal" height="400px" />}>
-                                <div style={{ overflowY: 'auto', overflowX: 'hidden', width: '100%', boxSizing: 'border-box', borderRadius: '1rem' }}>
-                                    <Calendar />
-                                </div>
-                            </Suspense>
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
                         </div>
+                        <Suspense fallback={<LoadingFallback variant="calendar-modal" height="400px" />}>
+                            <div
+                                style={{
+                                    overflowY: 'auto',
+                                    overflowX: 'hidden',
+                                    width: '100%',
+                                    boxSizing: 'border-box',
+                                    borderRadius: '1rem'
+                                }}
+                            >
+                                <Calendar />
+                            </div>
+                        </Suspense>
                     </div>
-                )}
-            <main className="main-content" style={{
-                display: user ? 'grid' : 'block',
-                gridTemplateColumns: (user && ((showSidebar && (isCardEffectivelyVisible('notes', dashboardCards, spotifyConnected) || isCardEffectivelyVisible('habits', dashboardCards, spotifyConnected))) || showFriends) && !isMobile) ? 'minmax(0, 1fr) 300px' : 'minmax(0, 1fr)',
-                gap: '2rem',
-                alignItems: 'start',
-                minHeight: '600px'
-            }}>
+                </div>
+            )}
+            <main
+                className="main-content"
+                style={{
+                    display: user ? 'grid' : 'block',
+                    gridTemplateColumns:
+                        user &&
+                        ((showSidebar &&
+                            (isCardEffectivelyVisible('notes', dashboardCards, spotifyConnected) ||
+                                isCardEffectivelyVisible('habits', dashboardCards, spotifyConnected))) ||
+                            showFriends) &&
+                        !isMobile
+                            ? 'minmax(0, 1fr) 300px'
+                            : 'minmax(0, 1fr)',
+                    gap: '2rem',
+                    alignItems: 'start',
+                    minHeight: '600px'
+                }}
+            >
                 {showCalculator && user && (
                     <Suspense fallback={<LoadingFallback variant="calculator-modal" height="280px" />}>
                         <CalculatorWidget onClose={() => setShowCalculator(false)} />
@@ -1906,7 +2239,10 @@ function App() {
                     <Suspense fallback={<LoadingFallback variant="composer-modal" height="260px" />}>
                         <TaskComposerPanel
                             onClose={() => {
-                                if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+                                if (
+                                    document.activeElement &&
+                                    ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)
+                                ) {
                                     document.activeElement.blur();
                                     return;
                                 }
@@ -1937,8 +2273,21 @@ function App() {
                             onSpotifyStatusChange={setSpotifyConnected}
                             theme={theme}
                             setTheme={handleThemeChange}
+                            themeStyle={themeStyle}
+                            onThemeStyleChange={handleThemeStyleChange}
                             customColors={customColors}
                             setCustomColors={setCustomColors}
+                            themeTokens={resolvedThemeTokens}
+                            themeOverrides={getThemeOverridesFor(themeOverrides, theme)}
+                            themeOverrideBuckets={themeOverrides}
+                            onThemeColorChange={handleThemeColorChange}
+                            onResetThemeColor={handleResetThemeColor}
+                            onResetThemeGroup={handleResetThemeGroup}
+                            onResetAllThemeColors={handleResetAllThemeColors}
+                            onApplyThemePreset={handleApplyThemePreset}
+                            activeThemePreset={activeThemePreset}
+                            onImportThemeOverrides={setThemeOverrides}
+                            onThemePresetChange={setActiveThemePreset}
                             profileSyncStatus={profileSyncStatus}
                             profileSyncMessage={profileSyncMessage}
                             setProfileSyncStatus={setProfileSyncStatus}
@@ -1946,18 +2295,31 @@ function App() {
                         />
                     </Suspense>
                 )}
-                
+
                 {!user ? (
                     checkingAuth ? (
-                        <div style={{
-                            position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
-                            alignItems: 'center', justifyContent: 'center', gap: '1.5rem',
-                            background: 'var(--bg-primary)', zIndex: 9999
-                        }}>
-                            <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }}>
+                        <div
+                            style={{
+                                position: 'fixed',
+                                inset: 0,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '1.5rem',
+                                background: 'var(--bg-primary)',
+                                zIndex: 9999
+                            }}
+                        >
+                            <motion.div
+                                animate={{ rotate: 360 }}
+                                transition={{ repeat: Infinity, duration: 2, ease: 'linear' }}
+                            >
                                 <RefreshCcw size={40} color="var(--accent-color)" />
                             </motion.div>
-<p style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>{loadingMessages[Math.floor(Math.random() * loadingMessages.length)]}</p>
+                            <p style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>
+                                {loadingMessages[Math.floor(Math.random() * loadingMessages.length)]}
+                            </p>
                         </div>
                     ) : (
                         <AuthModal onLogin={handleLogin} />
@@ -1967,89 +2329,164 @@ function App() {
                         {/* Tab-based Mobile View vs Full Desktop View */}
                         {isMobile ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                                {activeTab === 'dashboard' && (() => {
-                                    const showTimer = isCardEffectivelyVisible('timer', dashboardCards, spotifyConnected);
-                                    const showStats = isCardEffectivelyVisible('stats', dashboardCards, spotifyConnected);
-                                    const showCalendarCard = isCardEffectivelyVisible('calendar', dashboardCards, spotifyConnected);
-                                    const showSpotify = isCardEffectivelyVisible('spotify', dashboardCards, spotifyConnected);
-                                    const showYoutube = isCardEffectivelyVisible('youtube', dashboardCards, spotifyConnected);
-                                    const showMediaHub = showSpotify || showYoutube;
-                                    const showNotes = isCardEffectivelyVisible('notes', dashboardCards, spotifyConnected);
-                                    const hasTopSection = showTimer || showStats || showCalendarCard;
+                                {activeTab === 'dashboard' &&
+                                    (() => {
+                                        const showTimer = isCardEffectivelyVisible(
+                                            'timer',
+                                            dashboardCards,
+                                            spotifyConnected
+                                        );
+                                        const showStats = isCardEffectivelyVisible(
+                                            'stats',
+                                            dashboardCards,
+                                            spotifyConnected
+                                        );
+                                        const showCalendarCard = isCardEffectivelyVisible(
+                                            'calendar',
+                                            dashboardCards,
+                                            spotifyConnected
+                                        );
+                                        const showSpotify = isCardEffectivelyVisible(
+                                            'spotify',
+                                            dashboardCards,
+                                            spotifyConnected
+                                        );
+                                        const showYoutube = isCardEffectivelyVisible(
+                                            'youtube',
+                                            dashboardCards,
+                                            spotifyConnected
+                                        );
+                                        const showMediaHub = showSpotify || showYoutube;
+                                        const showNotes = isCardEffectivelyVisible(
+                                            'notes',
+                                            dashboardCards,
+                                            spotifyConnected
+                                        );
+                                        const hasTopSection = showTimer || showStats || showCalendarCard;
 
-                                    return (
-                                        <>
-                                            {hasTopSection && (
-                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem', alignItems: 'start' }}>
-                                                    {showTimer && (
-                                                        <ErrorBoundary>
-                                                            <Suspense fallback={<LoadingFallback variant="timer" />}>
-                                                                <DeepWorkTimer
-                                                                    tasks={tasks}
-                                                                    resetOffsetHours={user?.reset_offset_hours ?? 0}
-                                                                />
-                                                            </Suspense>
-                                                        </ErrorBoundary>
-                                                    )}
-                                                    {showStats && (
-                                                        <ErrorBoundary>
-                                                            <Suspense fallback={<LoadingFallback variant="dashboard" />}>
-                                                                <ProductivityDashboard tasks={tasks} loading={tasksLoading || (checkingAuth && tasks.length === 0)} />
-                                                            </Suspense>
-                                                        </ErrorBoundary>
-                                                    )}
-                                                    {showCalendarCard && (
-                                                        <ErrorBoundary>
-                                                            <Suspense fallback={<LoadingFallback variant="calendar-summary" />}>
-                                                                <CalendarSummaryCard onOpenCalendar={() => setShowCalendar(true)} />
-                                                            </Suspense>
-                                                        </ErrorBoundary>
-                                                    )}
-                                                </div>
-                                            )}
-                                            {showMediaHub && (
-                                                <ErrorBoundary>
-                                                    <Suspense fallback={<LoadingFallback variant="media" />}>
-                                                        <MediaHub
-                                                            showSpotifyTab={showSpotify}
-                                                            showYoutubeTab={showYoutube}
-                                                        />
-                                                    </Suspense>
-                                                </ErrorBoundary>
-                                            )}
-                                            {showNotes && (
-                                                <ErrorBoundary>
-                                                    <Suspense fallback={<LoadingFallback variant="notes" />}>
-                                                        <Notes />
-                                                    </Suspense>
-                                                </ErrorBoundary>
-                                            )}
-                                        </>
-                                    );
-                                })()}
+                                        return (
+                                            <>
+                                                {hasTopSection && (
+                                                    <div
+                                                        style={{
+                                                            display: 'grid',
+                                                            gridTemplateColumns: '1fr',
+                                                            gap: '2rem',
+                                                            alignItems: 'start'
+                                                        }}
+                                                    >
+                                                        {showTimer && (
+                                                            <ErrorBoundary>
+                                                                <Suspense
+                                                                    fallback={<LoadingFallback variant="timer" />}
+                                                                >
+                                                                    <DeepWorkTimer
+                                                                        tasks={tasks}
+                                                                        resetOffsetHours={user?.reset_offset_hours ?? 0}
+                                                                    />
+                                                                </Suspense>
+                                                            </ErrorBoundary>
+                                                        )}
+                                                        {showStats && (
+                                                            <ErrorBoundary>
+                                                                <Suspense
+                                                                    fallback={<LoadingFallback variant="dashboard" />}
+                                                                >
+                                                                    <ProductivityDashboard
+                                                                        tasks={tasks}
+                                                                        loading={
+                                                                            tasksLoading ||
+                                                                            (checkingAuth && tasks.length === 0)
+                                                                        }
+                                                                    />
+                                                                </Suspense>
+                                                            </ErrorBoundary>
+                                                        )}
+                                                        {showCalendarCard && (
+                                                            <ErrorBoundary>
+                                                                <Suspense
+                                                                    fallback={
+                                                                        <LoadingFallback variant="calendar-summary" />
+                                                                    }
+                                                                >
+                                                                    <CalendarSummaryCard
+                                                                        onOpenCalendar={() => setShowCalendar(true)}
+                                                                    />
+                                                                </Suspense>
+                                                            </ErrorBoundary>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {showMediaHub && (
+                                                    <ErrorBoundary>
+                                                        <Suspense fallback={<LoadingFallback variant="media" />}>
+                                                            <MediaHub
+                                                                showSpotifyTab={showSpotify}
+                                                                showYoutubeTab={showYoutube}
+                                                            />
+                                                        </Suspense>
+                                                    </ErrorBoundary>
+                                                )}
+                                                {showNotes && (
+                                                    <ErrorBoundary>
+                                                        <Suspense fallback={<LoadingFallback variant="notes" />}>
+                                                            <Notes />
+                                                        </Suspense>
+                                                    </ErrorBoundary>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
 
                                 {activeTab === 'tasks' && (
                                     <div>
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }} onClick={() => setIsTasksExpanded(!isTasksExpanded)}>
+                                        <div
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                marginBottom: '1rem'
+                                            }}
+                                        >
+                                            <div
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.5rem',
+                                                    cursor: 'pointer'
+                                                }}
+                                                onClick={() => setIsTasksExpanded(!isTasksExpanded)}
+                                            >
                                                 <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Your Tasks</h2>
-                                                {isTasksExpanded ? <ChevronUp size={20} style={{ color: 'var(--text-secondary)' }} /> : <ChevronDown size={20} style={{ color: 'var(--text-secondary)' }} />}
+                                                {isTasksExpanded ? (
+                                                    <ChevronUp size={20} style={{ color: 'var(--text-secondary)' }} />
+                                                ) : (
+                                                    <ChevronDown size={20} style={{ color: 'var(--text-secondary)' }} />
+                                                )}
                                             </div>
                                             {isMobile && (
                                                 <button
                                                     onClick={() => setShowTaskComposer(true)}
                                                     style={{
-                                                        background: 'var(--accent-color)', color: '#fff', border: 'none', borderRadius: '50%',
-                                                        width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                        boxShadow: '0 4px 12px rgba(var(--accent-rgb), 0.3)', cursor: 'pointer'
+                                                        background: 'var(--btn-primary-bg)',
+                                                        color: 'var(--btn-primary-text)',
+                                                        border: 'none',
+                                                        borderRadius: '50%',
+                                                        width: '40px',
+                                                        height: '40px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        boxShadow: '0 4px 12px rgba(var(--accent-rgb), 0.3)',
+                                                        cursor: 'pointer'
                                                     }}
                                                 >
                                                     <Plus size={20} />
                                                 </button>
                                             )}
                                         </div>
-                                        {isTasksExpanded && (
-                                            (tasksLoading || (checkingAuth && tasks.length === 0)) ? (
+                                        {isTasksExpanded &&
+                                            (tasksLoading || (checkingAuth && tasks.length === 0) ? (
                                                 <TaskBoardSkeleton count={3} />
                                             ) : (
                                                 <Suspense fallback={<LoadingFallback variant="taskboard" />}>
@@ -2061,8 +2498,7 @@ function App() {
                                                         onReorder={handleTasksReorder}
                                                     />
                                                 </Suspense>
-                                            )
-                                        )}
+                                            ))}
                                     </div>
                                 )}
 
@@ -2098,22 +2534,57 @@ function App() {
                                         </ErrorBoundary>
                                     </div>
                                 )}
-
                             </div>
                         ) : (
                             <>
                                 {/* Desktop Layout */}
                                 {(() => {
-                                    const showTimer = isCardEffectivelyVisible('timer', dashboardCards, spotifyConnected);
-                                    const showStats = isCardEffectivelyVisible('stats', dashboardCards, spotifyConnected);
-                                    const showCalendarCard = isCardEffectivelyVisible('calendar', dashboardCards, spotifyConnected);
-                                    const showTasks = isCardEffectivelyVisible('tasks', dashboardCards, spotifyConnected);
-                                    const showHeatmap = isCardEffectivelyVisible('heatmap', dashboardCards, spotifyConnected);
-                                    const showSpotify = isCardEffectivelyVisible('spotify', dashboardCards, spotifyConnected);
-                                    const showYoutube = isCardEffectivelyVisible('youtube', dashboardCards, spotifyConnected);
+                                    const showTimer = isCardEffectivelyVisible(
+                                        'timer',
+                                        dashboardCards,
+                                        spotifyConnected
+                                    );
+                                    const showStats = isCardEffectivelyVisible(
+                                        'stats',
+                                        dashboardCards,
+                                        spotifyConnected
+                                    );
+                                    const showCalendarCard = isCardEffectivelyVisible(
+                                        'calendar',
+                                        dashboardCards,
+                                        spotifyConnected
+                                    );
+                                    const showTasks = isCardEffectivelyVisible(
+                                        'tasks',
+                                        dashboardCards,
+                                        spotifyConnected
+                                    );
+                                    const showHeatmap = isCardEffectivelyVisible(
+                                        'heatmap',
+                                        dashboardCards,
+                                        spotifyConnected
+                                    );
+                                    const showSpotify = isCardEffectivelyVisible(
+                                        'spotify',
+                                        dashboardCards,
+                                        spotifyConnected
+                                    );
+                                    const showYoutube = isCardEffectivelyVisible(
+                                        'youtube',
+                                        dashboardCards,
+                                        spotifyConnected
+                                    );
                                     const showMediaHub = showSpotify || showYoutube;
-                                    const showNotes = isCardEffectivelyVisible('notes', dashboardCards, spotifyConnected);
-                                    const showHabits = isCardEffectivelyVisible('habits', dashboardCards, spotifyConnected);
+                                    const showNotes = isCardEffectivelyVisible(
+                                        'notes',
+                                        dashboardCards,
+                                        spotifyConnected
+                                    );
+                                    const showHabits = isCardEffectivelyVisible(
+                                        'habits',
+                                        dashboardCards,
+                                        spotifyConnected
+                                    );
 
                                     const hasStatsColumn = showStats || showCalendarCard;
                                     const hasTopSection = showTimer || hasStatsColumn;
@@ -2123,15 +2594,22 @@ function App() {
                                         <>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                                                 {hasTopSection && (
-                                                    <div style={{
-                                                        display: 'grid',
-                                                        gridTemplateColumns: (showTimer && hasStatsColumn) ? 'repeat(auto-fit, minmax(300px, 1fr))' : '1fr',
-                                                        gap: '2rem',
-                                                        alignItems: 'start'
-                                                    }}>
+                                                    <div
+                                                        style={{
+                                                            display: 'grid',
+                                                            gridTemplateColumns:
+                                                                showTimer && hasStatsColumn
+                                                                    ? 'repeat(auto-fit, minmax(300px, 1fr))'
+                                                                    : '1fr',
+                                                            gap: '2rem',
+                                                            alignItems: 'start'
+                                                        }}
+                                                    >
                                                         {showTimer && (
                                                             <ErrorBoundary>
-                                                                <Suspense fallback={<LoadingFallback variant="timer" />}>
+                                                                <Suspense
+                                                                    fallback={<LoadingFallback variant="timer" />}
+                                                                >
                                                                     <DeepWorkTimer
                                                                         tasks={tasks}
                                                                         resetOffsetHours={user?.reset_offset_hours ?? 0}
@@ -2140,18 +2618,43 @@ function App() {
                                                             </ErrorBoundary>
                                                         )}
                                                         {hasStatsColumn && (
-                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
+                                                            <div
+                                                                style={{
+                                                                    display: 'flex',
+                                                                    flexDirection: 'column',
+                                                                    gap: '1.5rem',
+                                                                    width: '100%'
+                                                                }}
+                                                            >
                                                                 {showStats && (
                                                                     <ErrorBoundary>
-                                                                        <Suspense fallback={<LoadingFallback variant="dashboard" />}>
-                                                                            <ProductivityDashboard tasks={tasks} loading={tasksLoading || (checkingAuth && tasks.length === 0)} />
+                                                                        <Suspense
+                                                                            fallback={
+                                                                                <LoadingFallback variant="dashboard" />
+                                                                            }
+                                                                        >
+                                                                            <ProductivityDashboard
+                                                                                tasks={tasks}
+                                                                                loading={
+                                                                                    tasksLoading ||
+                                                                                    (checkingAuth && tasks.length === 0)
+                                                                                }
+                                                                            />
                                                                         </Suspense>
                                                                     </ErrorBoundary>
                                                                 )}
                                                                 {showCalendarCard && (
                                                                     <ErrorBoundary>
-                                                                        <Suspense fallback={<LoadingFallback variant="calendar-summary" />}>
-                                                                            <CalendarSummaryCard onOpenCalendar={() => setShowCalendar(true)} />
+                                                                        <Suspense
+                                                                            fallback={
+                                                                                <LoadingFallback variant="calendar-summary" />
+                                                                            }
+                                                                        >
+                                                                            <CalendarSummaryCard
+                                                                                onOpenCalendar={() =>
+                                                                                    setShowCalendar(true)
+                                                                                }
+                                                                            />
                                                                         </Suspense>
                                                                     </ErrorBoundary>
                                                                 )}
@@ -2163,23 +2666,44 @@ function App() {
                                                 {showTasks && (
                                                     <ErrorBoundary>
                                                         <div>
-                                                            <div style={{
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'space-between',
-                                                                gap: '1rem',
-                                                                marginBottom: '1rem'
-                                                            }}>
-                                                                <div 
-                                                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }} 
+                                                            <div
+                                                                style={{
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'space-between',
+                                                                    gap: '1rem',
+                                                                    marginBottom: '1rem'
+                                                                }}
+                                                            >
+                                                                <div
+                                                                    style={{
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '0.5rem',
+                                                                        cursor: 'pointer'
+                                                                    }}
                                                                     onClick={() => setIsTasksExpanded(!isTasksExpanded)}
                                                                 >
-                                                                    <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Your Tasks</h2>
-                                                                    {isTasksExpanded ? <ChevronUp size={20} style={{ color: 'var(--text-secondary)' }} /> : <ChevronDown size={20} style={{ color: 'var(--text-secondary)' }} />}
+                                                                    <h2 style={{ margin: 0, fontSize: '1.25rem' }}>
+                                                                        Your Tasks
+                                                                    </h2>
+                                                                    {isTasksExpanded ? (
+                                                                        <ChevronUp
+                                                                            size={20}
+                                                                            style={{ color: 'var(--text-secondary)' }}
+                                                                        />
+                                                                    ) : (
+                                                                        <ChevronDown
+                                                                            size={20}
+                                                                            style={{ color: 'var(--text-secondary)' }}
+                                                                        />
+                                                                    )}
                                                                 </div>
                                                                 {showSidebar && (
                                                                     <button
-                                                                        onClick={() => setShowTaskComposer(prev => !prev)}
+                                                                        onClick={() =>
+                                                                            setShowTaskComposer((prev) => !prev)
+                                                                        }
                                                                         title="Open task composer"
                                                                         style={{
                                                                             width: '42px',
@@ -2188,9 +2712,13 @@ function App() {
                                                                             display: 'flex',
                                                                             alignItems: 'center',
                                                                             justifyContent: 'center',
-                                                                            background: showTaskComposer ? 'var(--accent-color)' : 'var(--bg-card)',
+                                                                            background: showTaskComposer
+                                                                                ? 'var(--accent-color)'
+                                                                                : 'var(--bg-card)',
                                                                             border: `1px solid ${showTaskComposer ? 'var(--accent-color)' : 'var(--border-color)'}`,
-                                                                            color: showTaskComposer ? '#ffffff' : 'var(--accent-color)',
+                                                                            color: showTaskComposer
+                                                                                ? '#ffffff'
+                                                                                : 'var(--accent-color)',
                                                                             boxShadow: '0 8px 20px rgba(0, 0, 0, 0.12)'
                                                                         }}
                                                                     >
@@ -2198,11 +2726,16 @@ function App() {
                                                                     </button>
                                                                 )}
                                                             </div>
-                                                            {isTasksExpanded && (
-                                                                (tasksLoading || (checkingAuth && tasks.length === 0)) ? (
+                                                            {isTasksExpanded &&
+                                                                (tasksLoading ||
+                                                                (checkingAuth && tasks.length === 0) ? (
                                                                     <TaskBoardSkeleton count={3} />
                                                                 ) : (
-                                                                    <Suspense fallback={<LoadingFallback variant="taskboard" />}>
+                                                                    <Suspense
+                                                                        fallback={
+                                                                            <LoadingFallback variant="taskboard" />
+                                                                        }
+                                                                    >
                                                                         <TaskBoard
                                                                             tasks={tasks}
                                                                             onTaskUpdate={handleTaskUpdate}
@@ -2211,15 +2744,18 @@ function App() {
                                                                             onReorder={handleTasksReorder}
                                                                         />
                                                                     </Suspense>
-                                                                )
-                                                            )}
+                                                                ))}
                                                         </div>
                                                     </ErrorBoundary>
                                                 )}
 
                                                 {showHeatmap && (
                                                     <ErrorBoundary>
-                                                        <Suspense fallback={<LoadingFallback variant="heatmap" height="300px" />}>
+                                                        <Suspense
+                                                            fallback={
+                                                                <LoadingFallback variant="heatmap" height="300px" />
+                                                            }
+                                                        >
                                                             <ActivityHeatmap
                                                                 tasks={tasks}
                                                                 resetOffsetHours={user?.reset_offset_hours ?? 0}
@@ -2240,14 +2776,18 @@ function App() {
                                                 )}
                                             </div>
 
-                                            <div style={{
-                                                display: hasRightSidebar ? 'flex' : 'none',
-                                                flexDirection: 'column',
-                                                gap: '2rem'
-                                            }}>
+                                            <div
+                                                style={{
+                                                    display: hasRightSidebar ? 'flex' : 'none',
+                                                    flexDirection: 'column',
+                                                    gap: '2rem'
+                                                }}
+                                            >
                                                 {showFriends && (
                                                     <ErrorBoundary>
-                                                        <Suspense fallback={<LoadingFallback variant="friends-compact" />}>
+                                                        <Suspense
+                                                            fallback={<LoadingFallback variant="friends-compact" />}
+                                                        >
                                                             <FriendsPanel compact />
                                                         </Suspense>
                                                     </ErrorBoundary>
@@ -2256,14 +2796,18 @@ function App() {
                                                     <>
                                                         {showNotes && (
                                                             <ErrorBoundary>
-                                                                <Suspense fallback={<LoadingFallback variant="notes" />}>
+                                                                <Suspense
+                                                                    fallback={<LoadingFallback variant="notes" />}
+                                                                >
                                                                     <Notes />
                                                                 </Suspense>
                                                             </ErrorBoundary>
                                                         )}
                                                         {showHabits && (
                                                             <ErrorBoundary>
-                                                                <Suspense fallback={<LoadingFallback variant="habits" />}>
+                                                                <Suspense
+                                                                    fallback={<LoadingFallback variant="habits" />}
+                                                                >
                                                                     <HabitTracker />
                                                                 </Suspense>
                                                             </ErrorBoundary>
@@ -2274,19 +2818,12 @@ function App() {
                                         </>
                                     );
                                 })()}
-
                             </>
                         )}
                     </>
                 )}
             </main>
-            {user && (
-                <BottomNav
-                    activeTab={activeTab}
-                    setActiveTab={setActiveTab}
-                    setShowSettings={setShowSettings}
-                />
-            )}
+            {user && <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} setShowSettings={setShowSettings} />}
             {/* <Analytics /> */}
         </div>
     );

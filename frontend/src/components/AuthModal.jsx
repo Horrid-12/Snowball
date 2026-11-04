@@ -84,7 +84,7 @@ const AuthModal = ({ onLogin }) => {
                     />
 
                     <button type="submit" disabled={loading} style={{
-                        backgroundColor: 'var(--accent-color)', color: 'white',
+                        backgroundColor: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)',
                         padding: '0.75rem', borderRadius: '0.5rem', fontWeight: '600', marginTop: '0.5rem',
                         opacity: loading ? 0.7 : 1, cursor: loading ? 'not-allowed' : 'pointer'
                     }}>

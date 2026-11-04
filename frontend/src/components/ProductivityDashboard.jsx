@@ -65,7 +65,7 @@ const ProductivityDashboard = ({ tasks, loading = false }) => {
             {isExpanded && (
                 <div style={{ padding: '0.75rem 1rem 1.25rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     <div className="score-container" style={{ minWidth: 0 }}>
-                        <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: 'var(--accent-color)', margin: 0 }}>{displayScore.toFixed(1)}</p>
+                        <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: 'var(--chart-primary)', margin: 0 }}>{displayScore.toFixed(1)}</p>
                     </div>
 
                     <div className="responsive-grid" style={{ minWidth: 0 }}>
