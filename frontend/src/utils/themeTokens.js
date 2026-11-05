@@ -17,7 +17,8 @@
  */
 
 export const THEME_OVERRIDES_KEY = 'snowball_theme_overrides';
-// v3 retires the old purple brand defaults from built-in theme buckets.
+// v4 retires the legacy brand defaults (purple, Riff lime/coral, warm paper,
+// AMOLED black) from the built-in theme buckets.
 const OVERRIDES_VERSION = 4;
 
 /* ------------------------------------------------------------------ */
@@ -490,7 +491,7 @@ const RIFF_BASE = {
     bgPrimary: '#eaf2fb',
     bgSecondary: '#ddeaf8',
     textPrimary: '#111111',
-    textSecondary: '#4a453d',
+    textSecondary: '#475569',
     border: '#111111',
     accent: '#0c51de',
     accentAlt: '#93c5fd',
@@ -940,9 +941,9 @@ export const loadThemeOverrides = () => {
         const parsed = JSON.parse(raw);
         if (!parsed || typeof parsed !== 'object') return buckets;
 
-        // A v2 bucket can still hold the previous purple brand palette. Strip
-        // those exact values once; after this save it becomes v3 and later
-        // deliberate purple choices are preserved normally.
+        // A pre-v4 bucket can still hold the previous brand palettes. Strip
+        // those exact values once; after this save it becomes v4 and later
+        // deliberate choices are preserved normally.
         const needsBrandMigration = (Number(parsed.__v) || 0) < OVERRIDES_VERSION;
 
         // New format: { __v, dark: {...}, shack: {...}, ... }. Legacy bucket ids

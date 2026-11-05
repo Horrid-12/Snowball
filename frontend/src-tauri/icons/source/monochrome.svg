@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108" fill="none">
+  <title>Snowball monochrome icon</title>
+  <g transform="translate(18.8 17.7) scale(1.1)">
+    <mask id="snowball-cutout" maskUnits="userSpaceOnUse" x="-16" y="-15" width="96" height="96">
+      <rect x="-16" y="-15" width="96" height="96" fill="#ffffff" />
+      <path d="M15 22c6-9 17-14 27-11" stroke="#000000" stroke-width="5" stroke-linecap="round" />
+      <circle cx="24" cy="32" r="3.2" fill="#000000" />
+      <path d="M36 31c2.6-2.4 5.6-2.4 8 0" stroke="#000000" stroke-width="3.2" stroke-linecap="round" />
+      <path d="M26 42c3.8 4.4 9.2 4.4 13 0" stroke="#000000" stroke-width="3.2" stroke-linecap="round" />
+    </mask>
+    <circle cx="32" cy="33" r="26" fill="#ffffff" stroke="#ffffff" stroke-width="5" mask="url(#snowball-cutout)" />
+  </g>
+</svg>

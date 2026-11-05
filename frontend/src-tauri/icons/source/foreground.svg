@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108" fill="none">
+  <title>Snowball adaptive icon foreground</title>
+  <g transform="translate(18.8 17.7) scale(1.1)">
+    <circle cx="32" cy="33" r="26" fill="#f3f8ff" stroke="#0b1220" stroke-width="5" />
+    <path d="M15 22c6-9 17-14 27-11" stroke="#93c5fd" stroke-width="5" stroke-linecap="round" opacity="0.9" />
+    <circle cx="24" cy="32" r="3.2" fill="#0b1220" />
+    <path d="M36 31c2.6-2.4 5.6-2.4 8 0" stroke="#0b1220" stroke-width="3.2" stroke-linecap="round" />
+    <path d="M26 42c3.8 4.4 9.2 4.4 13 0" stroke="#0b1220" stroke-width="3.2" stroke-linecap="round" />
+    <circle cx="19" cy="39" r="3.4" fill="#fbbf24" opacity="0.9" />
+  </g>
+</svg>

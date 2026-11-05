@@ -21,7 +21,7 @@ export const DoodleLayer = () => (
         </svg>
 
         <svg
-            style={{ top: '34%', left: '1.5%', width: '64px', color: 'var(--accent)' }}
+            style={{ top: '34%', left: '1.5%', width: '64px', color: 'var(--accent-color)' }}
             viewBox="0 0 120 60"
             fill="none"
         >
@@ -58,7 +58,11 @@ export const DoodleLayer = () => (
             <circle cx="30" cy="30" r="21" stroke="currentColor" strokeWidth="8" />
         </svg>
 
-        <svg style={{ top: '62%', right: '9%', width: '26px', color: 'var(--accent)' }} viewBox="0 0 40 40" fill="none">
+        <svg
+            style={{ top: '62%', right: '9%', width: '26px', color: 'var(--accent-color)' }}
+            viewBox="0 0 40 40"
+            fill="none"
+        >
             <title>Decorative plus</title>
             <path d="M20 4v32M4 20h32" stroke="currentColor" strokeWidth="7" strokeLinecap="round" />
         </svg>

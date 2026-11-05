@@ -13,12 +13,12 @@ export default defineConfig(() => {
             viteCompression({ algorithm: 'brotliCompress' }),
             !isTauri && VitePWA({
                 registerType: 'autoUpdate',
-                includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+                includeAssets: ['favicon.ico', 'favicon.png', 'apple-touch-icon.png', 'mask-icon.svg', 'logo.svg'],
                 manifest: {
                     name: 'Snowball Productivity',
                     short_name: 'Snowball',
                     description: 'Snappy offline-first productivity hub',
-                    theme_color: '#3b82f6',
+                    theme_color: '#0c51de',
                     icons: [
                         {
                             src: 'pwa-192x192.png',
@@ -29,6 +29,12 @@ export default defineConfig(() => {
                             src: 'pwa-512x512.png',
                             sizes: '512x512',
                             type: 'image/png'
+                        },
+                        {
+                            src: 'pwa-512x512.png',
+                            sizes: '512x512',
+                            type: 'image/png',
+                            purpose: 'any maskable'
                         }
                     ]
                 },

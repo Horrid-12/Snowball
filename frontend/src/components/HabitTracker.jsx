@@ -320,7 +320,6 @@ const HabitTracker = () => {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        boxShadow: '0 4px 12px rgba(var(--accent-rgb), 0.3)',
                         cursor: 'pointer',
                         padding: 0
                     }}

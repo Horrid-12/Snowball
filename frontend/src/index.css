@@ -216,7 +216,7 @@ body,
     --modal-bg: #ffffff;
     --popover-bg: #ffffff;
     --text-primary: #111111;
-    --text-secondary: #4a453d;
+    --text-secondary: #475569;
     --border-color: #111111;
     --accent-color: #0c51de;
     --accent-rgb: 12, 81, 222;
@@ -450,7 +450,8 @@ input:focus,
 textarea:focus,
 select:focus {
     border-color: var(--focus-ring);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 26%, transparent);
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
 }
 
 
@@ -874,15 +875,6 @@ input[type="checkbox"].circle-checkbox:checked {
 }
 
 /* Skeleton Loading Animations & Primitives */
-@keyframes skeleton-shimmer {
-    0% {
-        background-position: 200% 0;
-    }
-    100% {
-        background-position: -200% 0;
-    }
-}
-
 @keyframes skeleton-pulse {
     0%, 100% {
         opacity: 0.6;
@@ -893,16 +885,8 @@ input[type="checkbox"].circle-checkbox:checked {
 }
 
 .skeleton-shimmer {
-    background: linear-gradient(
-        90deg,
-        var(--skeleton-base) 0%,
-        var(--skeleton-base) 20%,
-        var(--skeleton-highlight) 50%,
-        var(--skeleton-base) 80%,
-        var(--skeleton-base) 100%
-    );
-    background-size: 200% 100%;
-    animation: skeleton-shimmer 1.8s infinite ease-in-out;
+    background: var(--skeleton-base);
+    animation: skeleton-pulse 1.8s infinite ease-in-out;
 }
 
 .skeleton-pulse {
@@ -1150,6 +1134,177 @@ body.style-riff {
     transform: none;
 }
 
+/* ---- Auth / welcome screen -------------------------------------- */
+/* The login screen is a full page rather than a plain modal so it can use the
+   same palette, outline language, and hard-offset shadows as the app. */
+.auth-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+    padding: 5.5rem 1.25rem 2.5rem;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+/* Riff style keeps the same dot texture and doodles it uses behind the app,
+   so the welcome screen is recognizably the same product. No color gradients
+   or glow layers are used. */
+.style-riff .auth-screen {
+    background-image:
+        radial-gradient(
+            color-mix(in srgb, var(--text-primary) var(--texture-opacity), transparent) 1px,
+            transparent 1px
+        );
+    background-size: 22px 22px;
+    background-attachment: fixed;
+}
+
+.auth-screen .doodle-layer {
+    z-index: 0;
+}
+
+.auth-brand {
+    position: absolute;
+    top: 1.5rem;
+    left: 1.5rem;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+}
+
+.auth-wordmark {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 1.45rem;
+    letter-spacing: -0.04em;
+}
+
+.auth-card {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 420px;
+    padding: var(--card-padding);
+    background: var(--bg-card);
+    border-color: var(--outline-color);
+    color: var(--text-primary);
+}
+
+.auth-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 1.25rem;
+}
+
+.auth-kicker {
+    color: var(--accent-color);
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.auth-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: var(--weight-heading);
+    font-size: 1.65rem;
+    letter-spacing: -0.03em;
+    line-height: 1.08;
+}
+
+.auth-subtitle {
+    margin: 0.15rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.auth-error {
+    margin: 0 0 1rem;
+    padding: 0.6rem 0.75rem;
+    border: var(--border-subtle) solid color-mix(in srgb, var(--danger-color) 45%, var(--border-color));
+    border-radius: 0.75rem;
+    background: color-mix(in srgb, var(--danger-color) 10%, var(--bg-card));
+    color: var(--danger-color);
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.auth-input {
+    width: 100%;
+    padding: 0.8rem 0.95rem;
+    border-radius: 0.9rem;
+    font-size: 0.9rem;
+}
+
+.auth-submit {
+    width: 100%;
+    min-height: 48px;
+    margin-top: 0.2rem;
+    font-size: 0.88rem;
+}
+
+.auth-switch {
+    margin: 1.25rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+.auth-link {
+    margin-left: 0.35rem;
+    padding: 0;
+    background: none;
+    border: 0;
+    color: var(--accent-color);
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.auth-link:hover {
+    color: var(--accent-hover);
+}
+
+@media (max-width: 600px) {
+    .auth-screen {
+        align-items: flex-start;
+        padding: 5rem 1rem 2rem;
+    }
+
+    .auth-brand {
+        top: 1rem;
+        left: 1rem;
+    }
+
+    .auth-wordmark {
+        font-size: 1.25rem;
+    }
+
+    .auth-card {
+        padding: 1.35rem;
+    }
+}
+
+@media (max-height: 640px) {
+    .auth-screen {
+        align-items: flex-start;
+    }
+}
+
 .riff-chip {
     display: inline-flex;
     align-items: center;
@@ -1187,7 +1342,8 @@ body.style-riff {
 
 .riff-input:focus {
     border-color: var(--focus-ring);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 26%, transparent);
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
 }
 
 /* ---- Decorative doodle layer ------------------------------------ */

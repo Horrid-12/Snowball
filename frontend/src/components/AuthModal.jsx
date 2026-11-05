@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { getApiErrorMessage } from '../utils/api.js';
-import { apiFetch, setAuthToken, persistSession } from '../utils/apiClient.js';
+import { apiFetch, persistSession, setAuthToken } from '../utils/apiClient.js';
+import { DoodleLayer, SnowballMark } from './Doodles.jsx';
 
 const AuthModal = ({ onLogin }) => {
     const [isRegister, setIsRegister] = useState(false);
@@ -32,7 +33,10 @@ const AuthModal = ({ onLogin }) => {
                 setError(getApiErrorMessage(data, 'Authentication failed'));
             }
         } catch (err) {
-            const msg = typeof err === 'string' ? err : (err.message || (err.toString && err.toString() !== '[object Object]' ? err.toString() : '') || '');
+            const msg =
+                typeof err === 'string'
+                    ? err
+                    : err.message || (err.toString && err.toString() !== '[object Object]' ? err.toString() : '') || '';
             if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Network')) {
                 setError('Could not connect to server');
             } else if (msg.includes('abort')) {
@@ -49,55 +53,69 @@ const AuthModal = ({ onLogin }) => {
     };
 
     return (
-        <div style={{
-            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-            backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center',
-            zIndex: 1000
-        }}>
-            <div style={{
-                background: 'var(--bg-card)', padding: '2rem', borderRadius: 'var(--radius)',
-                width: '100%', maxWidth: '400px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
-            }}>
-                <h2 style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
-                    {isRegister ? 'Create Account' : 'Welcome to Snowball'}
-                </h2>
+        <div className="auth-screen">
+            <DoodleLayer />
+            <div className="auth-brand">
+                <SnowballMark size={38} />
+                <span className="auth-wordmark">Snowball.</span>
+            </div>
 
-                {error && <p style={{ color: 'var(--danger-color)', marginBottom: '1rem', fontSize: '0.875rem', textAlign: 'center' }}>{error}</p>}
+            <div className="auth-card card-container">
+                <div className="auth-heading">
+                    <span className="auth-kicker">{isRegister ? 'Join the avalanche' : 'Welcome back'}</span>
+                    <h2 className="auth-title">{isRegister ? 'Create Account' : 'Welcome to Snowball'}</h2>
+                    <p className="auth-subtitle">
+                        {isRegister
+                            ? 'One account for tasks, habits, notes, and deep work.'
+                            : 'Sign in to pick up right where you left off.'}
+                    </p>
+                </div>
 
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {error && (
+                    <p className="auth-error" role="alert">
+                        {error}
+                    </p>
+                )}
+
+                <form onSubmit={handleSubmit} className="auth-form">
                     <input
-                        type="text" placeholder="Username or Email" required
-                        value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value })}
-                        style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                        type="text"
+                        className="auth-input"
+                        placeholder="Username or Email"
+                        aria-label="Username or Email"
+                        required
+                        value={formData.username}
+                        onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                     />
                     {isRegister && (
                         <input
-                            type="email" placeholder="Email" required
-                            value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })}
-                            style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                            type="email"
+                            className="auth-input"
+                            placeholder="Email"
+                            aria-label="Email"
+                            required
+                            value={formData.email}
+                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                         />
                     )}
                     <input
-                        type="password" placeholder="Password" required
-                        value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })}
-                        style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                        type="password"
+                        className="auth-input"
+                        placeholder="Password"
+                        aria-label="Password"
+                        required
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     />
 
-                    <button type="submit" disabled={loading} style={{
-                        backgroundColor: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)',
-                        padding: '0.75rem', borderRadius: '0.5rem', fontWeight: '600', marginTop: '0.5rem',
-                        opacity: loading ? 0.7 : 1, cursor: loading ? 'not-allowed' : 'pointer'
-                    }}>
-                        {loading ? 'Processing...' : (isRegister ? 'Register' : 'Login')}
+                    <button type="submit" className="riff-btn riff-btn-primary auth-submit" disabled={loading}>
+                        {loading ? 'Processing...' : isRegister ? 'Register' : 'Login'}
                     </button>
                 </form>
 
-                <p style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                <p className="auth-switch">
                     {isRegister ? 'Already have an account?' : "Don't have an account?"}
-                    <button
-                        onClick={() => setIsRegister(!isRegister)}
-                        style={{ marginLeft: '0.5rem', color: 'var(--accent-color)', fontWeight: '600', background: 'none', border: 'none', cursor: 'pointer' }}
-                    >
+                    <button type="button" className="auth-link" onClick={() => setIsRegister(!isRegister)}>
                         {isRegister ? 'Login' : 'Register'}
                     </button>
                 </p>

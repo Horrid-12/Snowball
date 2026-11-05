@@ -737,7 +737,7 @@ const MediaHub = ({ onReady, showSpotifyTab = true, showYoutubeTab = true }) => 
                             {/* Left Wing (Stabilizer) */}
                             <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
                                 {/* Placeholder or mini status */}
-                                <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: isSyncPaused ? (isRateLimited ? '#ff4d4d' : 'var(--text-secondary)') : 'var(--success-color)', opacity: 0.3, filter: 'blur(4px)' }} />
+                                <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: isSyncPaused ? (isRateLimited ? '#ff4d4d' : 'var(--text-secondary)') : 'var(--success-color)', opacity: 0.3 }} />
                             </div>
 
                             {/* Center Controls (The Hero) */}
@@ -892,15 +892,6 @@ const MediaHub = ({ onReady, showSpotifyTab = true, showYoutubeTab = true }) => 
                 </div>
             )}
 
-            {/* Subtle Background (Spotify Only) */}
-            {isExpanded && activeTab === 'spotify' && spotifyData?.item && (
-                <div style={{
-                    position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-                    backgroundImage: `url(${spotifyData.item.album.images[0]?.url})`,
-                    backgroundSize: 'cover', backgroundPosition: 'center',
-                    filter: 'blur(40px) opacity(0.1)', zIndex: 0, pointerEvents: 'none'
-                }} />
-            )}
         </div>
     );
 };
