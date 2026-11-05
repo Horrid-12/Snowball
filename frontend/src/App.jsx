@@ -65,7 +65,6 @@ import {
 
 // Lazy-loaded components (split by tab/modal to reduce initial bundle)
 const TaskBoard = React.lazy(() => import('./components/TaskBoard.jsx'));
-const ProductivityDashboard = React.lazy(() => import('./components/ProductivityDashboard.jsx'));
 const MediaHub = React.lazy(() => import('./components/MediaHub.jsx'));
 const HabitTracker = React.lazy(() => import('./components/HabitTracker.jsx'));
 const ActivityHeatmap = React.lazy(() => import('./components/ActivityHeatmap.jsx'));
@@ -136,7 +135,7 @@ const loadingMessages = [
 
 function App() {
     const isOnline = useOnline();
-    const { globalHabits } = useAppContext();
+    const { globalHabits, habitsLoading } = useAppContext();
     const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
     const lastAndroidRouteRef = useRef('dashboard');
     const [user, setUser] = useState(null);
@@ -298,7 +297,17 @@ function App() {
     };
 
     const todaysTasks = useMemo(() => filterTasksForDate(tasks), [tasks]);
-    const { displayScore } = useMemo(() => calculateProductivityScore(tasks, globalHabits), [tasks, globalHabits]);
+    const productivityScoreData = useMemo(() => calculateProductivityScore(tasks, globalHabits), [tasks, globalHabits]);
+    const {
+        displayScore = 0,
+        totals: productivityTotals = { tasksAllocated: 0, tasksCompleted: 0, hoursAllocated: 0, hoursTaken: 0 },
+        bonusAdjustment = 0,
+        overduePenalty = 0
+    } = productivityScoreData || {};
+    const isProductivityLoading =
+        tasksLoading ||
+        (checkingAuth && tasks.length === 0) ||
+        (habitsLoading && (!tasks || tasks.length === 0));
     const remainingTasks = useMemo(() => tasks.filter(isTaskIncomplete).length, [tasks, isTaskIncomplete]);
     const todaysRemainingTasks = useMemo(
         () => todaysTasks.filter(isTaskIncomplete).length,
@@ -1318,6 +1327,7 @@ function App() {
     );
 
     const showHeatmap = isCardEffectivelyVisible('heatmap', dashboardCards, spotifyConnected);
+    const showStats = isCardEffectivelyVisible('stats', dashboardCards, spotifyConnected);
 
     const setShowHeatmap = useCallback(
         (updater) => {
@@ -1653,6 +1663,91 @@ function App() {
         }
     }, [isOnline, tasks]);
 
+    const renderTasksSection = () => (
+        <ErrorBoundary>
+            <div>
+                <div
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '1rem',
+                        marginBottom: '1rem'
+                    }}
+                >
+                    <div
+                        role="button"
+                        tabIndex={0}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            cursor: 'pointer'
+                        }}
+                        onClick={() => setIsTasksExpanded(!isTasksExpanded)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setIsTasksExpanded(!isTasksExpanded);
+                            }
+                        }}
+                    >
+                        <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Your Tasks</h2>
+                        {isTasksExpanded ? (
+                            <ChevronUp size={20} style={{ color: 'var(--text-secondary)' }} />
+                        ) : (
+                            <ChevronDown size={20} style={{ color: 'var(--text-secondary)' }} />
+                        )}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setShowTaskComposer((prev) => !prev)}
+                        title="Open task composer"
+                        style={{
+                            width: isMobile ? '40px' : '42px',
+                            height: isMobile ? '40px' : '42px',
+                            borderRadius: '999px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: showTaskComposer
+                                ? 'var(--accent-color)'
+                                : isMobile
+                                  ? 'var(--btn-primary-bg)'
+                                  : 'var(--bg-card)',
+                            border: isMobile
+                                ? 'none'
+                                : `1px solid ${showTaskComposer ? 'var(--accent-color)' : 'var(--border-color)'}`,
+                            color: showTaskComposer
+                                ? '#ffffff'
+                                : isMobile
+                                  ? 'var(--btn-primary-text)'
+                                  : 'var(--accent-color)',
+                            boxShadow: '0 8px 20px rgba(0, 0, 0, 0.12)',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        <Plus size={20} />
+                    </button>
+                </div>
+                {isTasksExpanded &&
+                    (tasksLoading || (checkingAuth && tasks.length === 0) ? (
+                        <TaskBoardSkeleton count={3} />
+                    ) : (
+                        <Suspense fallback={<LoadingFallback variant="taskboard" />}>
+                            <TaskBoard
+                                tasks={tasks}
+                                onTaskUpdate={handleTaskUpdate}
+                                onTaskDelete={handleTaskDelete}
+                                onClearAll={handleClearAll}
+                                onReorder={handleTasksReorder}
+                            />
+                        </Suspense>
+                    ))}
+            </div>
+        </ErrorBoundary>
+    );
+
     return (
         <div
             className="app-container"
@@ -1944,191 +2039,309 @@ function App() {
                 className="page-header"
                 style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
+                    flexDirection: 'column',
+                    gap: isMobile ? '0.45rem' : '0.65rem',
                     marginBottom: 'var(--section-gap)',
                     padding: isMobile ? '0.5rem 0' : '0'
                 }}
             >
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.45rem' : '0.6rem' }}>
-                        <SnowballMark size={isMobile ? 26 : 34} />
-                        <h1
-                            style={{
-                                fontSize: isMobile ? '1.5rem' : '2rem',
-                                fontWeight: '800',
-                                letterSpacing: '-1px',
-                                color: 'var(--text-primary)',
-                                margin: 0
-                            }}
-                        >
-                            Snowball.
-                        </h1>
-                    </div>
-                    {updatePrompt.available && (
-                        <button
-                            type="button"
-                            onClick={handleHeaderUpdate}
-                            disabled={updatePrompt.installing}
-                            style={{
-                                marginTop: '0.35rem',
-                                alignSelf: 'flex-start',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.35rem',
-                                padding: isMobile ? '0.35rem 0.55rem' : '0.4rem 0.7rem',
-                                borderRadius: '999px',
-                                border: '1px solid color-mix(in srgb, var(--accent-color) 45%, var(--border-color))',
-                                background: 'color-mix(in srgb, var(--accent-color) 14%, var(--bg-card))',
-                                color: 'var(--accent-color)',
-                                fontSize: isMobile ? '0.68rem' : '0.75rem',
-                                fontWeight: 800,
-                                cursor: updatePrompt.installing ? 'wait' : 'pointer',
-                                whiteSpace: 'nowrap'
-                            }}
-                            title={`Update available${updatePrompt.nextVersion ? `: ${updatePrompt.nextVersion}` : ''}`}
-                        >
-                            <RefreshCcw size={isMobile ? 12 : 14} />
-                            {updatePrompt.installing
-                                ? 'Updating...'
-                                : updatePrompt.platform === 'web'
-                                  ? 'Refresh update'
-                                  : `Update${updatePrompt.nextVersion ? ` ${updatePrompt.nextVersion}` : ''}`}
-                        </button>
-                    )}
-                </div>
-
-                <div style={{ display: 'flex', gap: isMobile ? '0.5rem' : '1rem', alignItems: 'center' }}>
-                    {user && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                                <span
+                <div
+                    style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        width: '100%',
+                        gap: isMobile ? '0.4rem' : '1rem'
+                    }}
+                >
+                    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.4rem' : '0.6rem' }}>
+                            <SnowballMark size={isMobile ? 26 : 34} />
+                            <h1
+                                style={{
+                                    fontSize: isMobile ? '1.5rem' : '2rem',
+                                    fontWeight: '800',
+                                    letterSpacing: '-1px',
+                                    color: 'var(--text-primary)',
+                                    margin: 0
+                                }}
+                            >
+                                Snowball.
+                            </h1>
+                            {user && showStats && (
+                                <div
                                     style={{
-                                        fontSize: '0.8rem',
-                                        color: 'var(--text-secondary)',
-                                        fontWeight: '600',
-                                        opacity: 0.9
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: isMobile ? '0.25rem' : '0.4rem',
+                                        padding: isMobile ? '0.18rem 0.45rem' : '0.25rem 0.65rem',
+                                        borderRadius: '999px',
+                                        background: 'color-mix(in srgb, var(--accent-color) 12%, var(--bg-card))',
+                                        border: '1px solid color-mix(in srgb, var(--accent-color) 35%, var(--border-color))',
+                                        marginLeft: isMobile ? '0.2rem' : '0.4rem',
+                                        flexShrink: 0
                                     }}
+                                    title={`Productivity Score: ${isProductivityLoading ? 'Loading' : displayScore.toFixed(1)}`}
                                 >
-                                    Hi, {user.username}
-                                </span>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    {!isOnline ? (
-                                        <>
-                                            <WifiOff size={10} style={{ color: '#ef4444' }} />
-                                            <span style={{ fontSize: '0.6rem', color: '#ef4444', fontWeight: '700' }}>
-                                                OFFLINE
-                                            </span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Wifi size={10} style={{ color: 'var(--success-color)' }} />
-                                            <span
-                                                style={{
-                                                    fontSize: '0.6rem',
-                                                    color: 'var(--success-color)',
-                                                    fontWeight: '700',
-                                                    opacity: 0.8
-                                                }}
-                                            >
-                                                ONLINE
-                                            </span>
-                                        </>
+                                    {!isMobile && (
+                                        <span
+                                            style={{
+                                                fontSize: '0.68rem',
+                                                fontWeight: '700',
+                                                color: 'var(--text-secondary)',
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.04em'
+                                            }}
+                                        >
+                                            Score
+                                        </span>
                                     )}
+                                    <span
+                                        style={{
+                                            fontSize: isMobile ? '0.95rem' : '1.15rem',
+                                            fontWeight: '800',
+                                            color: 'var(--accent-color)',
+                                            lineHeight: 1
+                                        }}
+                                    >
+                                        {isProductivityLoading ? '...' : displayScore.toFixed(1)}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                        {updatePrompt.available && (
+                            <button
+                                type="button"
+                                onClick={handleHeaderUpdate}
+                                disabled={updatePrompt.installing}
+                                style={{
+                                    marginTop: '0.35rem',
+                                    alignSelf: 'flex-start',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    padding: isMobile ? '0.35rem 0.55rem' : '0.4rem 0.7rem',
+                                    borderRadius: '999px',
+                                    border: '1px solid color-mix(in srgb, var(--accent-color) 45%, var(--border-color))',
+                                    background: 'color-mix(in srgb, var(--accent-color) 14%, var(--bg-card))',
+                                    color: 'var(--accent-color)',
+                                    fontSize: isMobile ? '0.68rem' : '0.75rem',
+                                    fontWeight: 800,
+                                    cursor: updatePrompt.installing ? 'wait' : 'pointer',
+                                    whiteSpace: 'nowrap'
+                                }}
+                                title={`Update available${updatePrompt.nextVersion ? `: ${updatePrompt.nextVersion}` : ''}`}
+                            >
+                                <RefreshCcw size={isMobile ? 12 : 14} />
+                                {updatePrompt.installing
+                                    ? 'Updating...'
+                                    : updatePrompt.platform === 'web'
+                                      ? 'Refresh update'
+                                      : `Update${updatePrompt.nextVersion ? ` ${updatePrompt.nextVersion}` : ''}`}
+                            </button>
+                        )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: isMobile ? '0.5rem' : '1rem', alignItems: 'center' }}>
+                        {user && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                                    <span
+                                        style={{
+                                            fontSize: '0.8rem',
+                                            color: 'var(--text-secondary)',
+                                            fontWeight: '600',
+                                            opacity: 0.9,
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                    >
+                                        Hi, {user.username}
+                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        {!isOnline ? (
+                                            <>
+                                                <WifiOff size={10} style={{ color: '#ef4444' }} />
+                                                <span style={{ fontSize: '0.6rem', color: '#ef4444', fontWeight: '700' }}>
+                                                    OFFLINE
+                                                </span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Wifi size={10} style={{ color: 'var(--success-color)' }} />
+                                                <span
+                                                    style={{
+                                                        fontSize: '0.6rem',
+                                                        color: 'var(--success-color)',
+                                                        fontWeight: '700',
+                                                        opacity: 0.8
+                                                    }}
+                                                >
+                                                    ONLINE
+                                                </span>
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: isMobile ? '0.5rem' : '0.75rem', alignItems: 'center', flexShrink: 0 }}>
+                        {user && (
+                            <>
+                                <button
+                                    onClick={() => setShowHeatmap(!showHeatmap)}
+                                    className="header-icon-btn"
+                                    title={showHeatmap ? 'Hide Heatmap' : 'Show Heatmap'}
+                                    style={{
+                                        display: isMobile ? 'none' : 'flex',
+                                        color: showHeatmap ? 'var(--accent-color)' : 'var(--text-primary)'
+                                    }}
+                                >
+                                    <BarChart3 size={18} />
+                                </button>
+                                <button
+                                    onClick={() => setShowCalendar(true)}
+                                    className="header-icon-btn"
+                                    title="Calendar"
+                                    style={{
+                                        color: 'var(--text-primary)',
+                                        padding: isMobile ? '5px' : '0',
+                                        display: 'flex',
+                                        alignItems: 'center'
+                                    }}
+                                >
+                                    <CalendarDays size={isMobile ? 20 : 18} />
+                                </button>
+                                <button
+                                    onClick={() => setShowCalculator(true)}
+                                    className="header-icon-btn"
+                                    title="Calculator"
+                                    style={{
+                                        color: 'var(--text-primary)',
+                                        padding: isMobile ? '5px' : '0',
+                                        display: 'flex',
+                                        alignItems: 'center'
+                                    }}
+                                >
+                                    <CalculatorIcon size={isMobile ? 20 : 18} />
+                                </button>
+                                <button
+                                    onClick={() => setShowFriends((prev) => !prev)}
+                                    className="header-icon-btn"
+                                    title="Friends"
+                                    style={{
+                                        color: showFriends ? 'var(--accent-color)' : 'var(--text-primary)',
+                                        padding: isMobile ? '5px' : '0',
+                                        display: isMobile ? 'none' : 'flex',
+                                        alignItems: 'center'
+                                    }}
+                                >
+                                    <Users size={18} />
+                                </button>
+                                <button
+                                    onClick={() => setShowHistory(true)}
+                                    className="header-icon-btn"
+                                    title="History Vault"
+                                    style={{
+                                        color: 'var(--text-primary)',
+                                        padding: isMobile ? '5px' : '0',
+                                        display: 'flex',
+                                        alignItems: 'center'
+                                    }}
+                                >
+                                    <HistoryIcon size={isMobile ? 20 : 18} />
+                                </button>
+                                <button
+                                    className="settings-btn"
+                                    onClick={() => setShowSettings(true)}
+                                    style={{
+                                        background: 'var(--bg-card)',
+                                        border: '1px solid var(--border-color)',
+                                        borderRadius: '50%',
+                                        width: isMobile ? '36px' : '40px',
+                                        height: isMobile ? '36px' : '40px',
+                                        display: isMobile || isNativeAndroid ? 'none' : 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        cursor: 'pointer',
+                                        color: 'var(--text-primary)',
+                                        marginLeft: isMobile ? '2px' : '4px'
+                                    }}
+                                >
+                                    <SettingsIcon size={20} />
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: isMobile ? '0.5rem' : '0.75rem', alignItems: 'center' }}>
-                    {user && (
-                        <>
-                            <button
-                                onClick={() => setShowHeatmap(!showHeatmap)}
-                                className="header-icon-btn"
-                                title={showHeatmap ? 'Hide Heatmap' : 'Show Heatmap'}
-                                style={{
-                                    display: isMobile ? 'none' : 'flex',
-                                    color: showHeatmap ? 'var(--accent-color)' : 'var(--text-primary)'
-                                }}
-                            >
-                                <BarChart3 size={18} />
-                            </button>
-                            <button
-                                onClick={() => setShowCalendar(true)}
-                                className="header-icon-btn"
-                                title="Calendar"
-                                style={{
-                                    color: 'var(--text-primary)',
-                                    padding: isMobile ? '5px' : '0',
-                                    display: 'flex',
-                                    alignItems: 'center'
-                                }}
-                            >
-                                <CalendarDays size={isMobile ? 20 : 18} />
-                            </button>
-                            <button
-                                onClick={() => setShowCalculator(true)}
-                                className="header-icon-btn"
-                                title="Calculator"
-                                style={{
-                                    color: 'var(--text-primary)',
-                                    padding: isMobile ? '5px' : '0',
-                                    display: 'flex',
-                                    alignItems: 'center'
-                                }}
-                            >
-                                <CalculatorIcon size={isMobile ? 20 : 18} />
-                            </button>
-                            <button
-                                onClick={() => setShowFriends((prev) => !prev)}
-                                className="header-icon-btn"
-                                title="Friends"
-                                style={{
-                                    color: showFriends ? 'var(--accent-color)' : 'var(--text-primary)',
-                                    padding: isMobile ? '5px' : '0',
-                                    display: isMobile ? 'none' : 'flex',
-                                    alignItems: 'center'
-                                }}
-                            >
-                                <Users size={18} />
-                            </button>
-                            <button
-                                onClick={() => setShowHistory(true)}
-                                className="header-icon-btn"
-                                title="History Vault"
-                                style={{
-                                    color: 'var(--text-primary)',
-                                    padding: isMobile ? '5px' : '0',
-                                    display: 'flex',
-                                    alignItems: 'center'
-                                }}
-                            >
-                                <HistoryIcon size={isMobile ? 20 : 18} />
-                            </button>
-                            <button
-                                className="settings-btn"
-                                onClick={() => setShowSettings(true)}
-                                style={{
-                                    background: 'var(--bg-card)',
-                                    border: '1px solid var(--border-color)',
-                                    borderRadius: '50%',
-                                    width: isMobile ? '36px' : '40px',
-                                    height: isMobile ? '36px' : '40px',
-                                    display: isMobile || isNativeAndroid ? 'none' : 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    color: 'var(--text-primary)',
-                                    marginLeft: isMobile ? '2px' : '4px'
-                                }}
-                            >
-                                <SettingsIcon size={20} />
-                            </button>
-                        </>
-                    )}
-                </div>
+                {/* Secondary metrics row within the header */}
+                {user && showStats && (
+                    <div
+                        className="header-productivity-row"
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: isMobile ? 'space-between' : 'flex-start',
+                            gap: isMobile ? '0.35rem' : '1.25rem',
+                            padding: isMobile ? '0.35rem 0.65rem' : '0.45rem 0.85rem',
+                            borderRadius: 'var(--radius, 0.75rem)',
+                            background: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-color)',
+                            fontSize: isMobile ? '0.72rem' : '0.8rem',
+                            color: 'var(--text-secondary)',
+                            maxWidth: '100%',
+                            boxSizing: 'border-box',
+                            overflowX: 'auto',
+                            scrollbarWidth: 'none',
+                            WebkitOverflowScrolling: 'touch'
+                        }}
+                    >
+                        {isProductivityLoading ? (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', opacity: 0.7 }}>
+                                Loading productivity metrics...
+                            </span>
+                        ) : (
+                            <>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}>
+                                    <span style={{ fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: isMobile ? '0.62rem' : '0.7rem', letterSpacing: '0.04em' }}>
+                                        Tasks
+                                    </span>
+                                    <strong style={{ color: 'var(--text-primary)', fontWeight: '700' }}>
+                                        {productivityTotals.tasksCompleted} / {productivityTotals.tasksAllocated}
+                                    </strong>
+                                </div>
+
+                                <div style={{ width: '1px', height: '12px', background: 'var(--border-color)', flexShrink: 0 }} />
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}>
+                                    <span style={{ fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: isMobile ? '0.62rem' : '0.7rem', letterSpacing: '0.04em' }}>
+                                        Hours
+                                    </span>
+                                    <strong style={{ color: 'var(--text-primary)', fontWeight: '700' }}>
+                                        {productivityTotals.hoursTaken.toFixed(1)} / {productivityTotals.hoursAllocated.toFixed(1)}h
+                                    </strong>
+                                </div>
+
+                                <div style={{ width: '1px', height: '12px', background: 'var(--border-color)', flexShrink: 0 }} />
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}>
+                                    <span style={{ fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: isMobile ? '0.62rem' : '0.7rem', letterSpacing: '0.04em' }}>
+                                        {isMobile ? 'Adj' : 'Adjustments'}
+                                    </span>
+                                    <span style={{ color: 'var(--success-color, #22c55e)', fontWeight: '700' }}>
+                                        +{(bonusAdjustment * 100).toFixed(1)}
+                                    </span>
+                                    <span style={{ color: 'var(--text-secondary)', opacity: 0.6 }}>/</span>
+                                    <span style={{ color: '#ef4444', fontWeight: '700' }}>
+                                        -{(overduePenalty * 100).toFixed(1)}
+                                    </span>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
             </header>
 
             {showCalendar && user && (
@@ -2327,18 +2540,23 @@ function App() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--section-gap)' }}>
                                 {activeTab === 'dashboard' &&
                                     (() => {
-                                        const showTimer = isCardEffectivelyVisible(
-                                            'timer',
-                                            dashboardCards,
-                                            spotifyConnected
-                                        );
-                                        const showStats = isCardEffectivelyVisible(
-                                            'stats',
+                                        const showTasks = isCardEffectivelyVisible(
+                                            'tasks',
                                             dashboardCards,
                                             spotifyConnected
                                         );
                                         const showCalendarCard = isCardEffectivelyVisible(
                                             'calendar',
+                                            dashboardCards,
+                                            spotifyConnected
+                                        );
+                                        const showNotes = isCardEffectivelyVisible(
+                                            'notes',
+                                            dashboardCards,
+                                            spotifyConnected
+                                        );
+                                        const showHeatmapCard = isCardEffectivelyVisible(
+                                            'heatmap',
                                             dashboardCards,
                                             spotifyConnected
                                         );
@@ -2353,66 +2571,48 @@ function App() {
                                             spotifyConnected
                                         );
                                         const showMediaHub = showSpotify || showYoutube;
-                                        const showNotes = isCardEffectivelyVisible(
-                                            'notes',
-                                            dashboardCards,
-                                            spotifyConnected
-                                        );
-                                        const hasTopSection = showTimer || showStats || showCalendarCard;
 
                                         return (
                                             <>
-                                                {hasTopSection && (
-                                                    <div
-                                                        style={{
-                                                            display: 'grid',
-                                                            gridTemplateColumns: '1fr',
-                                                            gap: 'var(--section-gap)',
-                                                            alignItems: 'start'
-                                                        }}
-                                                    >
-                                                        {showTimer && (
-                                                            <ErrorBoundary>
-                                                                <Suspense
-                                                                    fallback={<LoadingFallback variant="timer" />}
-                                                                >
-                                                                    <DeepWorkTimer
-                                                                        tasks={tasks}
-                                                                        resetOffsetHours={user?.reset_offset_hours ?? 0}
-                                                                    />
-                                                                </Suspense>
-                                                            </ErrorBoundary>
-                                                        )}
-                                                        {showStats && (
-                                                            <ErrorBoundary>
-                                                                <Suspense
-                                                                    fallback={<LoadingFallback variant="dashboard" />}
-                                                                >
-                                                                    <ProductivityDashboard
-                                                                        tasks={tasks}
-                                                                        loading={
-                                                                            tasksLoading ||
-                                                                            (checkingAuth && tasks.length === 0)
-                                                                        }
-                                                                    />
-                                                                </Suspense>
-                                                            </ErrorBoundary>
-                                                        )}
-                                                        {showCalendarCard && (
-                                                            <ErrorBoundary>
-                                                                <Suspense
-                                                                    fallback={
-                                                                        <LoadingFallback variant="calendar-summary" />
-                                                                    }
-                                                                >
-                                                                    <CalendarSummaryCard
-                                                                        onOpenCalendar={() => setShowCalendar(true)}
-                                                                    />
-                                                                </Suspense>
-                                                            </ErrorBoundary>
-                                                        )}
-                                                    </div>
+                                                {/* 2. Your Tasks */}
+                                                {showTasks && renderTasksSection()}
+
+                                                {/* 3. Schedule */}
+                                                {showCalendarCard && (
+                                                    <ErrorBoundary>
+                                                        <Suspense
+                                                            fallback={
+                                                                <LoadingFallback variant="calendar-summary" />
+                                                            }
+                                                        >
+                                                            <CalendarSummaryCard
+                                                                onOpenCalendar={() => setShowCalendar(true)}
+                                                            />
+                                                        </Suspense>
+                                                    </ErrorBoundary>
                                                 )}
+
+                                                {/* 4. Notes / Project Ideas */}
+                                                {showNotes && (
+                                                    <ErrorBoundary>
+                                                        <Suspense fallback={<LoadingFallback variant="notes" />}>
+                                                            <Notes />
+                                                        </Suspense>
+                                                    </ErrorBoundary>
+                                                )}
+
+                                                {/* 5. Remaining dashboard modules */}
+                                                {showHeatmapCard && (
+                                                    <ErrorBoundary>
+                                                        <Suspense fallback={<LoadingFallback variant="heatmap" height="300px" />}>
+                                                            <ActivityHeatmap
+                                                                tasks={tasks}
+                                                                resetOffsetHours={user?.reset_offset_hours ?? 0}
+                                                            />
+                                                        </Suspense>
+                                                    </ErrorBoundary>
+                                                )}
+
                                                 {showMediaHub && (
                                                     <ErrorBoundary>
                                                         <Suspense fallback={<LoadingFallback variant="media" />}>
@@ -2423,77 +2623,20 @@ function App() {
                                                         </Suspense>
                                                     </ErrorBoundary>
                                                 )}
-                                                {showNotes && (
-                                                    <ErrorBoundary>
-                                                        <Suspense fallback={<LoadingFallback variant="notes" />}>
-                                                            <Notes />
-                                                        </Suspense>
-                                                    </ErrorBoundary>
-                                                )}
                                             </>
                                         );
                                     })()}
 
-                                {activeTab === 'tasks' && (
-                                    <div>
-                                        <div
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                marginBottom: '1rem'
-                                            }}
-                                        >
-                                            <div
-                                                style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '0.5rem',
-                                                    cursor: 'pointer'
-                                                }}
-                                                onClick={() => setIsTasksExpanded(!isTasksExpanded)}
-                                            >
-                                                <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Your Tasks</h2>
-                                                {isTasksExpanded ? (
-                                                    <ChevronUp size={20} style={{ color: 'var(--text-secondary)' }} />
-                                                ) : (
-                                                    <ChevronDown size={20} style={{ color: 'var(--text-secondary)' }} />
-                                                )}
-                                            </div>
-                                            {isMobile && (
-                                                <button
-                                                    onClick={() => setShowTaskComposer(true)}
-                                                    style={{
-                                                        background: 'var(--btn-primary-bg)',
-                                                        color: 'var(--btn-primary-text)',
-                                                        border: 'none',
-                                                        borderRadius: '50%',
-                                                        width: '40px',
-                                                        height: '40px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                >
-                                                    <Plus size={20} />
-                                                </button>
-                                            )}
-                                        </div>
-                                        {isTasksExpanded &&
-                                            (tasksLoading || (checkingAuth && tasks.length === 0) ? (
-                                                <TaskBoardSkeleton count={3} />
-                                            ) : (
-                                                <Suspense fallback={<LoadingFallback variant="taskboard" />}>
-                                                    <TaskBoard
-                                                        tasks={tasks}
-                                                        onTaskUpdate={handleTaskUpdate}
-                                                        onTaskDelete={handleTaskDelete}
-                                                        onClearAll={handleClearAll}
-                                                        onReorder={handleTasksReorder}
-                                                    />
-                                                </Suspense>
-                                            ))}
+                                {activeTab === 'timer' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                                        <ErrorBoundary>
+                                            <Suspense fallback={<LoadingFallback variant="timer" />}>
+                                                <DeepWorkTimer
+                                                    tasks={tasks}
+                                                    resetOffsetHours={user?.reset_offset_hours ?? 0}
+                                                />
+                                            </Suspense>
+                                        </ErrorBoundary>
                                     </div>
                                 )}
 
@@ -2581,8 +2724,7 @@ function App() {
                                         spotifyConnected
                                     );
 
-                                    const hasStatsColumn = showStats || showCalendarCard;
-                                    const hasTopSection = showTimer || hasStatsColumn;
+                                    const hasProductivityRow = showTimer || showCalendarCard;
                                     const hasRightSidebar = (showSidebar && (showNotes || showHabits)) || showFriends;
 
                                     return (
@@ -2594,12 +2736,16 @@ function App() {
                                                     gap: 'var(--section-gap)'
                                                 }}
                                             >
-                                                {hasTopSection && (
+                                                {/* 2. Your Tasks */}
+                                                {showTasks && renderTasksSection()}
+
+                                                {/* 3. Study Timer & 4. Schedule */}
+                                                {hasProductivityRow && (
                                                     <div
                                                         style={{
                                                             display: 'grid',
                                                             gridTemplateColumns:
-                                                                showTimer && hasStatsColumn
+                                                                showTimer && showCalendarCard
                                                                     ? 'repeat(auto-fit, minmax(300px, 1fr))'
                                                                     : '1fr',
                                                             gap: 'var(--section-gap)',
@@ -2618,136 +2764,42 @@ function App() {
                                                                 </Suspense>
                                                             </ErrorBoundary>
                                                         )}
-                                                        {hasStatsColumn && (
-                                                            <div
-                                                                style={{
-                                                                    display: 'flex',
-                                                                    flexDirection: 'column',
-                                                                    gap: 'var(--stack-gap)',
-                                                                    width: '100%'
-                                                                }}
-                                                            >
-                                                                {showStats && (
-                                                                    <ErrorBoundary>
-                                                                        <Suspense
-                                                                            fallback={
-                                                                                <LoadingFallback variant="dashboard" />
-                                                                            }
-                                                                        >
-                                                                            <ProductivityDashboard
-                                                                                tasks={tasks}
-                                                                                loading={
-                                                                                    tasksLoading ||
-                                                                                    (checkingAuth && tasks.length === 0)
-                                                                                }
-                                                                            />
-                                                                        </Suspense>
-                                                                    </ErrorBoundary>
-                                                                )}
-                                                                {showCalendarCard && (
-                                                                    <ErrorBoundary>
-                                                                        <Suspense
-                                                                            fallback={
-                                                                                <LoadingFallback variant="calendar-summary" />
-                                                                            }
-                                                                        >
-                                                                            <CalendarSummaryCard
-                                                                                onOpenCalendar={() =>
-                                                                                    setShowCalendar(true)
-                                                                                }
-                                                                            />
-                                                                        </Suspense>
-                                                                    </ErrorBoundary>
-                                                                )}
-                                                            </div>
+                                                        {showCalendarCard && (
+                                                            <ErrorBoundary>
+                                                                <Suspense
+                                                                    fallback={
+                                                                        <LoadingFallback variant="calendar-summary" />
+                                                                    }
+                                                                >
+                                                                    <CalendarSummaryCard
+                                                                        onOpenCalendar={() =>
+                                                                            setShowCalendar(true)
+                                                                        }
+                                                                    />
+                                                                </Suspense>
+                                                            </ErrorBoundary>
                                                         )}
                                                     </div>
                                                 )}
 
-                                                {showTasks && (
-                                                    <ErrorBoundary>
-                                                        <div>
-                                                            <div
-                                                                style={{
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    justifyContent: 'space-between',
-                                                                    gap: '1rem',
-                                                                    marginBottom: '1rem'
-                                                                }}
-                                                            >
-                                                                <div
-                                                                    style={{
-                                                                        display: 'flex',
-                                                                        alignItems: 'center',
-                                                                        gap: '0.5rem',
-                                                                        cursor: 'pointer'
-                                                                    }}
-                                                                    onClick={() => setIsTasksExpanded(!isTasksExpanded)}
-                                                                >
-                                                                    <h2 style={{ margin: 0, fontSize: '1.25rem' }}>
-                                                                        Your Tasks
-                                                                    </h2>
-                                                                    {isTasksExpanded ? (
-                                                                        <ChevronUp
-                                                                            size={20}
-                                                                            style={{ color: 'var(--text-secondary)' }}
-                                                                        />
-                                                                    ) : (
-                                                                        <ChevronDown
-                                                                            size={20}
-                                                                            style={{ color: 'var(--text-secondary)' }}
-                                                                        />
-                                                                    )}
-                                                                </div>
-                                                                {showSidebar && (
-                                                                    <button
-                                                                        onClick={() =>
-                                                                            setShowTaskComposer((prev) => !prev)
-                                                                        }
-                                                                        title="Open task composer"
-                                                                        style={{
-                                                                            width: '42px',
-                                                                            height: '42px',
-                                                                            borderRadius: '999px',
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            justifyContent: 'center',
-                                                                            background: showTaskComposer
-                                                                                ? 'var(--accent-color)'
-                                                                                : 'var(--bg-card)',
-                                                                            border: `1px solid ${showTaskComposer ? 'var(--accent-color)' : 'var(--border-color)'}`,
-                                                                            color: showTaskComposer
-                                                                                ? '#ffffff'
-                                                                                : 'var(--accent-color)',
-                                                                            boxShadow: '0 8px 20px rgba(0, 0, 0, 0.12)'
-                                                                        }}
-                                                                    >
-                                                                        <Plus size={20} />
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                            {isTasksExpanded &&
-                                                                (tasksLoading ||
-                                                                (checkingAuth && tasks.length === 0) ? (
-                                                                    <TaskBoardSkeleton count={3} />
-                                                                ) : (
-                                                                    <Suspense
-                                                                        fallback={
-                                                                            <LoadingFallback variant="taskboard" />
-                                                                        }
-                                                                    >
-                                                                        <TaskBoard
-                                                                            tasks={tasks}
-                                                                            onTaskUpdate={handleTaskUpdate}
-                                                                            onTaskDelete={handleTaskDelete}
-                                                                            onClearAll={handleClearAll}
-                                                                            onReorder={handleTasksReorder}
-                                                                        />
-                                                                    </Suspense>
-                                                                ))}
-                                                        </div>
-                                                    </ErrorBoundary>
+                                                {/* 5. Notes & 6. Habits if sidebar is hidden */}
+                                                {!showSidebar && (
+                                                    <>
+                                                        {showNotes && (
+                                                            <ErrorBoundary>
+                                                                <Suspense fallback={<LoadingFallback variant="notes" />}>
+                                                                    <Notes />
+                                                                </Suspense>
+                                                            </ErrorBoundary>
+                                                        )}
+                                                        {showHabits && (
+                                                            <ErrorBoundary>
+                                                                <Suspense fallback={<LoadingFallback variant="habits" />}>
+                                                                    <HabitTracker />
+                                                                </Suspense>
+                                                            </ErrorBoundary>
+                                                        )}
+                                                    </>
                                                 )}
 
                                                 {showHeatmap && (

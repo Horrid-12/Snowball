@@ -1,9 +1,9 @@
-import { Layout, CheckSquare, BarChart2, Grid2x2, Settings, Users } from 'lucide-react';
+import { BarChart2, Grid2x2, Layout, Settings, Timer, Users } from 'lucide-react';
 
 const BottomNav = ({ activeTab, setActiveTab, setShowSettings }) => {
     const navItems = [
         { key: 'dashboard', label: 'Home', icon: Layout },
-        { key: 'tasks', label: 'Tasks', icon: CheckSquare },
+        { key: 'timer', label: 'Timer', shortLabel: 'Timer', icon: Timer },
         { key: 'habits', label: 'Habits', shortLabel: 'Habits', icon: BarChart2 },
         { key: 'heatmap', label: 'Heatmap', shortLabel: 'Stats', icon: Grid2x2 },
         { key: 'friends', label: 'Friends', shortLabel: 'Friends', icon: Users }
@@ -14,6 +14,7 @@ const BottomNav = ({ activeTab, setActiveTab, setShowSettings }) => {
             {navItems.map(({ key, label, shortLabel, icon: Icon }) => (
                 <button
                     key={key}
+                    type="button"
                     onClick={() => setActiveTab(key)}
                     className={activeTab === key ? 'active' : ''}
                     aria-label={label}
@@ -23,6 +24,7 @@ const BottomNav = ({ activeTab, setActiveTab, setShowSettings }) => {
                 </button>
             ))}
             <button
+                type="button"
                 onClick={() => setShowSettings(true)}
                 className={activeTab === 'settings' ? 'active' : ''}
                 aria-label="Settings"
