@@ -43,7 +43,10 @@ export const requireNumber = (paramName, { min, max, source = 'body' } = {}) =>
 export const validate = (schema) => (req, res, next) => {
     const result = schema.safeParse(req.body);
     if (!result.success) {
-        const firstError = result.error.errors[0];
+        // Zod 4 exposes `issues`; `errors` was removed. Reading `errors[0]` threw
+        // a TypeError inside this middleware, so every validation failure (e.g.
+        // an over-long note body) came back as a 500 instead of a 400.
+        const firstError = result.error.issues?.[0] ?? result.error.errors?.[0];
         const message = firstError?.message || 'Validation failed';
         return res.status(400).json({ error: message });
     }
@@ -138,7 +141,10 @@ export const schemas = {
     noteUpsert: z.object({
         note_id: z.string().min(1, 'note_id is required').max(100, 'note_id must be at most 100 characters'),
         title: z.string().max(500, 'Title must be at most 500 characters').optional().default('Untitled'),
-        content: z.string().max(100000, 'Content must be at most 100000 characters').optional().default('')
+        // 1 MB, not 100 KB: production already holds a ~374 KB note, and a lower
+        // cap makes those notes permanently unsyncable (every 400 is discarded,
+        // so the edit never reaches the cloud). Express still caps bodies at 20 MB.
+        content: z.string().max(1000000, 'Content must be at most 1000000 characters').optional().default('')
     }),
     friendRequest: z.object({
         userId: z.string().trim().min(1, 'Friend user id is required').max(20)

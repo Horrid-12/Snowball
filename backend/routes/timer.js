@@ -1,9 +1,92 @@
 import express from 'express';
 import { supabase } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
-import { validate, schemas } from '../middleware/validate.js';
+import { validate, schemas, isValidUUID } from '../middleware/validate.js';
 
 const router = express.Router();
+
+// Client-issued session ids are not UUIDs: a completed timer is saved locally as
+// `${startedAt}_${endedAt}`, manual entries as `manual_<ts>`, etc. The primary
+// key column is a uuid, so filtering on such an id made PostgREST cast the
+// parameter and fail with 22P02 ("invalid input syntax for type uuid"), which
+// surfaced as a 500 every time a client-created session was deleted or edited.
+//
+// For the `<startedAt>_<endedAt>` shape the row can still be identified exactly:
+// both timestamps are the values the client posted, and (user_id, started_at)
+// is unique. Anything else simply cannot match a row.
+const parseClientSessionId = (id) => {
+    const parts = String(id || '').split('_');
+    if (parts.length !== 2) return null;
+    const [startedAt, endedAt] = parts;
+    // Strict ISO-8601 UTC (the shape `Date#toISOString()` produces) so a junk
+    // param can never be forwarded to Postgres as a timestamp filter.
+    const iso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+    if (!iso.test(startedAt) || !iso.test(endedAt)) return null;
+    if (Number.isNaN(new Date(startedAt).getTime()) || Number.isNaN(new Date(endedAt).getTime())) {
+        return null;
+    }
+    return { startedAt, endedAt };
+};
+
+const scopeSessionId = (query, id) => {
+    if (isValidUUID(id)) return query.eq('id', id);
+    const times = parseClientSessionId(id);
+    if (!times) return null;
+    return query.eq('started_at', times.startedAt).eq('ended_at', times.endedAt);
+};
+
+const isMissingColumnError = (error) => Boolean(error)
+    && (error.code === '42703' || error.code === 'PGRST204');
+
+// Resolve the id the client sent to an actual row. Clients only know the id they
+// generated locally, which is now persisted as `client_id` (see
+// study_sessions_idempotency_migration.sql); rows created before that column
+// existed have NULL there, so fall back to the `<startedAt>_<endedAt>` timestamps
+// encoded in the id.
+const updateSessionScoped = async (userId, id, updates) => {
+    const base = () => supabase.from('study_sessions').update(updates).eq('user_id', userId);
+
+    if (isValidUUID(id)) {
+        const { data, error } = await base().eq('id', id).select().maybeSingle();
+        if (error) throw error;
+        return data;
+    }
+
+    // client_id lookup (post-migration rows). Tolerate a deployment that has not
+    // run the idempotency migration yet — 42703 means "column does not exist".
+    const byClientId = await base().eq('client_id', id).select().maybeSingle();
+    if (byClientId.error && !isMissingColumnError(byClientId.error)) throw byClientId.error;
+    if (byClientId.data) return byClientId.data;
+
+    const scoped = scopeSessionId(base(), id);
+    if (!scoped) return null;
+
+    const { data, error } = await scoped.select().maybeSingle();
+    if (error) throw error;
+    return data;
+};
+
+const deleteSessionScoped = async (userId, id) => {
+    const base = () => supabase.from('study_sessions').delete().eq('user_id', userId);
+
+    if (isValidUUID(id)) {
+        const { error } = await base().eq('id', id);
+        if (error) throw error;
+        return;
+    }
+
+    // `.select()` reports which rows were actually removed so a legacy row can
+    // still be found by its timestamps when client_id does not match.
+    const byClientId = await base().eq('client_id', id).select('id');
+    if (byClientId.error && !isMissingColumnError(byClientId.error)) throw byClientId.error;
+    if (byClientId.data?.length) return;
+
+    const scoped = scopeSessionId(base(), id);
+    if (!scoped) return;
+
+    const { error } = await scoped;
+    if (error) throw error;
+};
 
 // Lightweight timer-state poll target. Other devices poll this every 15s so a
 // start/stop lands everywhere quickly (a full /api/auth/me + /timer/sessions
@@ -168,15 +251,7 @@ router.put('/sessions/:id', requireAuth, validate(schemas.studySessionUpdate), a
             return res.status(400).json({ error: 'No fields to update' });
         }
 
-        const { data, error } = await supabase
-            .from('study_sessions')
-            .update(updates)
-            .eq('id', id)
-            .eq('user_id', req.user.id)
-            .select()
-            .single();
-
-        if (error) throw error;
+        const data = await updateSessionScoped(req.user.id, id, updates);
         if (!data) return res.status(404).json({ error: 'Session not found' });
 
         res.json({
@@ -196,13 +271,9 @@ router.delete('/sessions/:id', requireAuth, async (req, res, next) => {
     try {
         const { id } = req.params;
 
-        const { error } = await supabase
-            .from('study_sessions')
-            .delete()
-            .eq('id', id)
-            .eq('user_id', req.user.id);
-
-        if (error) throw error;
+        // Unknown client id — nothing can match, and deleting is idempotent, so
+        // report success rather than an error the outbox would keep replaying.
+        await deleteSessionScoped(req.user.id, id);
 
         res.json({ success: true });
     } catch (err) {

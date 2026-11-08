@@ -27,6 +27,8 @@ class SyncService {
     constructor() {
         this.isSyncing = false;
         this.syncDebounceTimer = null;
+        this.serverRetryDelay = 15000;
+        this.maxServerRetryDelay = 5 * 60 * 1000;
         setOutboxFlushHandler(() => this.debouncedSync(500));
         this.init();
     }
@@ -102,6 +104,9 @@ class SyncService {
                     const noteDeleteMissingRemotely = mutation.type === 'notes_delete' && response.status === 404;
 
                     if (response.ok || noteDeleteMissingRemotely) {
+                        // A successful write means the server recovered — reset
+                        // the 5xx backoff so the next hiccup retries promptly.
+                        this.serverRetryDelay = 15000;
                         let data = {};
                         if (response.status !== 204 && response.status !== 404) {
                             try {
@@ -158,8 +163,13 @@ class SyncService {
                         this.debouncedSync(retryAfterSeconds * 1000);
                         break;
                     } else if (response.status >= 500) {
-                        // Server error - try again later
-                        console.error('Server error during sync, will retry');
+                        // Server error — keep the mutation queued and retry with
+                        // backoff (15s doubling up to 5min). Without a scheduled
+                        // retry the "will retry" message was a lie: the queue only
+                        // replayed the next time something else triggered sync.
+                        console.error(`Server error during sync, retrying in ${Math.round(this.serverRetryDelay / 1000)}s`);
+                        this.debouncedSync(this.serverRetryDelay);
+                        this.serverRetryDelay = Math.min(this.serverRetryDelay * 2, this.maxServerRetryDelay);
                         break;
                     } else {
                         // Bad request or something else - discard to avoid blocking

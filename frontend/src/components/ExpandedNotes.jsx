@@ -119,7 +119,11 @@ const ExpandedNotes = ({ onClose, initialContent }) => {
 
     const editor = useEditor({
         extensions: [
-            StarterKit,
+            // StarterKit v3 already bundles Link and Underline. Registering the
+            // standalone extensions again makes TipTap log
+            // "Duplicate extension names found: ['link', 'underline']", so the
+            // bundled copies are disabled here and configured below instead.
+            StarterKit.configure({ link: false, underline: false }),
             Markdown.configure({
                 html: true,
                 transformPastedText: true,
