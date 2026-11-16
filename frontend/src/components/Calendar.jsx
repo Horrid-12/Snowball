@@ -20,13 +20,23 @@ const COLOR_PRESETS = [
     { name: 'Pink', value: '#ec4899' }
 ];
 
+// Date-only values must be built in local time. `new Date('YYYY-MM-DD')` parses
+// as UTC, which can shift the day backwards in negative-offset timezones and
+// make the countdown off by one.
+const parseLocalDay = (value) => {
+    const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    const parsed = new Date(value);
+    parsed.setHours(0, 0, 0, 0);
+    return parsed;
+};
+
 export const getDDayText = (targetDate) => {
     if (!targetDate) return '';
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const target = new Date(targetDate);
-    target.setHours(0, 0, 0, 0);
-    const diff = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+    const target = parseLocalDay(targetDate);
+    const diff = Math.round((target - today) / (1000 * 60 * 60 * 24));
     if (diff === 0) return 'D-DAY!';
     if (diff > 0) return `D-${diff}`;
     return `D+${Math.abs(diff)}`;
@@ -139,7 +149,6 @@ const buildImportPrefill = (ev) => {
         color: COLOR_PRESETS[0].value,
         tags: '',
         is_dday: false,
-        dday_target_date: '',
         recurrence_rule: ev.recurrence_rule || '',
         _import: {
             google_event_id: ev.google_event_id,
@@ -160,8 +169,9 @@ const makeEventPayload = (data) => {
         description: data.description || null,
         color: data.color || COLOR_PRESETS[1].value,
         tags: data.tags || null,
+        // D-Day always targets the event's own day; there is no separate date.
         is_dday: !!data.is_dday,
-        dday_target_date: data.dday_target_date || null,
+        dday_target_date: data.is_dday ? data.event_date : null,
         recurrence_rule: data.recurrence_rule || null
     };
     if (data._import?.google_event_id) {
@@ -206,7 +216,7 @@ const GoogleEventRow = memo(({ ev, isImported, isSelected, onToggle, rruleLabel 
 // previously-selected and newly-selected cells instead of the whole 42-cell grid.
 const CalendarCell = memo(({ dateStr, day, currentMonth, isToday, isSelected, dayEvents, onSelect, getEventColor }) => {
     const recurringEvents = dayEvents.filter(ev => /FREQ=/.test(String(ev.recurrence_rule || '')));
-    const ddayEvents = dayEvents.filter(e => e.is_dday && e.dday_target_date);
+    const ddayEvents = dayEvents.filter(e => e.is_dday && String(e.event_date).slice(0, 10) === dateStr);
 
     return (
         <div
@@ -289,7 +299,7 @@ const CalendarCell = memo(({ dateStr, day, currentMonth, isToday, isSelected, da
             {ddayEvents.length > 0 && (
                 <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap', overflow: 'hidden', minWidth: 0 }}>
                     {ddayEvents.slice(0, 2).map((ev, i) => {
-                        const dText = getDDayText(ev.dday_target_date);
+                        const dText = getDDayText(ev.event_date);
                         const isDDay = dText === 'D-DAY!';
                         return (
                             <span key={`dday-${i}`} style={{
@@ -627,7 +637,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                         <div style={{ padding: '1rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '0.5rem', border: '1px solid var(--border-color)', boxSizing: 'border-box' }}>
                             <div
                                 onClick={() => setFormData(prev => ({ ...prev, is_dday: !prev.is_dday }))}
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', userSelect: 'none', marginBottom: formData.is_dday ? '1rem' : 0 }}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', userSelect: 'none' }}
                             >
                                 <div style={{
                                     width: '20px', height: '20px', minWidth: '20px', minHeight: '20px',
@@ -642,13 +652,9 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                                 <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>Enable D-Day Countdown</span>
                             </div>
                             {formData.is_dday && (
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Target Date</label>
-                                    <input
-                                        type="date" required={formData.is_dday} value={formData.dday_target_date} onChange={e => setFormData({ ...formData, dday_target_date: e.target.value })}
-                                        style={{ width: '100%', boxSizing: 'border-box', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-                                    />
-                                </div>
+                                <p style={{ margin: '0.5rem 0 0 1.85rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                    Counts down to this event&apos;s start date.
+                                </p>
                             )}
                         </div>
 
@@ -1078,7 +1084,6 @@ const importSelectedGoogleEvents = useCallback(() => {
                 event_start_time: data.event_start_time,
                 end_time: data.end_time,
                 is_dday: !!data.is_dday,
-                dday_target_date: data.dday_target_date,
                 recurrence_rule: data.recurrence_rule
             };
             await postOne(stamped);
@@ -1187,7 +1192,6 @@ const importSelectedGoogleEvents = useCallback(() => {
                 color: ev.color || COLOR_PRESETS[1].value,
                 tags: ev.tags || '',
                 is_dday: !!ev.is_dday,
-                dday_target_date: ev.dday_target_date ? String(ev.dday_target_date).slice(0, 10) : '',
                 recurrence_rule: ev.recurrence_rule || ''
             };
         }
@@ -1202,7 +1206,6 @@ const importSelectedGoogleEvents = useCallback(() => {
             color: COLOR_PRESETS[1].value,
             tags: '',
             is_dday: false,
-            dday_target_date: '',
             recurrence_rule: ''
         };
     }, [editingEvent, selectedDate, importQueue]);
@@ -1310,6 +1313,7 @@ const importSelectedGoogleEvents = useCallback(() => {
 
     const renderDetailPanel = useCallback(() => {
         const selectedEvents = getEventsForDate(selectedDate);
+        const selectedStr = formatDateStr(selectedDate);
 
         return (
             <div style={{ marginTop: '1rem', padding: '1rem', borderRadius: '0.5rem', backgroundColor: 'var(--bg-secondary)' }}>
@@ -1337,6 +1341,9 @@ const importSelectedGoogleEvents = useCallback(() => {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                         {selectedEvents.map(ev => {
                             const rrule = getRruleLabel(ev.recurrence_rule);
+                            const ddayText = ev.is_dday && String(ev.event_date).slice(0, 10) === selectedStr
+                                ? getDDayText(ev.event_date)
+                                : '';
                             return (
                                 <div key={ev.id} style={{
                                     display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
@@ -1370,13 +1377,13 @@ const importSelectedGoogleEvents = useCallback(() => {
                                                     <Repeat size={11} style={{ flexShrink: 0 }} /> {rrule}
                                                 </span>
                                             )}
-                                            {ev.is_dday && ev.dday_target_date && (
+                                            {ddayText && (
                                                 <span style={{
-                                                    background: getDDayText(ev.dday_target_date) === 'D-DAY!' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(var(--accent-rgb), 0.15)',
-                                                    color: getDDayText(ev.dday_target_date) === 'D-DAY!' ? 'var(--status-overdue)' : 'var(--accent-color)',
+                                                    background: ddayText === 'D-DAY!' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(var(--accent-rgb), 0.15)',
+                                                    color: ddayText === 'D-DAY!' ? 'var(--status-overdue)' : 'var(--accent-color)',
                                                     fontSize: '0.7rem', fontWeight: 800, borderRadius: '999px', padding: '2px 8px'
                                                 }}>
-                                                    {getDDayText(ev.dday_target_date)}
+                                                    {ddayText}
                                                 </span>
                                             )}
                                         </h4>
@@ -1569,7 +1576,6 @@ const importSelectedGoogleEvents = useCallback(() => {
             `}</style>
             {notice && (
                 <div style={{
-                    position: 'sticky', top: 0, zIndex: 6,
                     marginBottom: '1rem', padding: '0.6rem 1rem',
                     borderRadius: '0.5rem', fontSize: '0.9rem',
                     backgroundColor: 'rgba(var(--accent-rgb), 0.12)',

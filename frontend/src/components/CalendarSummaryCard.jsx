@@ -84,15 +84,15 @@ const CalendarSummaryCard = ({ onOpenCalendar }) => {
         todayStart.setHours(0, 0, 0, 0);
 
         return events
-            .filter((e) => e.is_dday && e.dday_target_date)
+            .filter((e) => e.is_dday && e.event_date)
             .map((e) => {
-                const target = new Date(e.dday_target_date);
-                target.setHours(0, 0, 0, 0);
-                const diff = Math.ceil((target - todayStart) / (1000 * 60 * 60 * 24));
+                const targetStr = String(e.event_date).slice(0, 10);
+                const target = new Date(`${targetStr}T00:00:00`);
+                const diff = Math.round((target - todayStart) / (1000 * 60 * 60 * 24));
                 return {
                     ...e,
                     diff,
-                    dText: getDDayText(e.dday_target_date)
+                    dText: getDDayText(targetStr)
                 };
             })
             .sort((a, b) => {
@@ -165,7 +165,7 @@ const CalendarSummaryCard = ({ onOpenCalendar }) => {
                                 e.stopPropagation();
                                 if (onOpenCalendar) onOpenCalendar();
                             }}
-                            title={`D-Day Target: ${nearestDDay.title} (${nearestDDay.dday_target_date})`}
+                            title={`D-Day: ${nearestDDay.title} (${String(nearestDDay.event_date).slice(0, 10)})`}
                             style={{
                                 display: 'flex',
                                 alignItems: 'center',
