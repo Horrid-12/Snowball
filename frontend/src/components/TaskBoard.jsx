@@ -24,17 +24,71 @@ const getNextOccurrence = (dateStr, recurring) => {
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const parseTaskDay = (value) => {
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return null;
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const getDayKey = (value) => {
+    const match = String(value || '').match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : '';
+};
+
+const isTaskComplete = (task) => task.tasksCompleted >= task.tasksAllocated && task.tasksAllocated > 0;
+
+// Ordering used inside a day group (and for manual order): completed last,
+// pinned first, then priority, then the user's drag position.
+const compareTasks = (a, b) => {
+    const aComplete = isTaskComplete(a);
+    const bComplete = isTaskComplete(b);
+    if (aComplete && !bComplete) return 1;
+    if (!aComplete && bComplete) return -1;
+
+    if (a.isPinned && !b.isPinned) return -1;
+    if (!a.isPinned && b.isPinned) return 1;
+
+    const pMap = { High: 3, Medium: 2, Low: 1, none: 0, '': 0 };
+    const pA = pMap[a.priority] || 0;
+    const pB = pMap[b.priority] || 0;
+    if (pA !== pB) return pB - pA;
+
+    return (a.position || 0) - (b.position || 0);
+};
+
+const formatDayLabel = (key, today = new Date()) => {
+    const date = parseTaskDay(key);
+    if (!date) return 'No date';
+
+    const startOfToday = new Date(today);
+    startOfToday.setHours(0, 0, 0, 0);
+    const diff = Math.round((date - startOfToday) / DAY_MS);
+    const formatted = date.toLocaleDateString(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: date.getFullYear() === startOfToday.getFullYear() ? undefined : 'numeric'
+    });
+
+    if (diff === 0) return `Today · ${formatted}`;
+    if (diff === 1) return `Tomorrow · ${formatted}`;
+    if (diff === -1) return `Yesterday · ${formatted}`;
+    return formatted;
+};
+
 const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, onReorder }) => {
     const [selectedTag, setSelectedTag] = useState('');
     const [tagColors, setTagColors] = useState(() => loadTagColors());
-    const [compactMode, setCompactMode] = useState(() => {
-        const saved = localStorage.getItem('snowball_compact_tasks');
-        return saved ? JSON.parse(saved) : false;
-    });
+    const [sortMode, setSortMode] = useState(() => (
+        localStorage.getItem('snowball_task_sort') === 'manual' ? 'manual' : 'day'
+    ));
 
     React.useEffect(() => {
-        localStorage.setItem('snowball_compact_tasks', JSON.stringify(compactMode));
-    }, [compactMode]);
+        localStorage.setItem('snowball_task_sort', sortMode);
+    }, [sortMode]);
 
     React.useEffect(() => {
         const syncTagColors = () => setTagColors(loadTagColors());
@@ -97,27 +151,27 @@ const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, o
         ? tasks.filter(t => (t.tags || '').split(',').map(tag => tag.trim()).includes(selectedTag))
         : tasks;
 
-    // Ensure they are sorted: Completed to bottom, then Pinned first, then by priority (High > Medium > Low), then by position
-    const displayTasks = [...filteredTasks].sort((a, b) => {
-        const aComplete = a.tasksCompleted >= a.tasksAllocated && a.tasksAllocated > 0;
-        const bComplete = b.tasksCompleted >= b.tasksAllocated && b.tasksAllocated > 0;
-        
-        // Push completed to bottom
-        if (aComplete && !bComplete) return 1;
-        if (!aComplete && bComplete) return -1;
+    // Manual order keeps the legacy behaviour: completed to the bottom, pinned
+    // first, then priority, then drag position. Day-wise order groups by the
+    // task date (undated last) and applies the same ordering inside each day.
+    const displayTasks = [...filteredTasks].sort(compareTasks);
 
-        if (a.isPinned && !b.isPinned) return -1;
-        if (!a.isPinned && b.isPinned) return 1;
-
-        // Priority weighting
-        const pMap = { 'High': 3, 'Medium': 2, 'Low': 1, 'none': 0, '': 0 };
-        const pA = pMap[a.priority] || 0;
-        const pB = pMap[b.priority] || 0;
-
-        if (pA !== pB) return pB - pA;
-
-        return (a.position || 0) - (b.position || 0);
+    const dayGroups = [];
+    const groupIndex = new Map();
+    filteredTasks.forEach((task) => {
+        const key = getDayKey(task.date);
+        if (!groupIndex.has(key)) {
+            groupIndex.set(key, dayGroups.length);
+            dayGroups.push({ key, label: formatDayLabel(key), tasks: [] });
+        }
+        dayGroups[groupIndex.get(key)].tasks.push(task);
     });
+    dayGroups.sort((a, b) => {
+        if (!a.key) return 1;
+        if (!b.key) return -1;
+        return a.key.localeCompare(b.key);
+    });
+    dayGroups.forEach((group) => group.tasks.sort(compareTasks));
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -152,15 +206,17 @@ const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, o
                     ))}
                 </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginBottom: '0.25rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
                 <button
-                    onClick={() => setCompactMode(!compactMode)}
+                    onClick={() => setSortMode((mode) => (mode === 'day' ? 'manual' : 'day'))}
+                    aria-pressed={sortMode === 'day'}
+                    title={sortMode === 'day' ? 'Switch to manual drag order' : 'Switch to day-wise sort'}
                     style={{
-                        fontSize: '0.75rem', color: compactMode ? 'var(--accent-color)' : 'var(--text-secondary)', padding: '0.2rem 0.5rem',
+                        fontSize: '0.75rem', color: sortMode === 'day' ? 'var(--accent-color)' : 'var(--text-secondary)', padding: '0.2rem 0.5rem',
                         border: '1px solid var(--border-color)', borderRadius: '0.25rem', cursor: 'pointer', background: 'transparent'
                     }}
                 >
-                    {compactMode ? 'View: Minimal' : 'View: Full'}
+                    {sortMode === 'day' ? 'Sort: Day-wise' : 'Sort: Manual'}
                 </button>
                 <button
                     onClick={handleClearCompletedInternal}
@@ -182,23 +238,57 @@ const TaskBoard = React.memo(({ tasks, onTaskUpdate, onTaskDelete, onClearAll, o
                 </button>
             </div>
 
-            <Reorder.Group axis="y" values={displayTasks} onReorder={handleReorder} style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {displayTasks.map(task => (
-                    <TaskItem
-                        key={task.id}
-                        task={task}
-                        onUpdate={onTaskUpdate}
-                        onDelete={handleDelete}
-                        onToggleComplete={handleToggleComplete}
-                        compactMode={compactMode}
-                    />
-                ))}
-            </Reorder.Group>
+            {filteredTasks.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                    No tasks match this tag.
+                </div>
+            ) : sortMode === 'manual' ? (
+                <Reorder.Group axis="y" values={displayTasks} onReorder={handleReorder} style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {displayTasks.map(task => (
+                        <TaskItem
+                            key={task.id}
+                            task={task}
+                            onUpdate={onTaskUpdate}
+                            onDelete={handleDelete}
+                            onToggleComplete={handleToggleComplete}
+                        />
+                    ))}
+                </Reorder.Group>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+                    {dayGroups.map(group => (
+                        <section key={group.key || 'no-date'} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                                <span style={{
+                                    fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.06em',
+                                    textTransform: 'uppercase', color: 'var(--text-secondary)', whiteSpace: 'nowrap'
+                                }}>
+                                    {group.label}
+                                </span>
+                                <span style={{ fontSize: '0.67rem', color: 'var(--text-secondary)', opacity: 0.7, whiteSpace: 'nowrap' }}>
+                                    {group.tasks.length} {group.tasks.length === 1 ? 'task' : 'tasks'}
+                                </span>
+                                <span style={{ flex: 1, height: '1px', background: 'var(--border-color)' }} />
+                            </div>
+                            {group.tasks.map(task => (
+                                <TaskItem
+                                    key={task.id}
+                                    task={task}
+                                    onUpdate={onTaskUpdate}
+                                    onDelete={handleDelete}
+                                    onToggleComplete={handleToggleComplete}
+                                    sortable={false}
+                                />
+                            ))}
+                        </section>
+                    ))}
+                </div>
+            )}
         </div>
     );
 });
 
-const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compactMode }) => {
+const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, sortable = true }) => {
     // Shared debounce timer for all inputs in this specific task
     const saveTimerRef = React.useRef(null);
 
@@ -278,7 +368,7 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
     else if (task.priority === 'Low') { priorityColor = 'var(--status-done)'; priorityBg = 'color-mix(in srgb, var(--status-done) 16%, transparent)'; }
 
     const parsedTags = parseTags(localTags);
-    const showDetails = !compactMode || isCompactExpanded;
+    const showDetails = isCompactExpanded;
     const dueLabel = [localDate, localTime].filter(Boolean).join(' ');
     const nextOccLabel = localRecurring !== 'none' ? getNextOccurrence(localDate, localRecurring) : '';
 
@@ -291,14 +381,13 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
         saveTagColors(nextMap);
     };
 
-    return (
-        <Reorder.Item value={task} dragListener={false} dragControls={controls} style={{ listStyleType: 'none', width: '100%' }}>
+    const card = (
             <div className="task-card card-container" style={{
                 background: 'var(--bg-card)',
-                padding: compactMode ? '0.5rem 0.7rem' : '0.65rem 0.85rem',
+                padding: '0.5rem 0.7rem',
                 borderRadius: 'var(--radius)',
                 border: `1px solid ${isComplete ? 'var(--success-color)' : 'var(--border-color)'}`,
-                display: 'flex', flexDirection: 'column', gap: compactMode ? '0.1rem' : '0.5rem',
+                display: 'flex', flexDirection: 'column', gap: '0.1rem',
                 opacity: isComplete ? 0.8 : 1, userSelect: 'none',
                 width: '100%', boxSizing: 'border-box'
             }}>
@@ -306,24 +395,18 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                     style={{
                         display: 'flex',
                         justifyContent: 'space-between',
-                        alignItems: compactMode ? 'center' : 'flex-start',
+                        alignItems: 'center',
                         gap: '0.75rem'
                     }}
                 >
-                    <div style={{ display: 'flex', gap: compactMode ? '0.65rem' : '1rem', alignItems: compactMode ? 'center' : 'flex-start', flex: 1 }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: compactMode ? '0.2rem' : '0.5rem', paddingTop: compactMode ? '0' : '0.2rem' }}>
+                    <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center', flex: 1 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem', paddingTop: '0' }}>
                             <button onClick={() => onToggleComplete(task)} style={{ color: isComplete ? 'var(--success-color)' : 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                                {isComplete ? <CheckCircle2 size={compactMode ? 18 : 24} /> : <Circle size={compactMode ? 18 : 24} />}
+                                {isComplete ? <CheckCircle2 size={18} /> : <Circle size={18} />}
                             </button>
-                            {!compactMode && (
-                                <div style={{ cursor: 'grab', opacity: 0.4 }} className="drag-handle" onPointerDown={(e) => controls.start(e)}>
-                                    <GripVertical size={20} />
-                                </div>
-                            )}
                         </div>
 
                         <div style={{ flex: 1, minWidth: 0 }}>
-                            {compactMode ? (
                                 <button
                                     type="button"
                                     onClick={() => setIsCompactExpanded((prev) => !prev)}
@@ -405,71 +488,14 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                                         </div>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-secondary)' }}>
-                                        <div style={{ cursor: 'grab', opacity: 0.4, display: 'flex' }} className="drag-handle" onPointerDown={(e) => controls.start(e)}>
-                                            <GripVertical size={14} />
-                                        </div>
+                                        {sortable && (
+                                            <div style={{ cursor: 'grab', opacity: 0.4, display: 'flex' }} className="drag-handle" onPointerDown={(e) => controls.start(e)}>
+                                                <GripVertical size={14} />
+                                            </div>
+                                        )}
                                         {isCompactExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                     </div>
                                 </button>
-                            ) : (
-                                <>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                        <input
-                                            value={localTitle}
-                                            onChange={(e) => {
-                                                setLocalTitle(e.target.value);
-                                                handleLocalUpdate({ ...task, title: e.target.value });
-                                            }}
-                                            style={{
-                                                fontSize: '1rem', fontWeight: 'bold', background: 'transparent',
-                                                border: 'none', padding: '2px 4px', margin: 0,
-                                                textDecoration: isComplete ? 'line-through' : 'none',
-                                                color: isComplete ? 'var(--text-secondary)' : 'var(--text-primary)',
-                                                width: '100%', maxWidth: '300px', borderRadius: '4px'
-                                            }}
-                                        />
-                                        <select
-                                            value={task.priority || 'Medium'}
-                                            onChange={(e) => handleLocalUpdate({ ...task, priority: e.target.value })}
-                                            style={{
-                                                fontSize: '0.7rem', fontWeight: '600', padding: '0.1rem 0.4rem', borderRadius: '1rem',
-                                                backgroundColor: priorityBg, color: priorityColor, border: 'none', cursor: 'pointer'
-                                            }}
-                                        >
-                                            <option value="Low">LOW</option>
-                                            <option value="Medium">MEDIUM</option>
-                                            <option value="High">HIGH</option>
-                                        </select>
-                                        <input
-                                            value={localTags}
-                                            placeholder="Tags..."
-                                            onChange={(e) => {
-                                                setLocalTags(e.target.value);
-                                                handleLocalUpdate({ ...task, tags: e.target.value });
-                                            }}
-                                            style={{
-                                                fontSize: '0.7rem', fontWeight: '600', padding: '0.1rem 0.4rem', borderRadius: '1rem',
-                                                backgroundColor: 'var(--bg-primary)', color: 'var(--text-secondary)',
-                                                border: '1px solid var(--border-color)', width: '80px'
-                                            }}
-                                        />
-                                    </div>
-                                    <textarea
-                                        value={localDesc}
-                                        placeholder="Add a description..."
-                                        onChange={(e) => {
-                                            setLocalDesc(e.target.value);
-                                            handleLocalUpdate({ ...task, description: e.target.value });
-                                        }}
-                                        rows="1"
-                                        style={{
-                                            marginTop: '0.25rem', fontSize: '0.875rem', color: 'var(--text-secondary)',
-                                            background: 'transparent', border: 'none', padding: '2px 4px',
-                                            width: '100%', resize: 'none', borderRadius: '4px'
-                                        }}
-                                    />
-                                </>
-                            )}
                         </div>
                     </div>
 
@@ -497,10 +523,10 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                             setLocalRecurring(newVal);
                             handleImmediateUpdate({ ...task, recurring: newVal });
                         }}
-                        style={{ color: localRecurring !== 'none' ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: localRecurring !== 'none' ? 1 : 0.4, background: 'none', border: 'none', cursor: 'pointer', padding: compactMode ? '0.1rem' : '0.2rem', display: 'flex', alignItems: 'center', gap: '0.15rem' }}
+                        style={{ color: localRecurring !== 'none' ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: localRecurring !== 'none' ? 1 : 0.4, background: 'none', border: 'none', cursor: 'pointer', padding: '0.1rem', display: 'flex', alignItems: 'center', gap: '0.15rem' }}
                         title={localRecurring === 'none' ? 'No Recurrence' : `Recurs: ${localRecurring}`}
                     >
-                        <Repeat size={compactMode ? 14 : 16} />
+                        <Repeat size={14} />
                         {localRecurring !== 'none' && (
                             <span style={{ fontSize: '0.6rem', fontWeight: 'bold' }}>
                                 {localRecurring === 'daily' ? 'D' : localRecurring === 'weekly' ? 'W' : localRecurring === 'monthly' ? 'M' : localRecurring?.startsWith('custom:') ? `${localRecurring.split(':')[1]}d` : ''}
@@ -514,10 +540,10 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                             setLocalIsPinned(newVal);
                             handleImmediateUpdate({ ...task, isPinned: newVal });
                         }}
-                        style={{ color: localIsPinned ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: localIsPinned ? 1 : 0.4, background: 'none', border: 'none', cursor: 'pointer', padding: compactMode ? '0.1rem' : '0.2rem' }}
+                        style={{ color: localIsPinned ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: localIsPinned ? 1 : 0.4, background: 'none', border: 'none', cursor: 'pointer', padding: '0.1rem' }}
                         title="Pin to Top"
                     >
-                        <Pin size={compactMode ? 14 : 16} />
+                        <Pin size={14} />
                     </button>
                     <button
                         onClick={() => {
@@ -525,12 +551,12 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                             setLocalIsSticky(newVal);
                             handleImmediateUpdate({ ...task, isSticky: newVal });
                         }}
-                        style={{ color: localIsSticky ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: localIsSticky ? 1 : 0.4, background: 'none', border: 'none', cursor: 'pointer', padding: compactMode ? '0.1rem' : '0.2rem' }}
+                        style={{ color: localIsSticky ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: localIsSticky ? 1 : 0.4, background: 'none', border: 'none', cursor: 'pointer', padding: '0.1rem' }}
                         title="Sticky (Immune to Clear All)"
                     >
-                        <Lock size={compactMode ? 14 : 16} />
+                        <Lock size={14} />
                     </button>
-                    <button onClick={() => onDelete(task.id)} style={{ color: 'var(--danger-color)', fontSize: compactMode ? '0.7rem' : '0.8125rem', background: 'none', border: 'none', cursor: 'pointer', marginLeft: compactMode ? '0.2rem' : '0.5rem' }}>
+                    <button onClick={() => onDelete(task.id)} style={{ color: 'var(--danger-color)', fontSize: '0.7rem', background: 'none', border: 'none', cursor: 'pointer', marginLeft: '0.2rem' }}>
                         Delete
                     </button>
                 </div>
@@ -538,9 +564,7 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
 
                 {showDetails && (
                     <>
-                        <div style={{ paddingLeft: compactMode ? '2rem' : 0 }}>
-                            {compactMode && (
-                                <>
+                        <div style={{ paddingLeft: '2rem' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.6rem' }}>
                                         <select
                                             value={task.priority || 'Medium'}
@@ -598,8 +622,6 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                                             width: '100%', resize: 'vertical', borderRadius: '4px'
                                         }}
                                     />
-                                </>
-                            )}
 
                             {parsedTags.length > 0 && (
                                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.35rem' }}>
@@ -641,9 +663,8 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                             )}
                         </div>
 
-                        <div className="responsive-grid" style={{ marginLeft: compactMode ? '2rem' : '3.5rem', marginTop: '0.4rem', opacity: compactMode ? 0.9 : 1 }}>
-                {(!compactMode || localDate) && (
-                    <div className="metadata-item" style={{ position: 'relative', cursor: 'pointer', overflow: 'visible' }}>
+                        <div className="responsive-grid" style={{ marginLeft: '2rem', marginTop: '0.4rem', opacity: 0.9 }}>
+                <div className="metadata-item" style={{ position: 'relative', cursor: 'pointer', overflow: 'visible' }}>
                         <Calendar size={12} />
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
                             {localDate || 'Date'}
@@ -659,7 +680,6 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                             style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', zIndex: 2 }}
                         />
                     </div>
-                )}
 
                 <div className="metadata-item">
                     <Clock size={14} />
@@ -731,6 +751,15 @@ const TaskItem = React.memo(({ task, onUpdate, onDelete, onToggleComplete, compa
                     </>
                 )}
             </div>
+    );
+
+    if (!sortable) {
+        return <div style={{ width: '100%' }}>{card}</div>;
+    }
+
+    return (
+        <Reorder.Item value={task} dragListener={false} dragControls={controls} style={{ listStyleType: 'none', width: '100%' }}>
+            {card}
         </Reorder.Item>
     );
 });
