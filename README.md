@@ -95,13 +95,8 @@ A tour of the current interface — click any image to open it at full size.
 **Plan and review**
 
 <p align="center">
-  <a href="./docs/assets/screenshots/Tasks_Full.PNG"><img src="./docs/assets/screenshots/Tasks_Full.PNG" alt="Task board with priorities, dates, tags and effort tracking" width="800"></a>
-  <br><sub>Full task board — priorities, dates, tags, and effort tracking</sub>
-</p>
-
-<p align="center">
   <a href="./docs/assets/screenshots/Tasks_Minimal.PNG"><img src="./docs/assets/screenshots/Tasks_Minimal.PNG" alt="Minimal task board view" width="800"></a>
-  <br><sub>Minimal task board</sub>
+  <br><sub> Task board</sub>
 </p>
 
 <p align="center">
