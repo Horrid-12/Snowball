@@ -4,6 +4,10 @@
 # Builds Tauri desktop bundles for Windows, macOS, and Linux.
 # Triggered on push of version tags (e.g. v8.0.1) or manually via workflow_dispatch.
 #
+# This is the ONLY desktop build path. The local release scripts
+# (scripts/release.ps1, scripts/release.sh, scripts/release-all.mjs) merely
+# dispatch this workflow — they do not bundle desktop apps themselves.
+#
 # Produces:
 #   Windows:  NSIS installer (.exe) + MSI
 #   macOS:    DMG + .app bundle (universal: x86_64 + aarch64)
