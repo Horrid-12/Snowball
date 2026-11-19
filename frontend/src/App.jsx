@@ -1328,6 +1328,10 @@ function App() {
 
     const showHeatmap = isCardEffectivelyVisible('heatmap', dashboardCards, spotifyConnected);
     const showStats = isCardEffectivelyVisible('stats', dashboardCards, spotifyConnected);
+    // Android phones have a dedicated Stats tab, so keep stats off the Home tab.
+    // Other platforms (and wide Android viewports) show one combined page.
+    const statsOnlyOnStatsTab = isNativeAndroid && isMobile;
+    const showStatsInHeader = showStats && (!statsOnlyOnStatsTab || activeTab === 'heatmap');
 
     const setShowHeatmap = useCallback(
         (updater) => {
@@ -2068,7 +2072,7 @@ function App() {
                             >
                                 Snowball.
                             </h1>
-                            {user && showStats && (
+                            {user && showStatsInHeader && (
                                 <div
                                     style={{
                                         display: 'inline-flex',
@@ -2277,7 +2281,7 @@ function App() {
                 </div>
 
                 {/* Secondary metrics row within the header */}
-                {user && showStats && (
+                {user && showStatsInHeader && (
                     <div
                         className="header-productivity-row"
                         style={{
@@ -2559,7 +2563,7 @@ function App() {
                                             'heatmap',
                                             dashboardCards,
                                             spotifyConnected
-                                        );
+                                        ) && !statsOnlyOnStatsTab;
                                         const showSpotify = isCardEffectivelyVisible(
                                             'spotify',
                                             dashboardCards,

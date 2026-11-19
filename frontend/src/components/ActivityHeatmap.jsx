@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppContext } from '../context/AppContext.jsx';
 import { useOnline } from '../context/OnlineContext';
 import { db } from '../db/db';
+import { apiFetch } from '../utils/apiClient.js';
 import {
     calculateProductivityScore,
     formatLocalDate,
@@ -10,7 +11,6 @@ import {
     getTaskLogicalDate,
     getTodayDateString
 } from '../utils/productivityScore.js';
-import { apiFetch } from '../utils/apiClient.js';
 import { getTagColor, loadTagColors, parseTags } from '../utils/tagColors.js';
 import { ActivityHeatmapSkeleton } from './Skeletons.jsx';
 
@@ -117,25 +117,27 @@ const getSessionIntervalForDay = (session, dayStart, dayEnd) => {
 // Several timers can run at once (and split/duplicate records can describe the
 // same stretch of time). Summing the raw session durations double-counts those
 // overlaps and can push a single day past 24h, so merge the intervals first.
-const sumMergedIntervals = (intervals = []) => {
-    if (intervals.length === 0) return 0;
+const mergeIntervals = (intervals = []) => {
+    if (intervals.length === 0) return [];
     const sorted = [...intervals].sort((left, right) => left[0] - right[0]);
-    let [currentStart, currentEnd] = sorted[0];
-    let total = 0;
+    const merged = [[...sorted[0]]];
 
     for (let index = 1; index < sorted.length; index += 1) {
         const [start, end] = sorted[index];
-        if (start <= currentEnd) {
-            currentEnd = Math.max(currentEnd, end);
-            continue;
+        const last = merged[merged.length - 1];
+        if (start <= last[1]) {
+            last[1] = Math.max(last[1], end);
+        } else {
+            merged.push([start, end]);
         }
-        total += currentEnd - currentStart;
-        currentStart = start;
-        currentEnd = end;
     }
 
-    return total + (currentEnd - currentStart);
+    return merged;
 };
+
+const sumMergedIntervals = (intervals = []) => (
+    mergeIntervals(intervals).reduce((sum, [start, end]) => sum + (end - start), 0)
+);
 
 const formatStudyDuration = (durationMs) => {
     const totalMinutes = Math.max(0, Math.floor(durationMs / 60000));
@@ -183,6 +185,31 @@ const buildWeekAlignedDates = (todayStr) => {
         cursor.setDate(cursor.getDate() + 1);
     }
     return dates;
+};
+
+const parseDateKey = (value) => {
+    const [year, month, day] = String(value).split('-').map(Number);
+    return new Date(year, (month || 1) - 1, day || 1, 0, 0, 0, 0);
+};
+
+const shiftDateKey = (dateKey, offsetDays) => {
+    const date = parseDateKey(dateKey);
+    date.setDate(date.getDate() + offsetDays);
+    return formatLocalDate(date);
+};
+
+const buildTrailingDates = (today, count) => {
+    const dates = [];
+    for (let index = count - 1; index >= 0; index -= 1) {
+        dates.push(shiftDateKey(today, -index));
+    }
+    return dates;
+};
+
+const localDateKey = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : formatLocalDate(date);
 };
 
 const cardStyle = {
@@ -254,129 +281,255 @@ const HeatmapPanel = ({ days, today, currentDisplayScore, getColor, columns = 53
     </>
 );
 
-const HabitHeatmapPanel = ({ habitLogs, globalHabits, days, today, columns = 53, compact = false }) => {
-    const habits = useMemo(() => Array.isArray(globalHabits) ? globalHabits : [], [globalHabits]);
+const HABIT_TREND_DAYS = 30;
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-    // Rank habits by how often they were checked, counting distinct logged days
-    // (today's live completion counts too, even if the log list is stale).
-    const sortedHabits = useMemo(() => {
-        const checkedDates = new Map();
-        (Array.isArray(habitLogs) ? habitLogs : []).forEach((log) => {
-            if (!log?.habit_id || !log?.date) return;
-            const key = String(log.habit_id);
-            if (!checkedDates.has(key)) checkedDates.set(key, new Set());
-            checkedDates.get(key).add(log.date);
-        });
-
-        const checkedCount = (habit) => {
-            const dates = checkedDates.get(String(habit.id));
-            const count = dates ? dates.size : 0;
-            const includesToday = dates ? dates.has(today) : false;
-            return count + (habit.completedToday && !includesToday ? 1 : 0);
-        };
-
-        return habits
-            .map((habit) => ({ habit, count: checkedCount(habit) }))
-            .sort((left, right) => {
-                if (right.count !== left.count) return right.count - left.count;
-                return String(left.habit.name || '').localeCompare(String(right.habit.name || ''));
-            });
-    }, [habitLogs, habits, today]);
-
-    const [selectedHabitId, setSelectedHabitId] = useState(() => (
-        sortedHabits[0]?.habit?.id ? String(sortedHabits[0].habit.id) : ''
-    ));
-    const [userSelectedHabit, setUserSelectedHabit] = useState(false);
-
-    useEffect(() => {
-        const topHabit = sortedHabits[0]?.habit;
-        if (!topHabit) return;
-        const topId = String(topHabit.id);
-        const selectionExists = sortedHabits.some(({ habit }) => String(habit.id) === String(selectedHabitId));
-
-        // Once logs load, default to the most-checked habit. A habit the user
-        // picked themselves is respected unless it was deleted.
-        if ((!userSelectedHabit && selectedHabitId !== topId) || !selectionExists) {
-            setSelectedHabitId(topId);
+const buildHabitStatsData = (habitLogs, globalHabits, today) => {
+    const habits = (Array.isArray(globalHabits) ? [...globalHabits] : []).sort((left, right) => {
+        const positionLeft = Number(left?.position);
+        const positionRight = Number(right?.position);
+        if (Number.isFinite(positionLeft) || Number.isFinite(positionRight)) {
+            if (!Number.isFinite(positionLeft)) return 1;
+            if (!Number.isFinite(positionRight)) return -1;
+            if (positionLeft !== positionRight) return positionLeft - positionRight;
         }
-    }, [selectedHabitId, sortedHabits, userSelectedHabit]);
+        const createdLeft = localDateKey(left?.created_at);
+        const createdRight = localDateKey(right?.created_at);
+        if (createdLeft !== createdRight) return createdLeft.localeCompare(createdRight);
+        return String(left?.name || '').localeCompare(String(right?.name || ''));
+    });
 
-    const habitGrid = useMemo(() => {
-        if (!selectedHabitId) return days.map(d => ({ date: d.date, score: 0, isFuture: d.isFuture }));
-        
-        const completedDates = new Set(
-            (Array.isArray(habitLogs) ? habitLogs : [])
-                .filter(log => String(log.habit_id) === String(selectedHabitId))
-                .map(log => log.date)
-        );
-
-        const habit = habits.find(h => String(h.id) === String(selectedHabitId));
-        const isCompletedToday = habit?.completedToday || false;
-        
-        return days.map(d => {
-            if (d.isFuture) {
-                return { date: d.date, score: 0, isFuture: true };
-            }
-            if (d.date === today) {
-                return { date: d.date, score: isCompletedToday ? 100 : 0, isFuture: false };
-            }
-            return {
-                date: d.date,
-                score: completedDates.has(d.date) ? 100 : 0,
-                isFuture: false
-            };
-        });
-    }, [days, habitLogs, selectedHabitId, habits, today]);
-
-    const getColor = (score) => {
-        const habit = habits.find(h => String(h.id) === String(selectedHabitId));
-        const color = habit?.color || 'var(--accent-color)';
-        if (score === 0) return 'rgba(128, 128, 128, 0.1)';
-        return color;
+    const completedByDate = new Map();
+    const addCompletion = (date, habitId) => {
+        if (!date || !habitId) return;
+        const key = String(date);
+        if (!completedByDate.has(key)) completedByDate.set(key, new Set());
+        completedByDate.get(key).add(String(habitId));
     };
+    (Array.isArray(habitLogs) ? habitLogs : []).forEach((log) => {
+        addCompletion(log?.date, log?.habit_id);
+    });
+    habits.forEach((habit) => {
+        if (habit?.completedToday) addCompletion(today, habit.id);
+    });
+
+    const recentDates = buildTrailingDates(today, HABIT_TREND_DAYS);
+    const trend = recentDates.map((date) => {
+        const allocatedHabits = habits.filter((habit) => {
+            const created = localDateKey(habit?.created_at);
+            return !created || created <= date;
+        });
+        const completed = allocatedHabits.filter((habit) => (
+            completedByDate.get(date)?.has(String(habit.id))
+        )).length;
+        return {
+            date,
+            completed,
+            allocated: allocatedHabits.length,
+            percent: allocatedHabits.length ? Math.round((completed / allocatedHabits.length) * 100) : null
+        };
+    }).filter((point) => point.percent !== null);
+
+    const weekdayRates = WEEKDAY_LABELS.map((label, weekday) => {
+        const points = trend.filter((point) => parseDateKey(point.date).getDay() === weekday);
+        const percent = points.length
+            ? Math.round(points.reduce((sum, point) => sum + point.percent, 0) / points.length)
+            : null;
+        return { label, percent, samples: points.length };
+    });
+
+    const habitStats = habits.map((habit) => {
+        const created = localDateKey(habit?.created_at);
+        const eligibleDates = recentDates.filter((date) => !created || created <= date);
+        const isCompleted = (date) => Boolean(completedByDate.get(date)?.has(String(habit.id)));
+        const completedCount = eligibleDates.filter(isCompleted).length;
+        const rate = eligibleDates.length ? Math.round((completedCount / eligibleDates.length) * 100) : 0;
+
+        let longest = 0;
+        let run = 0;
+        eligibleDates.forEach((date) => {
+            run = isCompleted(date) ? run + 1 : 0;
+            longest = Math.max(longest, run);
+        });
+
+        let current = 0;
+        let cursor = today;
+        // Today is still in progress — start from yesterday if it isn't done yet.
+        if (!isCompleted(cursor)) cursor = shiftDateKey(cursor, -1);
+        while (eligibleDates.includes(cursor) && isCompleted(cursor)) {
+            current += 1;
+            cursor = shiftDateKey(cursor, -1);
+        }
+
+        return { habit, rate, currentStreak: current, longestStreak: longest };
+    });
+
+    const weekDates = buildTrailingDates(today, 7);
+    const weeklyGrid = habits.map((habit) => ({
+        habit,
+        cells: weekDates.map((date) => ({
+            date,
+            completed: Boolean(completedByDate.get(date)?.has(String(habit.id)))
+        }))
+    }));
+
+    return { habits, trend, weekdayRates, habitStats, weekDates, weeklyGrid };
+};
+
+const CompletionTrendChart = ({ points }) => {
+    if (points.length === 0) {
+        return <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>No habit history yet.</div>;
+    }
+
+    const width = 600;
+    const height = 150;
+    const left = 34;
+    const right = 10;
+    const top = 10;
+    const bottom = 26;
+    const innerWidth = width - left - right;
+    const innerHeight = height - top - bottom;
+    const xFor = (index) => left + (points.length === 1 ? innerWidth / 2 : (index / (points.length - 1)) * innerWidth);
+    const yFor = (percent) => top + (1 - percent / 100) * innerHeight;
+    const linePoints = points.map((point, index) => `${xFor(index)},${yFor(point.percent)}`).join(' ');
+    const areaPoints = `${left},${top + innerHeight} ${linePoints} ${xFor(points.length - 1)},${top + innerHeight}`;
+    const labelIndexes = [...new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])];
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
-            {sortedHabits.length > 0 ? (
-                <>
-                    <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <select
-                            value={selectedHabitId}
-                            onChange={(e) => {
-                                setUserSelectedHabit(true);
-                                setSelectedHabitId(e.target.value);
-                            }}
-                            style={{
-                                padding: '0.5rem',
-                                borderRadius: '0.5rem',
-                                border: '1px solid var(--border-color)',
-                                background: 'var(--bg-secondary)',
-                                color: 'var(--text-primary)',
-                                outline: 'none',
-                                fontSize: '0.875rem',
-                                width: '100%',
-                                maxWidth: '300px'
-                            }}
-                        >
-                            {sortedHabits.map(({ habit, count }) => (
-                                <option key={habit.id} value={habit.id}>
-                                    {habit.name}{count > 0 ? ` (${count})` : ''}
-                                </option>
-                            ))}
-                        </select>
+        <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} style={{ overflow: 'visible' }} role="img" aria-label="Daily habit completion percentage over the last 30 days">
+            {[0, 50, 100].map((value) => (
+                <g key={value}>
+                    <line x1={left} x2={width - right} y1={yFor(value)} y2={yFor(value)} stroke="var(--border-color)" strokeWidth="1" strokeDasharray={value === 0 ? undefined : '3 4'} />
+                    <text x={left - 6} y={yFor(value) + 3} textAnchor="end" style={{ fill: 'var(--text-secondary)', fontSize: '9px' }}>{value}%</text>
+                </g>
+            ))}
+            <polygon points={areaPoints} fill="var(--chart-primary, var(--accent-color))" opacity="0.16" />
+            <polyline points={linePoints} fill="none" stroke="var(--chart-primary, var(--accent-color))" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+            {points.map((point, index) => (
+                <circle key={point.date} cx={xFor(index)} cy={yFor(point.percent)} r="2.5" fill="var(--bg-card)" stroke="var(--chart-primary, var(--accent-color))" strokeWidth="1.5" vectorEffect="non-scaling-stroke">
+                    <title>{`${point.date}: ${point.percent}% (${point.completed}/${point.allocated} habits)`}</title>
+                </circle>
+            ))}
+            {labelIndexes.map((index) => (
+                <text key={index} x={xFor(index)} y={height - 6} textAnchor={index === 0 ? 'start' : index === points.length - 1 ? 'end' : 'middle'} style={{ fill: 'var(--text-secondary)', fontSize: '9px' }}>
+                    {points[index].date.slice(5)}
+                </text>
+            ))}
+        </svg>
+    );
+};
+
+const WeekdayRateChart = ({ rates }) => (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.45rem', height: '110px' }}>
+        {rates.map((day) => {
+            const percent = day.percent ?? 0;
+            return (
+                <div key={day.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem', height: '100%' }} title={day.samples ? `${day.label}: ${percent}% across ${day.samples} days` : `${day.label}: no data`}>
+                    <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>{day.samples ? `${percent}%` : '—'}</span>
+                    <div style={{ width: '100%', maxWidth: '32px', flex: 1, display: 'flex', alignItems: 'flex-end' }}>
+                        <div style={{
+                            width: '100%',
+                            height: day.samples ? `${Math.max((percent / 100) * 78, 3)}px` : '3px',
+                            background: day.samples ? 'var(--chart-secondary, var(--accent-color))' : 'var(--border-color)',
+                            opacity: day.samples ? 0.85 : 0.5,
+                            borderRadius: '5px 5px 0 0'
+                        }} />
                     </div>
-                    <HeatmapPanel days={habitGrid} today={today} getColor={getColor} columns={columns} compact={compact} />
-                </>
-            ) : (
-                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                    No habits found. Add some on the Habits tab!
+                    <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>{day.label}</span>
                 </div>
-            )}
+            );
+        })}
+    </div>
+);
+
+const HabitsWeeklyGrid = ({ weekDates, rows, today }) => (
+    <div style={{ overflowX: 'auto', paddingBottom: '0.25rem' }}>
+        <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(96px, 1.4fr) repeat(7, minmax(26px, 1fr))',
+            gap: '3px',
+            minWidth: '320px',
+            alignItems: 'center'
+        }}>
+            <div />
+            {weekDates.map((date) => (
+                <div key={date} style={{ textAlign: 'center', fontSize: '0.6rem', color: date === today ? 'var(--accent-color)' : 'var(--text-secondary)', fontWeight: date === today ? 700 : 400 }}>
+                    {parseDateKey(date).toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2)}
+                </div>
+            ))}
+            {rows.map(({ habit, cells }) => (
+                <Fragment key={habit.id}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={habit.name}>
+                        {habit.name}
+                    </div>
+                    {cells.map((cell) => (
+                        <div
+                            key={cell.date}
+                            title={`${habit.name} — ${cell.date}: ${cell.completed ? 'Done' : 'Not done'}`}
+                            style={{
+                                height: '22px',
+                                borderRadius: '4px',
+                                background: cell.completed ? (habit.color || 'var(--accent-color)') : 'rgba(128, 128, 128, 0.12)',
+                                border: cell.date === today ? '1px solid var(--accent-color)' : '1px solid transparent'
+                            }}
+                        />
+                    ))}
+                </Fragment>
+            ))}
+        </div>
+    </div>
+);
+
+const HabitStatsList = ({ stats }) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {[...stats]
+            .sort((left, right) => (
+                right.longestStreak - left.longestStreak
+                || String(left.habit.name || '').localeCompare(String(right.habit.name || ''))
+            ))
+            .map(({ habit, rate, currentStreak, longestStreak }) => (
+                <div key={habit.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '999px', background: habit.color || 'var(--accent-color)', flexShrink: 0 }} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: '0.72rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{habit.name}</span>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{rate}% · {currentStreak}d / {longestStreak}d</span>
+                </div>
+            ))}
+    </div>
+);
+
+const HabitsPanel = ({ habitLogs, globalHabits, today }) => {
+    const data = useMemo(
+        () => buildHabitStatsData(habitLogs, globalHabits, today),
+        [habitLogs, globalHabits, today]
+    );
+
+    if (data.habits.length === 0) {
+        return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>No habits found. Add some on the Habits tab!</div>;
+    }
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', width: '100%' }}>
+            <div style={panelStyle}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Daily completion · last 30 days</div>
+                <CompletionTrendChart points={data.trend} />
+            </div>
+            <div style={panelStyle}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.6rem' }}>By weekday · last 30 days</div>
+                <WeekdayRateChart rates={data.weekdayRates} />
+            </div>
+            <div style={panelStyle}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.6rem' }}>This week</div>
+                <HabitsWeeklyGrid weekDates={data.weekDates} rows={data.weeklyGrid} today={today} />
+            </div>
+            <div style={panelStyle}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.6rem' }}>Per habit · last 30 days <span style={{ opacity: 0.7 }}>(rate · current / longest streak)</span></div>
+                <HabitStatsList stats={data.habitStats} />
+            </div>
         </div>
     );
 };
 
-const StudyHeatmapPanel = ({ days, today, maxDuration, columns = 53, compact = false }) => {
+const StudyHeatmapPanel = ({ days, today, maxDuration, summary, columns = 53, compact = false }) => {
     const getStudyColor = (duration) => {
         if (duration <= 0) return 'var(--heatmap-empty)';
         const ratio = maxDuration > 0 ? duration / maxDuration : 0;
@@ -388,6 +541,12 @@ const StudyHeatmapPanel = ({ days, today, maxDuration, columns = 53, compact = f
 
     return (
         <>
+            <div style={{ display: 'flex', gap: '0.35rem 1rem', flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                <span>Last 30 days</span>
+                <span><strong style={{ color: 'var(--text-primary)' }}>{formatStudyDuration(summary.totalMs)}</strong> focused</span>
+                <span><strong style={{ color: 'var(--text-primary)' }}>{summary.activeDays}</strong> active days</span>
+                <span><strong style={{ color: 'var(--text-primary)' }}>{formatStudyDuration(summary.avgSessionMs)}</strong> avg session</span>
+            </div>
             <div style={{
                 overflowX: 'auto',
                 paddingBottom: '0.5rem',
@@ -424,7 +583,7 @@ const StudyHeatmapPanel = ({ days, today, maxDuration, columns = 53, compact = f
                 </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontSize: '0.7rem', color: 'var(--text-secondary)', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <span>Last 12 Months</span>
+                <span>Last 12 months · scale capped at 95th percentile of last 30 days</span>
                 <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                     <span>Less</span>
                     {[0, 0.25, 0.5, 0.75, 1].map((ratio) => (
@@ -791,10 +950,11 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
         const sessions = loadStudySessions();
         const activeSessions = loadActiveStudySessions();
         const activeEndedAt = new Date(studyNow).toISOString();
+        const recentDates = new Set(buildTrailingDates(today, 30));
 
         const grid = buildWeekAlignedDates(today).map((dateStr) => {
             if (dateStr > today) {
-                return { date: dateStr, duration: 0, isFuture: true };
+                return { date: dateStr, duration: 0, sessionCount: 0, isFuture: true };
             }
 
             const [year, month, day] = dateStr.split('-').map(Number);
@@ -816,19 +976,33 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
                 if (interval) intervals.push(interval);
             });
 
+            const merged = mergeIntervals(intervals);
             const dayLength = dayEnd.getTime() - dayStart.getTime();
             return {
                 date: dateStr,
                 // Merged (not summed) so concurrent timers can never report more
                 // study time for a day than the day actually contains.
-                duration: Math.min(sumMergedIntervals(intervals), dayLength),
+                duration: Math.min(sumMergedIntervals(merged), dayLength),
+                sessionCount: merged.length,
                 isFuture: false
             };
         });
 
+        const recentDays = grid.filter((day) => recentDates.has(day.date) && !day.isFuture);
+        const orderedDurations = recentDays.map((day) => day.duration).sort((left, right) => left - right);
+        const percentileIndex = Math.max(0, Math.ceil(orderedDurations.length * 0.95) - 1);
+        const totalMs = recentDays.reduce((sum, day) => sum + day.duration, 0);
+        const sessionCount = recentDays.reduce((sum, day) => sum + day.sessionCount, 0);
+
         return {
             days: grid,
-            maxDuration: Math.max(0, ...grid.map((day) => day.duration))
+            // 95th percentile keeps legacy outlier days from flattening the scale.
+            maxDuration: orderedDurations.length ? orderedDurations[percentileIndex] : 0,
+            summary: {
+                totalMs,
+                activeDays: recentDays.filter((day) => day.duration > 0).length,
+                avgSessionMs: sessionCount ? totalMs / sessionCount : 0
+            }
         };
     }, [resetOffsetHours, studyNow, studyRefreshKey, today]);
 
@@ -856,12 +1030,12 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
         {
             key: 'study',
             title: 'Study Heatmap',
-            content: <StudyHeatmapPanel days={studyHeatmap.days} today={today} maxDuration={studyHeatmap.maxDuration} columns={heatmapColumns} compact />
+            content: <StudyHeatmapPanel days={studyHeatmap.days} today={today} maxDuration={studyHeatmap.maxDuration} summary={studyHeatmap.summary} columns={heatmapColumns} compact />
         },
         {
             key: 'habits',
-            title: 'Habits Heatmap',
-            content: <HabitHeatmapPanel habitLogs={habitLogs} globalHabits={globalHabits} days={days} today={today} columns={heatmapColumns} compact />
+            title: 'Habits',
+            content: <HabitsPanel habitLogs={habitLogs} globalHabits={globalHabits} today={today} />
         },
         {
             key: 'tags',
