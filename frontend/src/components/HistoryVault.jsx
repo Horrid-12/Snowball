@@ -3,6 +3,7 @@ import { Archive, X, CheckSquare, Activity, Calendar, Award, Clock } from 'lucid
 import { useAppContext } from '../context/AppContext.jsx';
 import { calculateProductivityScore, getTodayDateString } from '../utils/productivityScore.js';
 import { apiFetch } from '../utils/apiClient.js';
+import { ViewStickers } from './Doodles.jsx';
 
 const TABS = [
     { key: 'tasks', label: 'Tasks', icon: CheckSquare },
@@ -221,6 +222,8 @@ const HistoryVault = ({ onClose, tasks: currentTasks = [] }) => {
             padding: isMobile ? '1rem 0.75rem' : '2rem'
         }}>
             <div style={{
+                position: 'relative',
+                isolation: 'isolate',
                 background: 'var(--bg-primary)',
                 padding: isMobile ? '1.25rem 1rem' : '2rem',
                 borderRadius: isMobile ? '0.75rem' : '1rem',
@@ -231,6 +234,7 @@ const HistoryVault = ({ onClose, tasks: currentTasks = [] }) => {
                 display: 'flex', flexDirection: 'column',
                 minWidth: 0
             }}>
+                <ViewStickers />
                 <div style={{
                     display: 'flex',
                     justifyContent: 'space-between',

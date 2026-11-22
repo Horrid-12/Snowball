@@ -70,6 +70,29 @@ export const DoodleLayer = () => (
 );
 
 /**
+ * Scoped Riff stickers for a single view. Unlike the global DoodleLayer (which
+ * is fixed to the viewport and hidden on narrow screens), this layer anchors to
+ * its view container so every non-Dashboard tab gets its own playful accents.
+ * Still style/intensity gated in index.css and never interactive.
+ */
+export const ViewStickers = () => (
+    <div className="view-stickers" aria-hidden="true">
+        <svg style={{ top: '4%', right: '3%', width: '46px', color: 'var(--accent-alt)' }} viewBox="0 0 100 100" fill="none">
+            <title>Decorative star</title>
+            <path d="M50 4c4 24 18 38 42 42-24 4-38 18-42 42-4-24-18-38-42-42 24-4 38-18 42-42Z" fill="currentColor" stroke="var(--outline-color)" strokeWidth="5" strokeLinejoin="round" />
+        </svg>
+        <svg style={{ bottom: '12%', left: '2%', width: '54px', color: 'var(--accent-color)' }} viewBox="0 0 120 60" fill="none">
+            <title>Decorative squiggle</title>
+            <path d="M6 44c14-26 24 12 38-8s22 12 36-8 20 8 34-6" stroke="currentColor" strokeWidth="7" strokeLinecap="round" />
+        </svg>
+        <svg style={{ top: '48%', right: '5%', width: '34px', color: 'var(--accent-warm)' }} viewBox="0 0 60 100" fill="none">
+            <title>Decorative bolt</title>
+            <path d="M34 4 12 54h16l-6 42 30-56H34l8-36Z" fill="currentColor" stroke="var(--outline-color)" strokeWidth="4" strokeLinejoin="round" />
+        </svg>
+    </div>
+);
+
+/**
  * Snowball mascot mark: an outlined snowball with a wink. Used next to the
  * wordmark so the app has a friendly, memorable anchor.
  */

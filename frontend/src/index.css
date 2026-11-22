@@ -1384,6 +1384,43 @@ body.style-riff {
     }
 }
 
+/* ---- Per-view Riff stickers ------------------------------------- */
+/* The global doodle layer is viewport-fixed and suppressed below 1100px.
+   These stickers anchor to an individual non-Dashboard view instead, so the
+   Timer, Habits, Stats and Friends screens all get the Riff treatment at
+   normal widths. Still Riff-style-only and intensity-controlled. */
+.view-stickers {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    overflow: hidden;
+    opacity: calc(var(--decoration-opacity) * 0.75);
+}
+
+.style-riff .view-stickers {
+    display: block;
+}
+
+.view-stickers svg {
+    position: absolute;
+}
+
+.intensity-soft .view-stickers svg:nth-child(n + 2) {
+    display: none;
+}
+
+.intensity-balanced .view-stickers svg:nth-child(n + 3) {
+    display: none;
+}
+
+@media (max-width: 560px) {
+    .view-stickers {
+        display: none !important;
+    }
+}
+
 /* ---- Theme customizer ------------------------------------------- */
 .theme-preview-card {
     border: var(--outline-width) solid var(--outline-color);

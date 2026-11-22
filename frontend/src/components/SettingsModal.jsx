@@ -24,6 +24,7 @@ import {
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { isTauriDesktop } from '../config.js';
 import { db } from '../db/db.js';
+import { ViewStickers } from './Doodles.jsx';
 import { desktopUpdateService } from '../services/DesktopUpdateService.js';
 import { discordPresenceService } from '../services/DiscordPresenceService.js';
 import { notificationService } from '../services/NotificationService.js';
@@ -1377,9 +1378,12 @@ const SettingsModal = ({
                     overflow: 'hidden',
                     display: 'flex',
                     flexDirection: 'column',
-                    minWidth: 0
+                    minWidth: 0,
+                    position: 'relative',
+                    isolation: 'isolate'
                 }}
             >
+                <ViewStickers />
                 <div
                     className="settings-dialog-header"
                     style={{

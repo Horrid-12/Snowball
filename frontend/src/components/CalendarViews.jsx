@@ -1,5 +1,6 @@
 import { Clock, Edit2, Trash2 } from 'lucide-react';
 import { buildDayHours } from '../utils/eventRecurrence.js';
+import { getReadableTextColor } from '../utils/tagColors.js';
 import { useMemo, useState } from 'react';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -19,7 +20,11 @@ const eventTimeLabel = (event) => {
     return `${match[1]}:${match[2]}`;
 };
 
-const EventChip = ({ event, color, onEdit, onDelete, dateKey, compact = false }) => (
+const EventChip = ({ event, color, onEdit, onDelete, dateKey, compact = false }) => {
+    // Tag colors are user-editable and can be very light; a fixed white label
+    // disappears on those. Match the Month view's contrast rule.
+    const textColor = getReadableTextColor(color);
+    return (
     <div
         draggable
         onDragStart={(e) => {
@@ -30,7 +35,7 @@ const EventChip = ({ event, color, onEdit, onDelete, dateKey, compact = false })
         style={{
             display: 'flex', alignItems: 'center', gap: '0.25rem',
             padding: compact ? '4px 6px' : '5px 8px', marginBottom: '3px',
-            borderRadius: '6px', background: color, color: '#fff',
+            borderRadius: '6px', background: color, color: textColor,
             boxShadow: '0 1px 2px rgba(0, 0, 0, 0.18)',
             fontSize: compact ? '0.65rem' : '0.72rem', overflow: 'hidden',
             fontWeight: 600, cursor: 'grab'
@@ -42,7 +47,7 @@ const EventChip = ({ event, color, onEdit, onDelete, dateKey, compact = false })
         <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onEdit(event, dateKey); }}
-            style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, display: 'flex' }}
+            style={{ background: 'transparent', border: 'none', color: textColor, cursor: 'pointer', padding: 0, display: 'flex', opacity: 0.8 }}
             title="Edit event"
         >
             <Edit2 size={11} />
@@ -50,13 +55,14 @@ const EventChip = ({ event, color, onEdit, onDelete, dateKey, compact = false })
         <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onDelete(event, dateKey); }}
-            style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, display: 'flex' }}
+            style={{ background: 'transparent', border: 'none', color: textColor, cursor: 'pointer', padding: 0, display: 'flex', opacity: 0.8 }}
             title="Delete event"
         >
             <Trash2 size={11} />
         </button>
     </div>
-);
+    );
+};
 
 /** Hourly week grid. Dropping a chip on a day/hour moves the event there. */
 export const WeekView = ({ currentDate, getEventsForDate, getEventColor, onEdit, onDelete, onMove, startHour = 0 }) => {

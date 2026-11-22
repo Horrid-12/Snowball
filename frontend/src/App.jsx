@@ -23,7 +23,7 @@ import {
 import appPackage from '../package.json';
 import AuthModal from './components/AuthModal.jsx';
 import BottomNav from './components/BottomNav.jsx';
-import { DoodleLayer, SnowballMark } from './components/Doodles.jsx';
+import { DoodleLayer, SnowballMark, ViewStickers } from './components/Doodles.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import LoadingFallback, { TaskBoardSkeleton } from './components/Skeletons.jsx';
 import { API_URL, isTauriDesktop } from './config.js';
@@ -2410,6 +2410,8 @@ function App() {
                         <Suspense fallback={<LoadingFallback variant="calendar-modal" height="400px" />}>
                             <div
                                 style={{
+                                    position: 'relative',
+                                    isolation: 'isolate',
                                     overflowY: 'auto',
                                     overflowX: 'hidden',
                                     width: '100%',
@@ -2417,6 +2419,7 @@ function App() {
                                     borderRadius: '1rem'
                                 }}
                             >
+                                <ViewStickers />
                                 <Calendar resetOffsetHours={user?.reset_offset_hours ?? 0} />
                             </div>
                         </Suspense>
@@ -2632,7 +2635,8 @@ function App() {
                                     })()}
 
                                 {activeTab === 'timer' && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                                    <div style={{ position: 'relative', isolation: 'isolate', display: 'flex', flexDirection: 'column', width: '100%' }}>
+                                        <ViewStickers />
                                         <ErrorBoundary>
                                             <Suspense fallback={<LoadingFallback variant="timer" />}>
                                                 <DeepWorkTimer
@@ -2645,7 +2649,8 @@ function App() {
                                 )}
 
                                 {activeTab === 'habits' && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                                    <div style={{ position: 'relative', isolation: 'isolate', display: 'flex', flexDirection: 'column', width: '100%' }}>
+                                        <ViewStickers />
                                         <ErrorBoundary>
                                             <Suspense fallback={<LoadingFallback variant="habits" />}>
                                                 <HabitTracker />
@@ -2655,7 +2660,8 @@ function App() {
                                 )}
 
                                 {activeTab === 'heatmap' && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                                    <div style={{ position: 'relative', isolation: 'isolate', display: 'flex', flexDirection: 'column', width: '100%' }}>
+                                        <ViewStickers />
                                         <ErrorBoundary>
                                             <Suspense fallback={<LoadingFallback variant="heatmap" height="300px" />}>
                                                 <ActivityHeatmap
@@ -2668,7 +2674,8 @@ function App() {
                                 )}
 
                                 {activeTab === 'friends' && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                                    <div style={{ position: 'relative', isolation: 'isolate', display: 'flex', flexDirection: 'column', width: '100%' }}>
+                                        <ViewStickers />
                                         <ErrorBoundary>
                                             <Suspense fallback={<LoadingFallback variant="friends" />}>
                                                 <FriendsPanel />
