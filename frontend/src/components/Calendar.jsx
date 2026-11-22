@@ -694,7 +694,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                                     border: '1px solid var(--accent-color)', cursor: 'pointer', fontWeight: 600
                                 }}
                             >
-                                Import all with these settings ({importRemaining + 1}) — no more windows
+                                Import remaining with their own settings ({importRemaining + 1}) — no more windows
                             </button>
                         )}
                         {initialData?._import && importRemaining > 0 && (
@@ -715,7 +715,7 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
     );
 };
 
-const Calendar = () => {
+const Calendar = ({ resetOffsetHours = 0 }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [events, setEvents] = useState([]);
     const [_fetchError, setFetchError] = useState(false);
@@ -1218,10 +1218,9 @@ const importSelectedGoogleEvents = useCallback(() => {
         }
     }, [fetchEvents]);
 
-    // "Use these settings for the whole queue": saves the current event with the
-    // form as-is, then stamps its settings (color, tags, all-day, times, D-Day,
-    // repeat) onto every remaining queued event — each keeping its own title,
-    // date, description and Google link — and imports them all without more dialogs.
+    // Bulk import: save the current event as edited, then import every remaining
+    // queued event with its OWN pre-filled Google settings. Only the event the
+    // user actually reviewed adopts the form's edits.
     const handleSaveAll = useCallback(async (data) => {
         if (!importQueue || importQueue.length === 0) return;
         const rest = importQueue.slice(1);
@@ -1244,20 +1243,13 @@ const importSelectedGoogleEvents = useCallback(() => {
 
         await postOne(data);
         for (const q of rest) {
-            const stamped = {
-                ...q,
-                color: data.color,
-                tags: data.tags,
-                is_all_day: !!data.is_all_day,
-                event_start_time: data.event_start_time,
-                end_time: data.end_time,
-                is_dday: !!data.is_dday,
-                recurrence_rule: data.recurrence_rule
-            };
-            await postOne(stamped);
+            await postOne(q);
         }
 
         registerSubmittedTags(parseTags(data.tags));
+        for (const q of rest) {
+            registerSubmittedTags(parseTags(q.tags));
+        }
         setImportQueue(null);
         setShowEventForm(false);
         setEditingEvent(null);
@@ -1938,6 +1930,7 @@ const importSelectedGoogleEvents = useCallback(() => {
                     onEdit={requestEdit}
                     onDelete={deleteEvent}
                     onMove={moveEventTo}
+                    startHour={resetOffsetHours}
                 />
             ) : view === 'list' ? (
                 <ListView

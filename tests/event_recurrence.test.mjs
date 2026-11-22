@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isEventOnDate } from '../frontend/src/utils/eventRecurrence.js';
+import { buildDayHours, isEventOnDate } from '../frontend/src/utils/eventRecurrence.js';
+
+test('week grid starts at the configured Start of the Day', () => {
+    assert.deepEqual(buildDayHours(0).slice(0, 3), [0, 1, 2]);
+    assert.deepEqual(buildDayHours(4).slice(0, 3), [4, 5, 6]);
+    assert.deepEqual(buildDayHours(4).slice(-3), [1, 2, 3]);
+    assert.equal(buildDayHours(4).length, 24);
+    assert.deepEqual(buildDayHours(26).slice(0, 2), [2, 3]);
+});
 
 test('weekly BYDAY=TU matches Tuesdays only, not Saturday', () => {
     const event = {

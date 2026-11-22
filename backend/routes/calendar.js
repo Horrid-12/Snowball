@@ -1238,6 +1238,42 @@ router.post('/events/remove-google', async (req, res) => {
     }
 });
 
+// POST /events/clear-all - Preview or remove every local calendar event for the
+// user. Google is never touched here. Call without `confirm` for a count.
+router.post('/events/clear-all', async (req, res) => {
+    try {
+        const db = getDb(req);
+        const { count, error } = await db
+            .from('calendar_events')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', req.user.id);
+        if (error) throw error;
+
+        const total = count || 0;
+        if (!req.body?.confirm) return res.json({ count: total });
+
+        let removed = 0;
+        // Delete in bounded batches; a single PostgREST delete has a row cap.
+        for (let batch = 0; batch < 400 && removed < total; batch += 1) {
+            const { data, error: listError } = await db
+                .from('calendar_events')
+                .select('id')
+                .eq('user_id', req.user.id)
+                .limit(50);
+            if (listError) throw listError;
+            if (!data || data.length === 0) break;
+            await Promise.all(data.map((row) => (
+                db.from('calendar_events').delete().eq('id', row.id).eq('user_id', req.user.id)
+            )));
+            removed += data.length;
+        }
+        res.json({ removed });
+    } catch (error) {
+        console.error('Error clearing calendar events:', error);
+        res.status(500).json({ error: 'Failed to clear calendar events' });
+    }
+});
+
 // POST /events/remove-matching - Preview or remove events by title (and optional
 // date range) regardless of source. Used to clean up local rows that a bad sync
 // or an old bundle duplicated; always previews before deleting.

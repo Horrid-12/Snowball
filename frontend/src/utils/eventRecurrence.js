@@ -4,6 +4,12 @@
  * can be exercised directly in tests.
  */
 
+/** Hours for a week grid starting at the configured Start of the Day. */
+export const buildDayHours = (startHour = 0) => {
+    const first = ((Math.trunc(Number(startHour) || 0) % 24) + 24) % 24;
+    return Array.from({ length: 24 }, (_, index) => (first + index) % 24);
+};
+
 // Does this event occupy the given calendar day (YYYY-MM-DD)?
 // Handles single/multi-day spans AND recurring events (DAILY/WEEKLY/MONTHLY/
 // YEARLY with optional INTERVAL). For recurring events the optional end_date

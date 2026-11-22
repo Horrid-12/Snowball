@@ -2417,7 +2417,7 @@ function App() {
                                     borderRadius: '1rem'
                                 }}
                             >
-                                <Calendar />
+                                <Calendar resetOffsetHours={user?.reset_offset_hours ?? 0} />
                             </div>
                         </Suspense>
                     </div>

@@ -1,4 +1,5 @@
 import { Clock, Edit2, Trash2 } from 'lucide-react';
+import { buildDayHours } from '../utils/eventRecurrence.js';
 import { useMemo, useState } from 'react';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -57,7 +58,7 @@ const EventChip = ({ event, color, onEdit, onDelete, dateKey, compact = false })
 );
 
 /** Hourly week grid. Dropping a chip on a day/hour moves the event there. */
-export const WeekView = ({ currentDate, getEventsForDate, getEventColor, onEdit, onDelete, onMove }) => {
+export const WeekView = ({ currentDate, getEventsForDate, getEventColor, onEdit, onDelete, onMove, startHour = 0 }) => {
     const [dragTarget, setDragTarget] = useState(null);
     const days = useMemo(() => {
         const start = new Date(currentDate);
@@ -70,6 +71,9 @@ export const WeekView = ({ currentDate, getEventsForDate, getEventColor, onEdit,
         });
     }, [currentDate]);
 
+    // Rotate the hour column so the configured Start of the Day is the first
+    // row. The remaining hours follow in order and wrap at midnight.
+    const hours = buildDayHours(startHour);
     const todayKey = toDateKey(new Date());
     const cellStyle = (isTarget) => ({
         borderBottom: '1px solid var(--border-color)',
@@ -99,7 +103,7 @@ export const WeekView = ({ currentDate, getEventsForDate, getEventColor, onEdit,
                     </div>
                 ))}
 
-                {Array.from({ length: 24 }, (_, hour) => (
+                {hours.map((hour) => (
                     <div key={hour} style={{ display: 'contents' }}>
                         <div style={{ padding: '2px 4px', fontSize: '0.65rem', color: 'var(--text-secondary)', textAlign: 'right', borderBottom: '1px solid var(--border-color)' }}>
                             {String(hour).padStart(2, '0')}:00

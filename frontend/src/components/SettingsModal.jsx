@@ -246,6 +246,7 @@ const SettingsModal = ({
     const [removeTitle, setRemoveTitle] = useState('');
     const [removeFrom, setRemoveFrom] = useState('');
     const [removeTo, setRemoveTo] = useState('');
+    const [clearAllResult, setClearAllResult] = useState('');
     const [spotifyClientId, setSpotifyClientId] = useState('');
     const [spotifyClientSecret, setSpotifyClientSecret] = useState('');
     const [spotifyRedirectUri, setSpotifyRedirectUri] = useState('');
@@ -737,6 +738,38 @@ const SettingsModal = ({
             window.dispatchEvent(new Event('snowball-calendar-updated'));
         } catch {
             setRemovalResult('Could not remove events. Check the backend log.');
+        } finally {
+            setCalendarSyncBusy(false);
+        }
+    };
+
+    const handleClearAllEvents = async () => {
+        setCalendarSyncBusy(true);
+        try {
+            const previewRes = await apiFetch('/api/calendar/events/clear-all', { method: 'POST' });
+            if (!previewRes?.ok) throw new Error('Preview failed');
+            const preview = await previewRes.json();
+            if (!preview.count) {
+                setClearAllResult('No calendar events to clear.');
+                return;
+            }
+            const confirmed = window.confirm(
+                `Remove all ${preview.count} calendar event(s) from Snowball?\n\nThis only deletes local events — nothing is removed from Google Calendar. This cannot be undone.`
+            );
+            if (!confirmed) {
+                setClearAllResult('Clear cancelled.');
+                return;
+            }
+            const deleteRes = await apiFetch('/api/calendar/events/clear-all', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ confirm: true })
+            });
+            const result = await deleteRes.json();
+            setClearAllResult(`Removed ${result.removed} event(s) from Snowball.`);
+            window.dispatchEvent(new Event('snowball-calendar-updated'));
+        } catch {
+            setClearAllResult('Could not clear events. Check the backend log.');
         } finally {
             setCalendarSyncBusy(false);
         }
@@ -1861,6 +1894,24 @@ const SettingsModal = ({
                                             >
                                                 Preview and remove matching events
                                             </button>
+                                        </div>
+
+                                        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--status-overdue)' }}>Danger zone</div>
+                                            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                                                Removes every event from Snowball only. Google Calendar is not affected.
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={handleClearAllEvents}
+                                                disabled={calendarSyncBusy}
+                                                style={{ padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--status-overdue)', background: 'transparent', color: 'var(--status-overdue)', cursor: 'pointer', fontWeight: 600 }}
+                                            >
+                                                Clear all calendar events
+                                            </button>
+                                            {clearAllResult && (
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{clearAllResult}</div>
+                                            )}
                                         </div>
                                     </div>
 
