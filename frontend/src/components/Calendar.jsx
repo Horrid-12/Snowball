@@ -1596,17 +1596,6 @@ const importSelectedGoogleEvents = useCallback(() => {
                         <CalendarIcon size={18} />
                         {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                     </h3>
-                    <button
-                        onClick={() => openEventForm(null)}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: '0.25rem',
-                            padding: '0.5rem 0.75rem', borderRadius: '0.5rem',
-                            backgroundColor: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)',
-                            border: 'none', cursor: 'pointer', fontSize: '0.9rem'
-                        }}
-                    >
-                        <Plus size={16} /> Add Event
-                    </button>
                 </div>
 
                 {selectedEvents.length === 0 ? (
@@ -1884,6 +1873,18 @@ const importSelectedGoogleEvents = useCallback(() => {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button
+                        type="button"
+                        onClick={() => openEventForm(null)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '0.3rem',
+                            padding: '0.5rem 0.8rem', borderRadius: '0.5rem',
+                            backgroundColor: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)',
+                            border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600
+                        }}
+                    >
+                        <Plus size={15} /> Add Event
+                    </button>
                     <div style={{ display: 'flex', gap: '2px', padding: '2px', borderRadius: '0.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
                         {[['month', 'Month', CalendarIcon], ['week', 'Week', CalendarRange], ['list', 'List', List]].map(([key, label, Icon]) => (
                             <button

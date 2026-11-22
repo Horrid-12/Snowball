@@ -29,10 +29,11 @@ const EventChip = ({ event, color, onEdit, onDelete, dateKey, compact = false })
         title={event.title}
         style={{
             display: 'flex', alignItems: 'center', gap: '0.25rem',
-            padding: compact ? '2px 5px' : '4px 6px', marginBottom: '2px',
-            borderRadius: '4px', background: color, color: '#fff',
+            padding: compact ? '4px 6px' : '5px 8px', marginBottom: '3px',
+            borderRadius: '6px', background: color, color: '#fff',
+            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.18)',
             fontSize: compact ? '0.65rem' : '0.72rem', overflow: 'hidden',
-            cursor: 'grab'
+            fontWeight: 600, cursor: 'grab'
         }}
     >
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -76,36 +77,51 @@ export const WeekView = ({ currentDate, getEventsForDate, getEventColor, onEdit,
     const hours = buildDayHours(startHour);
     const todayKey = toDateKey(new Date());
     const cellStyle = (isTarget) => ({
-        borderBottom: '1px solid var(--border-color)',
-        borderRight: '1px solid var(--border-color)',
-        padding: '2px',
-        minHeight: '34px',
-        background: isTarget ? 'rgba(var(--accent-rgb), 0.14)' : 'transparent'
+        minHeight: '38px',
+        padding: '3px 4px',
+        borderRadius: '6px',
+        borderBottom: '1px solid rgba(128, 128, 128, 0.1)',
+        background: isTarget ? 'rgba(var(--accent-rgb), 0.16)' : 'transparent',
+        transition: 'background 120ms ease'
     });
 
     return (
         <div style={{ overflowX: 'auto', paddingBottom: '0.5rem' }}>
             <div style={{
                 display: 'grid',
-                gridTemplateColumns: '48px repeat(7, minmax(96px, 1fr))',
-                minWidth: '720px',
-                borderTop: '1px solid var(--border-color)',
-                borderLeft: '1px solid var(--border-color)'
+                gridTemplateColumns: '46px repeat(7, minmax(0, 1fr))',
+                columnGap: '4px',
+                minWidth: '700px',
+                paddingRight: '2px'
             }}>
                 <div />
-                {days.map((day) => (
-                    <div key={toDateKey(day)} style={{
-                        padding: '0.4rem', textAlign: 'center', borderRight: '1px solid var(--border-color)',
-                        color: toDateKey(day) === todayKey ? 'var(--accent-color)' : 'var(--text-secondary)',
-                        fontSize: '0.75rem', fontWeight: 600
-                    }}>
-                        {WEEKDAYS[day.getDay()]} {day.getDate()}
-                    </div>
-                ))}
+                {days.map((day) => {
+                    const dayKey = toDateKey(day);
+                    const isToday = dayKey === todayKey;
+                    return (
+                        <div key={dayKey} style={{
+                            padding: '0.45rem 0.25rem',
+                            textAlign: 'center',
+                            borderRadius: '0.6rem',
+                            background: isToday
+                                ? 'color-mix(in srgb, var(--accent-color) 16%, var(--bg-secondary))'
+                                : 'var(--bg-secondary)',
+                            border: `1px solid ${isToday ? 'var(--accent-color)' : 'var(--border-color)'}`,
+                            color: isToday ? 'var(--accent-color)' : 'var(--text-primary)',
+                            fontWeight: 700,
+                            marginBottom: '4px'
+                        }}>
+                            <div style={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>
+                                {WEEKDAYS[day.getDay()]}
+                            </div>
+                            <div style={{ fontSize: '0.95rem', lineHeight: 1.2 }}>{day.getDate()}</div>
+                        </div>
+                    );
+                })}
 
                 {hours.map((hour) => (
                     <div key={hour} style={{ display: 'contents' }}>
-                        <div style={{ padding: '2px 4px', fontSize: '0.65rem', color: 'var(--text-secondary)', textAlign: 'right', borderBottom: '1px solid var(--border-color)' }}>
+                        <div style={{ padding: '0 6px 0 0', fontSize: '0.62rem', color: 'var(--text-secondary)', textAlign: 'right', opacity: 0.8 }}>
                             {String(hour).padStart(2, '0')}:00
                         </div>
                         {days.map((day) => {

@@ -2369,7 +2369,7 @@ function App() {
                     <div
                         style={{
                             width: '100%',
-                            maxWidth: '800px',
+                            maxWidth: isMobile ? '100%' : '1080px',
                             maxHeight: isMobile ? '95vh' : '90vh',
                             display: 'flex',
                             flexDirection: 'column'
