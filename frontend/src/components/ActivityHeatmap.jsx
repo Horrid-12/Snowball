@@ -12,6 +12,8 @@ import {
     getTodayDateString
 } from '../utils/productivityScore.js';
 import { getTagColor, loadTagColors, parseTags } from '../utils/tagColors.js';
+import { buildDailySeries, buildWeekdayAverages, computeStreaks, summarizeSeries } from '../utils/statTrends.js';
+import { StatSection, SummaryRow, TrendChart, WeekdayBars } from './StatCharts.jsx';
 import { ActivityHeatmapSkeleton } from './Skeletons.jsx';
 
 const chartPalette = [
@@ -229,8 +231,29 @@ const panelStyle = {
     background: 'rgba(255,255,255,0.02)'
 };
 
-const HeatmapPanel = ({ days, today, currentDisplayScore, getColor, columns = 53, compact = false }) => (
+const HeatmapPanel = ({
+    days, today, currentDisplayScore, getColor, columns = 53, compact = false,
+    scoreSeries = [], weekdayRates = [], streakStats = { current: 0, longest: 0 }, scoreSummary = null
+}) => (
     <>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginBottom: '1rem', width: '100%' }}>
+            <StatSection title="Last 30 days at a glance">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                    <SummaryRow items={[
+                        { label: 'avg score', value: scoreSummary?.average ?? 0 },
+                        { label: 'best day', value: scoreSummary?.best ?? 0 },
+                        { label: 'active days', value: scoreSummary?.activeDays ?? 0 },
+                        { label: 'on target', value: `${scoreSummary?.onTargetDays ?? 0}/${scoreSummary?.days ?? 0}` },
+                        { label: 'current streak', value: `${streakStats.current}d` },
+                        { label: 'longest streak', value: `${streakStats.longest}d` }
+                    ]} />
+                    <TrendChart points={scoreSeries} colorVar="var(--chart-primary)" />
+                </div>
+            </StatSection>
+            <StatSection title="By weekday · last 30 days">
+                <WeekdayBars rates={weekdayRates} colorVar="var(--chart-secondary)" />
+            </StatSection>
+        </div>
         <div style={{
             overflowX: 'auto',
             paddingBottom: '0.5rem',
@@ -529,7 +552,7 @@ const HabitsPanel = ({ habitLogs, globalHabits, today }) => {
     );
 };
 
-const StudyHeatmapPanel = ({ days, today, maxDuration, summary, columns = 53, compact = false }) => {
+const StudyHeatmapPanel = ({ days, today, maxDuration, summary, trendPoints = [], weekdayRates = [], streakStats = { current: 0, longest: 0 }, columns = 53, compact = false }) => {
     const getStudyColor = (duration) => {
         if (duration <= 0) return 'var(--heatmap-empty)';
         const ratio = maxDuration > 0 ? duration / maxDuration : 0;
@@ -546,6 +569,21 @@ const StudyHeatmapPanel = ({ days, today, maxDuration, summary, columns = 53, co
                 <span><strong style={{ color: 'var(--text-primary)' }}>{formatStudyDuration(summary.totalMs)}</strong> focused</span>
                 <span><strong style={{ color: 'var(--text-primary)' }}>{summary.activeDays}</strong> active days</span>
                 <span><strong style={{ color: 'var(--text-primary)' }}>{formatStudyDuration(summary.avgSessionMs)}</strong> avg session</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginBottom: '1rem', width: '100%' }}>
+                <StatSection title="Focus time · last 30 days">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                        <SummaryRow items={[
+                            { label: 'current streak', value: `${streakStats.current}d` },
+                            { label: 'longest streak', value: `${streakStats.longest}d` },
+                            { label: 'active days', value: `${summary.activeDays}/30` }
+                        ]} />
+                        <TrendChart points={trendPoints} colorVar="var(--chart-primary)" formatValue={formatStudyDuration} maxValue={maxDuration} />
+                    </div>
+                </StatSection>
+                <StatSection title="By weekday · last 30 days">
+                    <WeekdayBars rates={weekdayRates} colorVar="var(--chart-secondary)" formatValue={formatStudyDuration} maxValue={maxDuration} />
+                </StatSection>
             </div>
             <div style={{
                 overflowX: 'auto',
@@ -604,11 +642,12 @@ const StudyHeatmapPanel = ({ days, today, maxDuration, summary, columns = 53, co
     );
 };
 
-const WeeklyPanel = ({ last7Days, getColor }) => {
+const WeeklyPanel = ({ last7Days, getColor, scoreSeries = [], weekdayRates = [], streakStats = { current: 0, longest: 0 }, scoreSummary = null }) => {
     const maxScore = Math.max(...last7Days.map((day) => day.score), 1);
     const chartHeight = 120;
 
     return (
+        <>
         <div style={{ ...panelStyle }}>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
                 Last 7 days productivity
@@ -662,6 +701,25 @@ const WeeklyPanel = ({ last7Days, getColor }) => {
                 ))}
             </div>
         </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '1rem', width: '100%' }}>
+            <StatSection title="Daily score · last 30 days">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                    <SummaryRow items={[
+                        { label: 'avg', value: scoreSummary?.average ?? 0 },
+                        { label: 'best', value: scoreSummary?.best ?? 0 },
+                        { label: 'on target', value: `${scoreSummary?.onTargetDays ?? 0}/${scoreSummary?.days ?? 0}` },
+                        { label: 'current streak', value: `${streakStats.current}d` },
+                        { label: 'longest streak', value: `${streakStats.longest}d` }
+                    ]} />
+                    <TrendChart points={scoreSeries} colorVar="var(--chart-primary)" />
+                </div>
+            </StatSection>
+            <StatSection title="By weekday · last 30 days">
+                <WeekdayBars rates={weekdayRates} colorVar="var(--chart-secondary)" />
+            </StatSection>
+        </div>
+        </>
     );
 };
 
@@ -1006,6 +1064,25 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
         };
     }, [resetOffsetHours, studyNow, studyRefreshKey, today]);
 
+    const scoreSeries = useMemo(() => {
+        const series = buildDailySeries(activity, today, 30, 0);
+        const last = series[series.length - 1];
+        if (last && last.date === today) last.value = currentDisplayScore || 0;
+        return series;
+    }, [activity, currentDisplayScore, today]);
+    const scoreSummary = useMemo(() => summarizeSeries(scoreSeries, 70), [scoreSeries]);
+    const scoreWeekdays = useMemo(() => buildWeekdayAverages(scoreSeries), [scoreSeries]);
+    const scoreStreaks = useMemo(() => computeStreaks(scoreSeries), [scoreSeries]);
+
+    const studySeries = useMemo(() => {
+        const durations = Object.fromEntries(
+            studyHeatmap.days.filter((day) => !day.isFuture).map((day) => [day.date, day.duration])
+        );
+        return buildDailySeries(durations, today, 30, 0);
+    }, [studyHeatmap.days, today]);
+    const studyWeekdays = useMemo(() => buildWeekdayAverages(studySeries), [studySeries]);
+    const studyStreaks = useMemo(() => computeStreaks(studySeries), [studySeries]);
+
     const getColor = (score) => {
         if (score === 0) return 'var(--heatmap-empty)';
         if (score < 20) return 'var(--heatmap-1)';
@@ -1020,17 +1097,31 @@ const ActivityHeatmap = ({ tasks = [], resetOffsetHours: liveResetOffsetHours })
         {
             key: 'heatmap',
             title: 'Consistency Heatmap',
-            content: <HeatmapPanel days={days} today={today} currentDisplayScore={currentDisplayScore} getColor={getColor} columns={heatmapColumns} compact />
+            content: <HeatmapPanel
+                days={days} today={today} currentDisplayScore={currentDisplayScore} getColor={getColor}
+                columns={heatmapColumns} compact
+                scoreSeries={scoreSeries} scoreSummary={scoreSummary}
+                weekdayRates={scoreWeekdays} streakStats={scoreStreaks}
+            />
         },
         {
             key: 'weekly',
             title: 'Weekly Graph',
-            content: <WeeklyPanel last7Days={last7Days} getColor={getColor} />
+            content: <WeeklyPanel
+                last7Days={last7Days} getColor={getColor}
+                scoreSeries={scoreSeries} scoreSummary={scoreSummary}
+                weekdayRates={scoreWeekdays} streakStats={scoreStreaks}
+            />
         },
         {
             key: 'study',
             title: 'Study Heatmap',
-            content: <StudyHeatmapPanel days={studyHeatmap.days} today={today} maxDuration={studyHeatmap.maxDuration} summary={studyHeatmap.summary} columns={heatmapColumns} compact />
+            content: <StudyHeatmapPanel
+                days={studyHeatmap.days} today={today}
+                maxDuration={studyHeatmap.maxDuration} summary={studyHeatmap.summary}
+                trendPoints={studySeries} weekdayRates={studyWeekdays} streakStats={studyStreaks}
+                columns={heatmapColumns} compact
+            />
         },
         {
             key: 'habits',
