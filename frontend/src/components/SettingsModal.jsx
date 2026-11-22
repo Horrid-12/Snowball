@@ -225,6 +225,27 @@ const SettingsModal = ({
     );
     const [notificationPermission, setNotificationPermission] = useState('default');
     const [notificationFeedback, setNotificationFeedback] = useState('');
+    const [calendarSyncStatus, setCalendarSyncStatus] = useState({ connected: false, email: null });
+    const [calendarOptions, setCalendarOptions] = useState([]);
+    const [defaultCalendar, setDefaultCalendar] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('snowball_gcal_default_calendar')) || 'primary'; }
+        catch { return 'primary'; }
+    });
+    const [defaultCalendarView, setDefaultCalendarView] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('snowball_calendar_default_view')) || 'month'; }
+        catch { return 'month'; }
+    });
+    const [lastCalendarSync, setLastCalendarSync] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('snowball_gcal_change_watermark')) || null; }
+        catch { return null; }
+    });
+    const [duplicateReport, setDuplicateReport] = useState(null);
+    const [calendarSyncBusy, setCalendarSyncBusy] = useState(false);
+    const [googleRemovalCalendar, setGoogleRemovalCalendar] = useState('primary');
+    const [removalResult, setRemovalResult] = useState('');
+    const [removeTitle, setRemoveTitle] = useState('');
+    const [removeFrom, setRemoveFrom] = useState('');
+    const [removeTo, setRemoveTo] = useState('');
     const [spotifyClientId, setSpotifyClientId] = useState('');
     const [spotifyClientSecret, setSpotifyClientSecret] = useState('');
     const [spotifyRedirectUri, setSpotifyRedirectUri] = useState('');
@@ -607,6 +628,133 @@ const SettingsModal = ({
         setGoogleCalendarAlerts(enabled);
         // Re-check immediately when switched back on instead of waiting a full interval.
         if (enabled) window.dispatchEvent(new Event('snowball-gcal-watch-nudge'));
+    };
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const res = await apiFetch('/api/calendar/google/status');
+                if (!res?.ok) return;
+                const status = await res.json();
+                if (cancelled) return;
+                setCalendarSyncStatus(status || { connected: false });
+                if (status?.connected) {
+                    const calRes = await apiFetch('/api/calendar/google/calendars');
+                    if (calRes?.ok && !cancelled) {
+                        const list = await calRes.json();
+                        setCalendarOptions(Array.isArray(list) ? list : []);
+                    }
+                }
+            } catch { /* status is best-effort */ }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    const saveDefaultCalendar = (id) => {
+        setDefaultCalendar(id);
+        try { localStorage.setItem('snowball_gcal_default_calendar', JSON.stringify(id)); }
+        catch { /* ignore */ }
+    };
+
+    const saveDefaultCalendarView = (value) => {
+        setDefaultCalendarView(value);
+        try {
+            localStorage.setItem('snowball_calendar_default_view', JSON.stringify(value));
+            // A new revision makes open calendars adopt the setting immediately.
+            localStorage.setItem('snowball_calendar_view_revision', JSON.stringify(Date.now()));
+        } catch { /* ignore */ }
+    };
+
+    const handleRemoveGoogleEvents = async () => {
+        const calendarId = googleRemovalCalendar;
+        setCalendarSyncBusy(true);
+        try {
+            const previewRes = await apiFetch('/api/calendar/events/remove-google', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ calendarId })
+            });
+            if (!previewRes?.ok) throw new Error('Preview failed');
+            const preview = await previewRes.json();
+            if (!preview.count) {
+                setRemovalResult(`No Google-sourced events found for ${calendarId}.`);
+                return;
+            }
+            if (!window.confirm(`Remove ${preview.count} Google-sourced event(s) imported from ${calendarId}? Local-only events are unaffected.`)) {
+                setRemovalResult('Removal cancelled.');
+                return;
+            }
+            const deleteRes = await apiFetch('/api/calendar/events/remove-google', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ calendarId, confirm: true })
+            });
+            const result = await deleteRes.json();
+            setRemovalResult(`Removed ${result.removed} event(s) from ${calendarId}.`);
+            window.dispatchEvent(new Event('snowball-calendar-updated'));
+        } catch {
+            setRemovalResult('Could not remove events. Check the backend log.');
+        } finally {
+            setCalendarSyncBusy(false);
+        }
+    };
+
+    const handleRemoveMatchingEvents = async () => {
+        const title = removeTitle.trim();
+        if (!title) {
+            setRemovalResult('Enter a title first.');
+            return;
+        }
+        const body = { title };
+        if (removeFrom) body.from = removeFrom;
+        if (removeTo) body.to = removeTo;
+        setCalendarSyncBusy(true);
+        try {
+            const previewRes = await apiFetch('/api/calendar/events/remove-matching', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (!previewRes?.ok) throw new Error('Preview failed');
+            const preview = await previewRes.json();
+            if (!preview.count) {
+                setRemovalResult(`No events matching “${title}”.`);
+                return;
+            }
+            const sample = preview.sample?.map((row) => `• ${row.title} (${row.date}, ${row.source})`).join('\n') || '';
+            if (!window.confirm(`Remove ${preview.count} event(s) matching “${title}”?\n\n${sample}\n\nThis cannot be undone.`)) {
+                setRemovalResult('Removal cancelled.');
+                return;
+            }
+            const deleteRes = await apiFetch('/api/calendar/events/remove-matching', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...body, confirm: true })
+            });
+            const result = await deleteRes.json();
+            setRemovalResult(`Removed ${result.removed} event(s) matching “${title}”.`);
+            window.dispatchEvent(new Event('snowball-calendar-updated'));
+        } catch {
+            setRemovalResult('Could not remove events. Check the backend log.');
+        } finally {
+            setCalendarSyncBusy(false);
+        }
+    };
+
+    const handleCleanupDuplicates = async () => {
+        setCalendarSyncBusy(true);
+        try {
+            const res = await apiFetch('/api/calendar/duplicates/cleanup', { method: 'POST' });
+            if (res?.ok) {
+                setDuplicateReport(await res.json());
+                window.dispatchEvent(new Event('snowball-calendar-updated'));
+            }
+        } catch (error) {
+            console.error('Duplicate cleanup failed:', error);
+        } finally {
+            setCalendarSyncBusy(false);
+        }
     };
 
     const handleHabitReminderChange = (value) => {
@@ -1592,6 +1740,128 @@ const SettingsModal = ({
                                         {notificationsEnabled
                                             ? ''
                                             : ' Enable notifications above to also get an OS notification.'}
+                                    </div>
+
+                                    <div style={{ marginTop: '1rem', padding: '1rem', borderRadius: '0.75rem', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                        <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Calendar sync</div>
+                                        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                            {calendarSyncStatus.connected
+                                                ? `Connected to ${calendarSyncStatus.email || 'Google Calendar'}. Events sync both ways.`
+                                                : 'Google Calendar is not connected. Open the Calendar to connect.'}
+                                        </div>
+
+                                        {calendarSyncStatus.connected && (
+                                            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem' }}>
+                                                Default Google calendar for new events
+                                                <select
+                                                    value={defaultCalendar}
+                                                    onChange={(e) => saveDefaultCalendar(e.target.value)}
+                                                    style={{ padding: '0.55rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                                >
+                                                    <option value="primary">Primary calendar</option>
+                                                    {calendarOptions.map((calendar) => (
+                                                        <option key={calendar.id} value={calendar.id}>{calendar.summary}</option>
+                                                    ))}
+                                                </select>
+                                            </label>
+                                        )}
+
+                                        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem' }}>
+                                            Default calendar view
+                                            <select
+                                                value={defaultCalendarView}
+                                                onChange={(e) => saveDefaultCalendarView(e.target.value)}
+                                                style={{ padding: '0.55rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                            >
+                                                <option value="month">Month</option>
+                                                <option value="week">Week</option>
+                                                <option value="list">List</option>
+                                            </select>
+                                        </label>
+
+                                        {lastCalendarSync && (
+                                            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                                                Last synced: {new Date(lastCalendarSync).toLocaleString()}
+                                            </div>
+                                        )}
+
+                                        <button
+                                            type="button"
+                                            onClick={handleCleanupDuplicates}
+                                            disabled={calendarSyncBusy}
+                                            style={{ padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 600, opacity: calendarSyncBusy ? 0.6 : 1 }}
+                                        >
+                                            {calendarSyncBusy ? 'Cleaning up…' : 'Clean up duplicate events'}
+                                        </button>
+                                        {duplicateReport && (
+                                            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                                                Merged {duplicateReport.merged} exact duplicate{duplicateReport.merged === 1 ? '' : 's'}.
+                                                {duplicateReport.ambiguous > 0 ? ` ${duplicateReport.ambiguous} ambiguous group(s) left for manual review.` : ''}
+                                            </div>
+                                        )}
+
+                                        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                            <div style={{ fontSize: '0.78rem', fontWeight: 600 }}>Remove imported events from a calendar</div>
+                                            <select
+                                                value={googleRemovalCalendar}
+                                                onChange={(e) => setGoogleRemovalCalendar(e.target.value)}
+                                                style={{ padding: '0.55rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                            >
+                                                <option value="primary">Primary calendar</option>
+                                                {calendarOptions.map((calendar) => (
+                                                    <option key={calendar.id} value={calendar.id}>{calendar.summary}</option>
+                                                ))}
+                                            </select>
+                                            <button
+                                                type="button"
+                                                onClick={handleRemoveGoogleEvents}
+                                                disabled={calendarSyncBusy}
+                                                style={{ padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--status-overdue)', cursor: 'pointer', fontWeight: 600 }}
+                                            >
+                                                Remove Google-sourced events from this calendar
+                                            </button>
+                                            {removalResult && (
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{removalResult}</div>
+                                            )}
+                                        </div>
+
+                                        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                            <div style={{ fontSize: '0.78rem', fontWeight: 600 }}>Remove events by title</div>
+                                            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                                                For local rows a bad sync duplicated. Previews matches before deleting.
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={removeTitle}
+                                                onChange={(e) => setRemoveTitle(e.target.value)}
+                                                placeholder="Event title, e.g. Gym"
+                                                style={{ padding: '0.55rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                            />
+                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <input
+                                                    type="date"
+                                                    value={removeFrom}
+                                                    onChange={(e) => setRemoveFrom(e.target.value)}
+                                                    title="Only from this date (optional)"
+                                                    style={{ flex: 1, minWidth: 0, padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                                />
+                                                <input
+                                                    type="date"
+                                                    value={removeTo}
+                                                    onChange={(e) => setRemoveTo(e.target.value)}
+                                                    title="Only up to this date (optional)"
+                                                    style={{ flex: 1, minWidth: 0, padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                                />
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={handleRemoveMatchingEvents}
+                                                disabled={calendarSyncBusy}
+                                                style={{ padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--status-overdue)', cursor: 'pointer', fontWeight: 600 }}
+                                            >
+                                                Preview and remove matching events
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <label

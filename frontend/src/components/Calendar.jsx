@@ -1,13 +1,50 @@
-import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-    ChevronLeft, ChevronRight, Calendar as CalendarIcon,
-    Cloud, Check, X, Plus, Trash2, Edit2, Clock,
-    RefreshCw, RefreshCcw, LogOut, Repeat
+import { AnimatePresence, motion } from 'framer-motion';
+import {Calendar as CalendarIcon,CalendarRange, Check, 
+    ChevronLeft, ChevronRight, Clock,
+    Cloud, Edit2, List, LogOut, Plus, RefreshCcw, 
+    RefreshCw, Repeat, Trash2, Undo2, X 
 } from 'lucide-react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../utils/apiClient.js';
-import { getTagColor, loadTagColors, normalizeHexColor, saveTagColors, parseTags, syncTagColorsToServer, getReadableTextColor } from '../utils/tagColors.js';
+import { isEventOnDate } from '../utils/eventRecurrence.js';
+import { parseRecurrencePhrase } from '../utils/recurrencePhrase.js';
+import { getReadableTextColor, getTagColor, loadTagColors, normalizeHexColor, parseTags, saveTagColors, syncTagColorsToServer } from '../utils/tagColors.js';
+import { ListView, ScopeDialog, toDateKey, WeekView } from './CalendarViews.jsx';
 import TagColorInput from './TagColorInput.jsx';
+
+const VIEW_KEY = 'snowball_calendar_view';
+const DEFAULT_VIEW_KEY = 'snowball_calendar_default_view';
+const VIEW_REVISION_KEY = 'snowball_calendar_view_revision';
+const DEVICE_KEY = 'snowball_gcal_device_id';
+const WATERMARK_KEY = 'snowball_gcal_change_watermark';
+const DEFAULT_CALENDAR_KEY = 'snowball_gcal_default_calendar';
+const UNDO_MS = 10000;
+
+const readSetting = (key, fallback = null) => {
+    try {
+        const raw = localStorage.getItem(key);
+        return raw === null ? fallback : JSON.parse(raw);
+    } catch {
+        return fallback;
+    }
+};
+
+const writeSetting = (key, value) => {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+        /* storage unavailable — settings stay per-session */
+    }
+};
+
+const getDeviceId = () => {
+    let id = readSetting(DEVICE_KEY);
+    if (!id) {
+        id = globalThis.crypto?.randomUUID?.() || `device-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        writeSetting(DEVICE_KEY, id);
+    }
+    return id;
+};
 
 const COLOR_PRESETS = [
     { name: 'Red', value: '#ef4444' },
@@ -152,7 +189,11 @@ const buildImportPrefill = (ev) => {
         recurrence_rule: ev.recurrence_rule || '',
         _import: {
             google_event_id: ev.google_event_id,
-            source: 'google'
+            source: 'google',
+            calendar_id: ev.calendar_id || 'primary',
+            series_id: ev.series_id || ev.google_event_id,
+            google_etag: ev.google_etag || null,
+            google_updated_at: ev.google_updated_at || null
         }
     };
 };
@@ -177,6 +218,11 @@ const makeEventPayload = (data) => {
     if (data._import?.google_event_id) {
         payload.google_event_id = data._import.google_event_id;
         payload.source = 'google';
+        payload.calendar_id = data._import.calendar_id || 'primary';
+        payload.series_id = data._import.series_id || data._import.google_event_id;
+        payload.google_etag = data._import.google_etag || null;
+        payload.google_updated_at = data._import.google_updated_at || null;
+        payload.calendarId = data._import.calendar_id || 'primary';
     }
     return payload;
 };
@@ -325,89 +371,22 @@ const CalendarCell = memo(({ dateStr, day, currentMonth, isToday, isSelected, da
     );
 });
 
-// Does this event occupy the given calendar day (YYYY-MM-DD)?
-// Handles single/multi-day spans AND recurring events (DAILY/WEEKLY/MONTHLY/YEARLY
-// with optional INTERVAL). For recurring events the optional end_date caps the series.
-export const isEventOnDate = (ev, dateStr) => {
-    const startStr = ev.event_date ? String(ev.event_date).slice(0, 10) : '';
-    if (!startStr) return false;
-    // A single occurrence was "deleted" via the exclude endpoint — skip that date.
-    if (Array.isArray(ev.excluded_dates) && ev.excluded_dates.includes(dateStr)) return false;
-    if (dateStr < startStr) return false;
-
-    const rule = String(ev.recurrence_rule || '').toUpperCase();
-    const isRecurring = /FREQ=/.test(rule);
-    const endStr = ev.end_date ? String(ev.end_date).slice(0, 10) : '';
-    // The RRULE's UNTIL is the authoritative series end for recurring events — the
-    // stored end_date may be a single instance's end (legacy Google imports) which
-    // would otherwise kill the series after its first occurrence.
-    const untilMatch = rule.match(/UNTIL=(\d{4})(\d{2})(\d{2})/);
-    const untilStr = untilMatch ? `${untilMatch[1]}-${untilMatch[2]}-${untilMatch[3]}` : '';
-
-    if (!isRecurring) {
-        // Multi-day span: covers every day from start to end (inclusive)
-        if (endStr && endStr >= startStr && dateStr <= endStr) return true;
-    } else {
-        // Recurring series terminated at end_date (or earlier at the RRULE's UNTIL)
-        const seriesEnd = (untilStr && (!endStr || untilStr < endStr)) ? untilStr : endStr;
-        if (seriesEnd && dateStr > seriesEnd) return false;
-    }
-
-    if (dateStr === startStr) return true;
-    if (!isRecurring) return false;
-
-    const intervalMatch = rule.match(/INTERVAL=(\d+)/);
-    const interval = intervalMatch ? parseInt(intervalMatch[1], 10) : 1;
-
-    const getUtcDays = (s) => {
-        const [y, m, d] = s.split('-').map(Number);
-        return Math.floor(Date.UTC(y, m - 1, d) / 86400000);
-    };
-
-    if (rule.includes('DAILY')) {
-        const diff = getUtcDays(dateStr) - getUtcDays(startStr);
-        return diff > 0 && diff % interval === 0;
-    }
-    if (rule.includes('WEEKLY')) {
-        // FREQ=WEEKLY can carry BYDAY (e.g. BYDAY=MO,WE). When present, occurrences
-        // fall on those weekdays in the series' week cadence rather than every 7 days
-        // from the anchor.
-        const bydayMatch = rule.match(/BYDAY=([A-Z]+(?:,[A-Z]+)*)/);
-        if (bydayMatch) {
-            const dowNames = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
-            const allowed = bydayMatch[1].split(',').map((d) => dowNames[d.trim().toUpperCase()]);
-            const utcDow = new Date(Date.UTC(...dateStr.split('-').map(Number))).getUTCDay();
-            if (!allowed.includes(utcDow)) return false;
-            const diffWeeks = Math.floor(getUtcDays(dateStr) / 7) - Math.floor(getUtcDays(startStr) / 7);
-            return diffWeeks > 0 && diffWeeks % interval === 0;
-        }
-        const diff = getUtcDays(dateStr) - getUtcDays(startStr);
-        return diff > 0 && diff % (7 * interval) === 0;
-    }
-    if (rule.includes('MONTHLY')) {
-        const [sy, sm] = startStr.split('-').map(Number);
-        const [ty, tm, td] = dateStr.split('-').map(Number);
-        const [, , sd] = startStr.split('-').map(Number);
-        if (td !== sd) return false;
-        const diffMonths = (ty - sy) * 12 + (tm - sm);
-        return diffMonths > 0 && diffMonths % interval === 0;
-    }
-    if (rule.includes('YEARLY')) {
-        const [sy, sm, sd] = startStr.split('-').map(Number);
-        const [ty, tm, td] = dateStr.split('-').map(Number);
-        if (tm !== sm || td !== sd) return false;
-        const diffYears = ty - sy;
-        return diffYears > 0 && diffYears % interval === 0;
-    }
-    return false;
-};
+// Recurrence matching lives in a pure, testable util. Re-exported here because
+// CalendarSummaryCard imports it from this module.
+export { isEventOnDate };
 
 const EventFormModal = ({ open, initialData, formKey, onClose, onSubmit, onSaveAll, tagColors, onTagColorChange, importRemaining = 0, onStopImport }) => {
     const [formData, setFormData] = useState(initialData);
+    const [recurrenceText, setRecurrenceText] = useState('');
+    const [recurrenceHint, setRecurrenceHint] = useState(null);
 
     // Reset local form state whenever a (new/edit) form is opened
     useEffect(() => {
-        if (open) setFormData(initialData);
+        if (open) {
+            setFormData(initialData);
+            setRecurrenceText(getRruleLabel(initialData?.recurrence_rule) || '');
+            setRecurrenceHint(null);
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, formKey]);
 
@@ -563,6 +542,45 @@ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                                 </div>
                             )}
                         </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                            <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                Or describe the pattern — e.g. "every 2 weeks on mon,thu until 2026-12-31"
+                            </label>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <input
+                                    type="text"
+                                    value={recurrenceText}
+                                    onChange={(e) => setRecurrenceText(e.target.value)}
+                                    placeholder="every monday, weekdays, daily for 5 times…"
+                                    style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '0.65rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const result = parseRecurrencePhrase(recurrenceText);
+                                        if (result.error || !result.rule) {
+                                            setRecurrenceHint({ error: result.error || 'Could not understand that pattern.' });
+                                            return;
+                                        }
+                                        setFormData(prev => ({ ...prev, recurrence_rule: result.rule }));
+                                        setRecurrenceHint({ label: result.label });
+                                    }}
+                                    style={{ padding: '0.65rem 0.9rem', borderRadius: '0.5rem', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', cursor: 'pointer', fontWeight: 600 }}
+                                >
+                                    Apply
+                                </button>
+                            </div>
+                            {recurrenceHint && (
+                                <div style={{ fontSize: '0.75rem', color: recurrenceHint.error ? 'var(--status-overdue)' : 'var(--text-secondary)' }}>
+                                    {recurrenceHint.error || `Applied: ${recurrenceHint.label} → ${getRruleLabel(formData.recurrence_rule)}`}
+                                </div>
+                            )}
+                            {Array.isArray(initialData?.excluded_dates) && initialData.excluded_dates.length > 0 && (
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                                    Skipped occurrences: {initialData.excluded_dates.join(', ')}
+                                </div>
+                            )}
+                        </div>
                         <div>
                             <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Description</label>
                             <textarea
@@ -704,7 +722,6 @@ const Calendar = () => {
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [showEventForm, setShowEventForm] = useState(false);
     const [editingEvent, setEditingEvent] = useState(null);
-    const [pendingDelete, setPendingDelete] = useState(null);
     const [importQueue, setImportQueue] = useState(null);
     const [showGoogleSync, setShowGoogleSync] = useState(false);
     const [googleEvents, setGoogleEvents] = useState([]);
@@ -721,6 +738,19 @@ const Calendar = () => {
     const [loading, setLoading] = useState(true);
     const [notice, setNotice] = useState('');
     const [tagColors, setTagColors] = useState(loadTagColors());
+    const [view, setViewState] = useState(() => {
+        const revision = readSetting(VIEW_REVISION_KEY, 0);
+        const stored = readSetting(VIEW_KEY, null);
+        return stored?.view && stored.revision === revision ? stored.view : (readSetting(DEFAULT_VIEW_KEY, 'month') || 'month');
+    });
+    const [pendingScope, setPendingScope] = useState(null);
+    const [undoState, setUndoState] = useState(null);
+    const [syncState, setSyncState] = useState({ lastSyncedAt: null, changes: 0 });
+
+    const setView = useCallback((next) => {
+        setViewState(next);
+        writeSetting(VIEW_KEY, { view: next, revision: readSetting(VIEW_REVISION_KEY, 0) });
+    }, []);
 
     useEffect(() => {
         const syncTagColors = () => setTagColors(loadTagColors());
@@ -775,7 +805,7 @@ const Calendar = () => {
                 const data = await res.json();
                 if (Array.isArray(data)) {
                     setEvents(data);
-                    window.dispatchEvent(new CustomEvent('snowball-calendar-updated', { detail: data }));
+                    window.dispatchEvent(new CustomEvent('snowball-calendar-updated', { detail: { source: 'calendar' } }));
                 } else {
                     setFetchError(true);
                 }
@@ -788,6 +818,15 @@ const Calendar = () => {
         }
         setLoading(false);
     }, []);
+
+    useEffect(() => {
+        const refresh = (event) => {
+            if (event?.detail?.source === 'calendar') return;
+            fetchEvents();
+        };
+        window.addEventListener('snowball-calendar-updated', refresh);
+        return () => window.removeEventListener('snowball-calendar-updated', refresh);
+    }, [fetchEvents]);
 
     const checkGoogleStatus = useCallback(async () => {
         try {
@@ -802,6 +841,111 @@ const Calendar = () => {
             console.error("Failed to check Google status:", error);
         }
     }, []);
+
+    const applyGoogleChange = useCallback(async (change) => {
+        const payload = change?.payload || {};
+        const googleId = change?.google_event_id || payload.google_event_id;
+        if (!googleId) return;
+        const existing = events.find((item) => item.google_event_id === googleId);
+        const cancelled = change?.status === 'cancelled' || payload.status === 'cancelled';
+
+        if (cancelled) {
+            if (existing) {
+                await apiFetch(`/api/calendar/events/${existing.id}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ skipGooglePush: true })
+                });
+            }
+            return;
+        }
+        // The change feed updates events Snowball already knows about. Brand-new
+        // Google events go through the explicit Import flow instead — auto-creating
+        // them pulled in subscribed/group calendars the user never selected.
+        if (!existing) return;
+        if (!payload.event_date) return;
+
+        const body = JSON.stringify({
+            title: payload.title || 'Untitled Event',
+            event_date: payload.event_date,
+            end_date: payload.end_date || null,
+            is_all_day: !!payload.is_all_day,
+            description: payload.description || null,
+            color: existing?.color || COLOR_PRESETS[1].value,
+            tags: existing?.tags || null,
+            is_dday: !!existing?.is_dday,
+            dday_target_date: existing?.dday_target_date || null,
+            recurrence_rule: payload.recurrence_rule || null,
+            source: 'google',
+            google_event_id: googleId,
+            series_id: payload.series_id || null,
+            calendar_id: payload.calendar_id || null,
+            google_etag: payload.google_etag || null,
+            google_updated_at: payload.google_updated_at || null,
+            skipGooglePush: true,
+            calendarId: payload.calendar_id || readSetting(DEFAULT_CALENDAR_KEY, 'primary')
+        });
+
+        if (existing) {
+            await apiFetch(`/api/calendar/events/${existing.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body
+            });
+        } else {
+            await apiFetch('/api/calendar/events', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body
+            });
+        }
+    }, [events]);
+
+    const syncGoogleChanges = useCallback(async (manual = false) => {
+        const since = readSetting(WATERMARK_KEY, null);
+        try {
+            const res = await apiFetch('/api/calendar/google/changes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    deviceId: getDeviceId(),
+                    since,
+                    calendarId: readSetting(DEFAULT_CALENDAR_KEY, 'primary')
+                })
+            });
+            if (res?.status === 401) {
+                setGoogleStatus({ connected: false, email: null });
+                if (manual) setNotice('Google authorization expired. Reconnect Google Calendar to sync again.');
+                return;
+            }
+            if (!res?.ok) {
+                if (manual) setNotice('Failed to sync Google changes.');
+                return;
+            }
+            const data = await res.json();
+            if (data.schemaMissing) {
+                if (manual) setNotice(data.warning || 'Two-way sync is not set up yet — run the calendar sync migration.');
+                return;
+            }
+            if (data.checkedAt) writeSetting(WATERMARK_KEY, data.checkedAt);
+            const changes = Array.isArray(data.changes) ? data.changes : [];
+            for (const change of changes) {
+                await applyGoogleChange(change);
+            }
+            if (changes.length > 0) await fetchEvents();
+            setSyncState({ lastSyncedAt: data.checkedAt, changes: changes.length });
+            if (manual) setNotice(`Synced ${changes.length} change${changes.length === 1 ? '' : 's'} from Google.`);
+        } catch (error) {
+            console.error('Failed to sync Google changes:', error);
+            if (manual) setNotice('Failed to sync Google changes.');
+        }
+    }, [applyGoogleChange, fetchEvents]);
+
+    useEffect(() => {
+        const handleChanges = () => syncGoogleChanges(false);
+        window.addEventListener('snowball-gcal-changes', handleChanges);
+        return () => window.removeEventListener('snowball-gcal-changes', handleChanges);
+    }, [syncGoogleChanges]);
 
     const handleConnectGoogle = useCallback(async () => {
         try {
@@ -995,9 +1139,26 @@ const importSelectedGoogleEvents = useCallback(() => {
     const handleSaveEvent = useCallback(async (data) => {
         if (!data.title || !data.event_date) return;
         const payload = makeEventPayload(data);
+        payload.calendarId = readSetting(DEFAULT_CALENDAR_KEY, 'primary');
         try {
             let res;
-            if (editingEvent) {
+            if (data._singleOccurrence) {
+                // Editing one occurrence of a series: exclude it from the series,
+                // then save a standalone event at the edited date/time.
+                await apiFetch(`/api/calendar/events/${data._singleOccurrence.sourceId}/exclude`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        date: data._singleOccurrence.date,
+                        occurrenceStart: data._singleOccurrence.occurrenceStart
+                    })
+                });
+                res = await apiFetch('/api/calendar/events', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } else if (editingEvent) {
                 res = await apiFetch(`/api/calendar/events/${editingEvent.id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
@@ -1016,6 +1177,13 @@ const importSelectedGoogleEvents = useCallback(() => {
                 setNotice('Failed to save event. Please try again.');
                 return;
             }
+
+            try {
+                const saved = await res.json();
+                if (saved?.googleSyncError) {
+                    setNotice(`Saved in Snowball, but Google sync failed: ${saved.googleSyncError}`);
+                }
+            } catch { /* response had no body */ }
 
             registerSubmittedTags(parseTags(data.tags));
 
@@ -1123,53 +1291,166 @@ const importSelectedGoogleEvents = useCallback(() => {
         setImportQueue(null);
     }, []);
 
-    // Non-recurring events delete outright (after a confirm). Recurring events
-    // open a popup to choose between "only this occurrence" and "all occurrences".
-    const deleteEvent = useCallback((ev) => {
+    // Two-way delete: hide immediately, then commit on both sides after the
+    // ten-second undo window. Undo simply cancels the pending request.
+    const commitDelete = useCallback(async (ev, scope, date, occurrenceStart) => {
+        try {
+            const isSingle = scope === 'single' && date;
+            const res = await apiFetch(
+                isSingle ? `/api/calendar/events/${ev.id}/exclude` : `/api/calendar/events/${ev.id}`,
+                isSingle
+                    ? {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ date, occurrenceStart })
+                    }
+                    : { method: 'DELETE' }
+            );
+            try {
+                const body = await res.json();
+                if (body?.googleSyncError) {
+                    setNotice(`Deleted in Snowball, but Google sync failed: ${body.googleSyncError}`);
+                }
+            } catch { /* no response body */ }
+        } catch (error) {
+            console.error('Failed to delete event:', error);
+            setNotice('Failed to delete event.');
+        }
+        await fetchEvents();
+    }, [fetchEvents]);
+
+    const hideDeleted = useCallback((ev, date) => {
+        if (date) {
+            setEvents(prev => prev.map((item) => String(item.id) === String(ev.id)
+                ? { ...item, excluded_dates: [...(item.excluded_dates || []), date] }
+                : item));
+        } else {
+            setEvents(prev => prev.filter((item) => String(item.id) !== String(ev.id)));
+        }
+        const timer = setTimeout(async () => {
+            await commitDelete(ev, date ? 'single' : 'series', date, ev.event_date);
+            setUndoState(null);
+        }, UNDO_MS);
+        setUndoState({ event: ev, timer, date });
+    }, [commitDelete]);
+
+    const deleteEvent = useCallback((ev, dateKey) => {
         const isRecurring = /FREQ=/.test(String((ev?.recurrence_rule) || ''));
         if (!isRecurring) {
-            if (!window.confirm('Delete this event?')) return;
-            deleteEventById(ev.id);
+            hideDeleted(ev, null);
             return;
         }
-        setPendingDelete({ ev, date: formatDateStr(selectedDate) });
-    }, [selectedDate, deleteEventById]);
-
-    const confirmDeleteSingle = useCallback(async () => {
-        if (!pendingDelete) return;
-        const { ev, date } = pendingDelete;
-        try {
-            const res = await apiFetch(`/api/calendar/events/${ev.id}/exclude`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ date })
-            });
-            if (res.ok) {
-                setNotice(`Removed one occurrence (${date}) — the rest of the series is kept.`);
-                await fetchEvents();
-            } else {
-                setNotice('Failed to remove this occurrence.');
+        const date = dateKey || toDateKey(selectedDate);
+        setPendingScope({
+            action: 'delete',
+            event: ev,
+            date,
+            onConfirm: (scope) => {
+                setPendingScope(null);
+                hideDeleted(ev, scope === 'single' ? date : null);
             }
-        } catch (error) {
-            console.error("Failed to exclude occurrence:", error);
-            setNotice('Failed to remove this occurrence.');
-        }
-        setPendingDelete(null);
-    }, [pendingDelete, fetchEvents]);
+        });
+    }, [hideDeleted, selectedDate]);
 
-    const confirmDeleteAll = useCallback(async () => {
-        if (!pendingDelete) return;
-        const { ev } = pendingDelete;
-        await deleteEventById(ev.id);
-        setPendingDelete(null);
-    }, [pendingDelete, deleteEventById]);
-
-    const cancelDelete = useCallback(() => setPendingDelete(null), []);
+    const undoDelete = useCallback(() => {
+        if (!undoState) return;
+        clearTimeout(undoState.timer);
+        setUndoState(null);
+        fetchEvents();
+        setNotice('Delete cancelled.');
+    }, [undoState, fetchEvents]);
 
     const openEventForm = useCallback((event = null) => {
         setEditingEvent(event);
         setShowEventForm(true);
     }, []);
+
+    // Drag-to-reschedule. A recurring event goes through the same scope dialog
+    // as delete/edit: either move one occurrence (exclude + standalone copy) or
+    // move the whole series.
+    const moveEventTo = useCallback((id, dateStr, hour) => {
+        const ev = events.find((item) => String(item.id) === String(id));
+        if (!ev) return;
+        const time = splitDateTime(ev.event_date).time || '00:00';
+        const newStart = hour === null
+            ? (ev.is_all_day ? dateStr : `${dateStr}T${time}`)
+            : `${dateStr}T${String(hour).padStart(2, '0')}:${time.split(':')[1] || '00'}`;
+        const payload = {
+            title: ev.title,
+            event_date: newStart,
+            end_date: ev.end_date || null,
+            is_all_day: !!ev.is_all_day,
+            description: ev.description || null,
+            color: ev.color,
+            tags: ev.tags,
+            is_dday: !!ev.is_dday,
+            dday_target_date: ev.dday_target_date || null,
+            recurrence_rule: ev.recurrence_rule || null,
+            calendarId: ev.calendar_id || readSetting(DEFAULT_CALENDAR_KEY, 'primary')
+        };
+
+        const perform = async (scope) => {
+            setPendingScope(null);
+            try {
+                if (scope === 'single') {
+                    const originalDate = String(ev.event_date).slice(0, 10);
+                    await apiFetch(`/api/calendar/events/${ev.id}/exclude`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ date: originalDate, occurrenceStart: ev.event_date })
+                    });
+                    await apiFetch('/api/calendar/events', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ...payload, recurrence_rule: null })
+                    });
+                } else {
+                    await apiFetch(`/api/calendar/events/${ev.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                }
+                await fetchEvents();
+            } catch (error) {
+                console.error('Failed to move event:', error);
+                setNotice('Failed to move event.');
+            }
+        };
+
+        if (/FREQ=/.test(String(ev.recurrence_rule || ''))) {
+            setPendingScope({ action: 'move', event: ev, date: dateStr, onConfirm: perform });
+        } else {
+            perform('series');
+        }
+    }, [events, fetchEvents]);
+
+    const requestEdit = useCallback((ev, dateKey) => {
+        if (!/FREQ=/.test(String(ev?.recurrence_rule || ''))) {
+            openEventForm(ev);
+            return;
+        }
+        const date = dateKey || toDateKey(selectedDate);
+        setPendingScope({
+            action: 'edit',
+            event: ev,
+            date,
+            onConfirm: (scope) => {
+                setPendingScope(null);
+                if (scope === 'single') {
+                    const time = splitDateTime(ev.event_date).time || '00:00';
+                    openEventForm({
+                        ...ev,
+                        event_date: `${date}T${time}`,
+                        recurrence_rule: null,
+                        _singleOccurrence: { sourceId: ev.id, date, occurrenceStart: `${date}T${time}` }
+                    });
+                } else {
+                    openEventForm(ev);
+                }
+            }
+        });
+    }, [openEventForm, selectedDate]);
 
     const formInitialData = useMemo(() => {
         if (importQueue && importQueue.length > 0) {
@@ -1192,7 +1473,8 @@ const importSelectedGoogleEvents = useCallback(() => {
                 color: ev.color || COLOR_PRESETS[1].value,
                 tags: ev.tags || '',
                 is_dday: !!ev.is_dday,
-                recurrence_rule: ev.recurrence_rule || ''
+                recurrence_rule: ev.recurrence_rule || '',
+                _singleOccurrence: ev._singleOccurrence || undefined
             };
         }
         return {
@@ -1404,7 +1686,7 @@ const importSelectedGoogleEvents = useCallback(() => {
                                         {ev.description && <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{ev.description}</p>}
                                     </div>
                                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                        <button onClick={() => openEventForm(ev)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                                        <button onClick={() => requestEdit(ev)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
                                             <Edit2 size={16} />
                                         </button>
                                         <button onClick={() => deleteEvent(ev)} style={{ background: 'transparent', border: 'none', color: 'var(--status-overdue)', cursor: 'pointer' }}>
@@ -1418,7 +1700,7 @@ const importSelectedGoogleEvents = useCallback(() => {
                 )}
             </div>
         );
-    }, [selectedDate, getEventsForDate, getEventColor, tagColors, openEventForm, deleteEvent]);
+    }, [selectedDate, getEventsForDate, getEventColor, tagColors, requestEdit, deleteEvent]);
 
     const grid = useMemo(() => renderCalendarGrid(), [renderCalendarGrid]);
     const detail = useMemo(() => renderDetailPanel(), [renderDetailPanel]);
@@ -1609,7 +1891,26 @@ const importSelectedGoogleEvents = useCallback(() => {
                     </button>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '2px', padding: '2px', borderRadius: '0.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                        {[['month', 'Month', CalendarIcon], ['week', 'Week', CalendarRange], ['list', 'List', List]].map(([key, label, Icon]) => (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => setView(key)}
+                                title={`${label} view`}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '0.3rem',
+                                    padding: '0.4rem 0.6rem', borderRadius: '0.4rem', border: 'none',
+                                    background: view === key ? 'var(--accent-color)' : 'transparent',
+                                    color: view === key ? 'var(--on-accent, #fff)' : 'var(--text-secondary)',
+                                    cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600
+                                }}
+                            >
+                                <Icon size={14} /> {label}
+                            </button>
+                        ))}
+                    </div>
                     {loading && <RefreshCw size={18} className="spin" style={{ color: 'var(--text-secondary)', marginRight: '0.5rem' }} />}
                     <button
                         onClick={googleStatus.connected ? openGoogleSync : handleConnectGoogle}
@@ -1629,8 +1930,29 @@ const importSelectedGoogleEvents = useCallback(() => {
                 </div>
             </div>
 
-            {grid}
-            {detail}
+            {view === 'week' ? (
+                <WeekView
+                    currentDate={currentDate}
+                    getEventsForDate={getEventsForDate}
+                    getEventColor={getEventColor}
+                    onEdit={requestEdit}
+                    onDelete={deleteEvent}
+                    onMove={moveEventTo}
+                />
+            ) : view === 'list' ? (
+                <ListView
+                    currentDate={currentDate}
+                    getEventsForDate={getEventsForDate}
+                    getEventColor={getEventColor}
+                    onEdit={requestEdit}
+                    onDelete={deleteEvent}
+                />
+            ) : (
+                <>
+                    {grid}
+                    {detail}
+                </>
+            )}
 
             <EventFormModal
                 key={importQueue && importQueue.length > 0
@@ -1651,61 +1973,31 @@ const importSelectedGoogleEvents = useCallback(() => {
             />
             {renderGoogleSyncModal()}
 
-            {pendingDelete && (
-                <AnimatePresence>
-                    <motion.div
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        style={{
-                            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                            backgroundColor: 'rgba(0,0,0,0.5)',
-                            display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100
-                        }}
-                        onClick={cancelDelete}
+            {pendingScope && (
+                <ScopeDialog
+                    action={pendingScope.action}
+                    event={pendingScope.event}
+                    date={pendingScope.date}
+                    onConfirm={pendingScope.onConfirm}
+                    onCancel={() => setPendingScope(null)}
+                />
+            )}
+
+            {undoState && (
+                <div style={{
+                    position: 'fixed', bottom: '1.5rem', left: '50%', transform: 'translateX(-50%)',
+                    zIndex: 1300, display: 'flex', alignItems: 'center', gap: '0.75rem',
+                    padding: '0.65rem 1rem', borderRadius: '0.75rem', background: 'var(--bg-card)',
+                    border: '1px solid var(--border-color)', boxShadow: '0 4px 16px rgba(0,0,0,0.25)'
+                }}>
+                    <span style={{ fontSize: '0.85rem' }}>Deleted “{undoState.event?.title}”</span>
+                    <button
+                        onClick={undoDelete}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.65rem', borderRadius: '0.5rem', border: '1px solid var(--accent-color)', background: 'transparent', color: 'var(--accent-color)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}
                     >
-                        <motion.div
-                            initial={{ y: 32, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 32, opacity: 0 }}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                                backgroundColor: 'var(--bg-card)', padding: '1.5rem', borderRadius: '1rem',
-                                width: '100%', maxWidth: '420px', boxSizing: 'border-box',
-                                border: '1px solid var(--border-color)'
-                            }}
-                        >
-                            <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '1.05rem' }}>Delete repeating event</h3>
-                            <p style={{ margin: 0, marginBottom: '1.25rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                                <strong style={{ color: 'var(--text-primary)' }}>{pendingDelete.ev.title}</strong> repeats
-                                {getRruleLabel(pendingDelete.ev.recurrence_rule) ? ` ${getRruleLabel(pendingDelete.ev.recurrence_rule).toLowerCase()}` : ''}.
-                                Delete only this one ({pendingDelete.date}) or the whole series?
-                            </p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                                <button
-                                    onClick={confirmDeleteSingle}
-                                    style={{ padding: '0.7rem 1rem', borderRadius: '0.5rem', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', cursor: 'pointer', textAlign: 'left' }}
-                                >
-                                    <span style={{ fontWeight: 600 }}>Delete only this occurrence</span>
-                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                        Removes {pendingDelete.date} — other occurrences stay
-                                    </span>
-                                </button>
-                                <button
-                                    onClick={confirmDeleteAll}
-                                    style={{ padding: '0.7rem 1rem', borderRadius: '0.5rem', backgroundColor: 'var(--bg-secondary)', color: 'var(--status-overdue)', border: '1px solid var(--border-color)', cursor: 'pointer', textAlign: 'left' }}
-                                >
-                                    <span style={{ fontWeight: 600 }}>Delete all occurrences</span>
-                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                        Removes every occurrence of this series
-                                    </span>
-                                </button>
-                                <button
-                                    onClick={cancelDelete}
-                                    style={{ padding: '0.7rem 1rem', borderRadius: '0.5rem', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', cursor: 'pointer' }}
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-                        </motion.div>
-                    </motion.div>
-                </AnimatePresence>
+                        <Undo2 size={14} /> Undo
+                    </button>
+                </div>
             )}
         </div>
     );

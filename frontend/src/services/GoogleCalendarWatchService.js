@@ -14,6 +14,10 @@ import { apiFetch } from '../utils/apiClient.js';
 import { notificationService } from './NotificationService.js';
 
 const CURSOR_KEY = 'snowball_gcal_watch_cursor';
+// NOTE: the Calendar component shares this key. It is deliberately NOT cleared
+// on connect/disconnect: doing so replays the entire buffered change history and
+// resurrects old events. Only the notification cursors below are reset.
+const CHANGE_WATERMARK_KEY = 'snowball_gcal_change_watermark';
 const SEEN_KEY = 'snowball_gcal_watch_seen';
 const SEEN_LIMIT = 200;
 const UNIMPORTED_STATE_KEY = 'snowball_gcal_unimported_state';
@@ -37,6 +41,22 @@ const writeCursor = (value) => {
         localStorage.setItem(CURSOR_KEY, value);
     } catch {
         /* storage unavailable — cursor stays per-session */
+    }
+};
+
+const readChangeWatermark = () => {
+    try {
+        return localStorage.getItem(CHANGE_WATERMARK_KEY) || null;
+    } catch {
+        return null;
+    }
+};
+
+const writeChangeWatermark = (value) => {
+    try {
+        localStorage.setItem(CHANGE_WATERMARK_KEY, value);
+    } catch {
+        /* ignore */
     }
 };
 
@@ -212,12 +232,45 @@ class GoogleCalendarWatchService {
         }
     }
 
+    /**
+     * Two-way change feed. The server owns the shared syncToken; this device keeps
+     * its own watermark into the server's change buffer, so no batch is missed
+     * when another device consumed it first. The Calendar component listens for
+     * the event and applies the changes locally.
+     */
+    async checkChanges() {
+        if (!this.running || !this.connected) return;
+        try {
+            const since = readChangeWatermark();
+            const response = await apiFetch('/api/calendar/google/changes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(since ? { since } : {})
+            });
+            if (response?.status === 401) {
+                this.connected = false;
+                this.retryAfterFailure = true;
+                return;
+            }
+            if (!response?.ok) return;
+            const data = await response.json();
+            if (data?.checkedAt) writeChangeWatermark(data.checkedAt);
+            const changes = Array.isArray(data?.changes) ? data.changes : [];
+            if (changes.length > 0) {
+                window.dispatchEvent(new CustomEvent('snowball-gcal-changes', { detail: changes }));
+            }
+        } catch (error) {
+            console.warn('Google Calendar change sync failed:', error?.message || error);
+        }
+    }
+
     scheduleNext(delay = this.intervalMs()) {
         if (!this.running) return;
         clearTimeout(this.timer);
         this.timer = setTimeout(async () => {
             if (this.running) {
                 await this.checkOnce();
+                await this.checkChanges();
                 this.scheduleNext();
             }
         }, delay);
@@ -238,6 +291,7 @@ class GoogleCalendarWatchService {
     async nudge() {
         if (!this.running) return;
         await this.checkOnce();
+        await this.checkChanges();
         this.scheduleNext();
 
         // Re-check unimported events on focus only when the six-hour window has

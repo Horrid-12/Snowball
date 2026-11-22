@@ -29,9 +29,23 @@ if (isNativeApp) {
         });
     }
 } else if ('serviceWorker' in navigator) {
+    // A redeploy can leave the tab running an old precached bundle. When the
+    // service worker takes control of a new version, reload once so theme
+    // migrations and sync code run from the current build.
+    let reloadedForUpdate = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (reloadedForUpdate) return;
+        if (sessionStorage.getItem('snowball_sw_update_reload') === '1') return;
+        reloadedForUpdate = true;
+        sessionStorage.setItem('snowball_sw_update_reload', '1');
+        window.location.reload();
+    });
     navigator.serviceWorker.getRegistrations().then((registrations) => {
         for (const registration of registrations) {
             registration.update().catch(() => {});
+            if (registration.waiting) {
+                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
         }
     });
 }
@@ -49,6 +63,7 @@ window.addEventListener('vite:preloadError', (event) => {
 window.addEventListener('load', () => {
     sessionStorage.removeItem('vite_preload_retry');
     sessionStorage.removeItem('chunk_error_reload');
+    sessionStorage.removeItem('snowball_sw_update_reload');
 });
 
 ReactDOM.createRoot(document.getElementById('root')).render(
