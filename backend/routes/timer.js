@@ -174,8 +174,9 @@ router.post('/sessions', requireAuth, validate(schemas.studySession), async (req
         }
 
         if (error && error.code === '23505') {
-            // Unique violation — this session already exists. Treat as success so
-            // outbox replays / lost-response retries don't surface as failures.
+            // Unique violation — this session already exists (same user + started_at).
+            // The resurrection bug can produce a second stop with a later ended_at;
+            // keep the row with the longer span so no study time is lost.
             const lookup = supabase
                 .from('study_sessions')
                 .select('*')
@@ -194,6 +195,28 @@ router.post('/sessions', requireAuth, validate(schemas.studySession), async (req
                     .maybeSingle());
             }
             if (lookupError || !existing) throw error;
+
+            // If the incoming session has a later ended_at, update the existing row
+            // so the fuller session span is preserved (the common resurrection-stop
+            // scenario: device A stops at T1, device B stops at T2 > T1).
+            if (new Date(ended_at).getTime() > new Date(existing.ended_at).getTime()) {
+                const { data: updated, error: updateError } = await supabase
+                    .from('study_sessions')
+                    .update({ ended_at, duration_ms })
+                    .eq('id', existing.id)
+                    .select()
+                    .single();
+                if (!updateError && updated) {
+                    return res.status(200).json({
+                        id: updated.id,
+                        subject: updated.subject,
+                        startedAt: updated.started_at,
+                        endedAt: updated.ended_at,
+                        durationMs: updated.duration_ms
+                    });
+                }
+            }
+
             return res.status(200).json({
                 id: existing.id,
                 subject: existing.subject,

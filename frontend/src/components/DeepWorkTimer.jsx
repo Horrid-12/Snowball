@@ -80,13 +80,20 @@ const normalizeActiveSessions = (value) => {
 };
 
 const mergeSessions = (localSessions = [], remoteSessions = []) => {
-    const byKey = new Map();
+    // Primary dedup: by startedAt (matches DB unique constraint on (user_id, started_at)).
+    // When two sessions share the same startedAt (e.g. one stopped on Android at T1,
+    // then the browser resurrects the active timer and stops it at T2), keep the one
+    // with the later endedAt — it represents the fuller session span.
+    const byStart = new Map();
     [...localSessions, ...remoteSessions].forEach((session) => {
         if (!session?.startedAt || !session?.endedAt) return;
-        const key = session.id || `${session.startedAt}_${session.endedAt}`;
-        byKey.set(key, session);
+        const startKey = session.startedAt;
+        const existing = byStart.get(startKey);
+        if (!existing || new Date(session.endedAt).getTime() > new Date(existing.endedAt).getTime()) {
+            byStart.set(startKey, session);
+        }
     });
-    return [...byKey.values()]
+    return [...byStart.values()]
         .sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime())
         .slice(-500);
 };
@@ -968,6 +975,21 @@ const DeepWorkTimer = ({ tasks = [], resetOffsetHours = 0 }) => {
                 body: JSON.stringify(payload)
             });
             if (!res.ok) throw new Error();
+            // Server may return the existing (possibly updated) session on a
+            // duplicate-start collision. Adopt its data so the local list
+            // matches the DB (which only keeps one row per startedAt).
+            try {
+                const serverSession = await res.json();
+                if (serverSession?.id) {
+                    setSessions((prev) => mergeSessions(prev, [{
+                        id: serverSession.id,
+                        subject: serverSession.subject,
+                        startedAt: serverSession.startedAt,
+                        endedAt: serverSession.endedAt,
+                        durationMs: serverSession.durationMs
+                    }]));
+                }
+            } catch (_parseErr) { /* 204 or non-JSON is fine */ }
         } catch (_error) {
             await queueMutation('study_session_create', 'POST', '/api/timer/sessions', payload);
         }
